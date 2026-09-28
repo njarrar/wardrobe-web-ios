@@ -912,3 +912,9 @@ button { font: inherit; }
     box-shadow: inset 3px 0 0 var(--accent), -18px 0 50px rgba(25, 24, 22, .08);
   }
 }
+
+/* Keep controls clear of the notch and home bar in the iOS app. */
+@media (max-width: 860px) {
+  .viewer-icon-close,
+  .has-modeled-image .viewer-icon-close { top: max(18px, env(safe-area-inset-top)); }
+}

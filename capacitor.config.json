@@ -1,0 +1,9 @@
+{
+  "appId": "com.njarrar.wardrobe",
+  "appName": "Wardrobe",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#f4f0e8"
+  }
+}

@@ -60,7 +60,7 @@
 .import-tray {
   position: fixed;
   left: 18px;
-  bottom: 18px;
+  bottom: max(18px, env(safe-area-inset-bottom));
   z-index: 70;
   display: flex;
   align-items: center;
