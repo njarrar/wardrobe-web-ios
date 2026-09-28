@@ -70,6 +70,39 @@ export function normalizeStyledOutfits(value, items, existing = []) {
   return result;
 }
 
+function outfitOccasions(value) {
+  const list = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  return list.filter((tag) => typeof tag === "string").map((tag) => tag.trim().toLowerCase().slice(0, 30)).filter(Boolean).slice(0, 4);
+}
+
+// An outfit someone put together by hand in the app.
+export function normalizeManualOutfit(input = {}, items = []) {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const ids = [...new Set((Array.isArray(input?.garmentIds) ? input.garmentIds : []).filter((id) => byId.has(id)))];
+  if (ids.length < 2) throw Object.assign(new Error("Pick at least two pieces for an outfit."), { status: 400 });
+  const name = typeof input.name === "string" && input.name.trim() ? input.name.trim().slice(0, 80) : "My outfit";
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "outfit";
+  return {
+    id: `${slug}-${crypto.randomUUID().slice(0, 8)}`,
+    name,
+    occasion: outfitOccasions(input.occasion),
+    garmentIds: ids,
+    reason: typeof input.reason === "string" ? input.reason.trim().slice(0, 400) : "",
+    image: null,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+// Applies a name, occasion or note change to a saved outfit. Pieces and the
+// id never change here.
+export function applyOutfitEdit(current, input = {}) {
+  const next = { ...current };
+  if (typeof input.name === "string" && input.name.trim()) next.name = input.name.trim().slice(0, 80);
+  if (input.occasion !== undefined) next.occasion = outfitOccasions(input.occasion);
+  if (typeof input.reason === "string") next.reason = input.reason.trim().slice(0, 400);
+  return next;
+}
+
 export function isLoopbackHost(host = "") {
   const value = String(host).trim().toLowerCase();
   const hostname = value.startsWith("[")

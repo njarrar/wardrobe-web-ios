@@ -30,7 +30,7 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 
 - **Add clothes from a photo.** Drop, paste, choose or take a picture of one piece or a whole outfit. Claude finds every garment and suggests a name, category, colors and tags.
 - **Clean cutouts.** Each piece is cut out of the real photo with background removal, so it looks like your actual item. You check the crop and the cutout before anything is saved.
-- **Style outfits.** Press **Style new outfits** and Claude builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city" to steer it.
+- **Style outfits.** Press **Style new outfits** and Claude builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city" to steer it. Or build one yourself from your pieces, and filter or edit outfits by occasion.
 - **Edit and sort.** Filter by tops, jackets, bottoms, accessories and shoes. Change names, colors and tags at any time.
 - **Search and sort.** Find pieces by name, tag, category or colour, and sort by category, newest, colour or name.
 - **Light and dark.** A clean, modern look that follows your system theme, on desktop and phone.

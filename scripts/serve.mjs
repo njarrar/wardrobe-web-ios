@@ -77,24 +77,10 @@ async function serveStatic(req, res) {
   res.end("The app is not built yet. Run `npm run build`, then `npm start`.");
 }
 
-// Unauthenticated liveness probe for Docker/Synology health checks and for the
-// iOS connect screen. It reveals nothing about the closet itself.
-function health(req, res) {
-  res.statusCode = 200;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.end(JSON.stringify({ ok: true, app: "wardrobe", version, protected: Boolean(env.WARDROBE_TOKEN?.trim()) }));
-}
-
-const api = createWardrobeApi({ env });
+const api = createWardrobeApi({ env, version });
 await api.init(root);
 
 const server = http.createServer((req, res) => {
-  if (req.url === "/api/health" || req.url?.startsWith("/api/health?")) {
-    if (req.method === "OPTIONS") { res.statusCode = 204; res.setHeader("Access-Control-Allow-Origin", "*"); return res.end(); }
-    return health(req, res);
-  }
   api.handler(req, res, () => {
     serveStatic(req, res).catch((error) => {
       console.error(error);

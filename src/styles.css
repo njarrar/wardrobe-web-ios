@@ -335,6 +335,45 @@ button { -webkit-user-select: none; user-select: none; }
   .category-nav button.active .chip-count { background: rgba(0, 0, 0, 0.12); }
 }
 
+.color-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.color-filter button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms var(--ease);
+}
+.color-filter button > span:first-child {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.color-filter button:hover { border-color: var(--line-strong); transform: scale(1.06); }
+.color-filter button.active { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.color-filter button:focus-visible { box-shadow: var(--focus); outline: none; }
+.color-filter .color-filter__clear {
+  width: auto;
+  display: inline-flex;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 540;
+}
+
 /* ------------------------------------------------------------------ */
 /* Gallery                                                             */
 /* ------------------------------------------------------------------ */
@@ -745,7 +784,8 @@ button { -webkit-user-select: none; user-select: none; }
 .has-modeled-image .viewer-actions { margin-bottom: -32px; }
 
 /* Keep the add button from covering Save while a piece is open. */
-.app-shell.has-selection .import-tray { display: none; }
+.app-shell.has-selection .import-tray,
+body.viewer-open .import-tray { display: none; }
 
 .unsaved-notice {
   margin: 14px 0 -8px;

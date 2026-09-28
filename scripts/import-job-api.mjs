@@ -6,7 +6,9 @@ import {
   MAX_STYLE_COUNT,
   isLoopbackHost,
   normalizeBoundingBox,
+  applyOutfitEdit,
   normalizeItemEdit,
+  normalizeManualOutfit,
   normalizeMetadata,
   publicJob,
   stageState,
@@ -305,8 +307,18 @@ export function createWardrobeApi(options = {}) {
     return task;
   }
 
+  // Open liveness check for Docker and for the connect screen. It says whether
+  // a token is needed, and nothing about the closet itself.
+  function health(req, res) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
+    res.setHeader("Cache-Control", "no-store");
+    return json(res, 200, { ok: true, app: "wardrobe", version: options.version || "dev", protected: Boolean(setting("WARDROBE_TOKEN").trim()) });
+  }
+
   async function handler(req, res, next) {
     const url = new URL(req.url, "http://localhost");
+    if (url.pathname === "/api/health") return health(req, res);
     if (!url.pathname.startsWith("/api/import/")) return next();
     applyCors(req, res);
     if (req.method === "OPTIONS") {
@@ -324,6 +336,11 @@ export function createWardrobeApi(options = {}) {
       if (url.pathname === "/api/import/outfits" && req.method === "GET") {
         return json(res, 200, (await loadOutfitRecords()).map(outfitForClient));
       }
+      if (url.pathname === "/api/import/outfits" && req.method === "POST") {
+        const created = normalizeManualOutfit(await body(req, 64 * 1024), await loadImported());
+        await updateOutfits((outfits) => ({ outfits: [created, ...outfits] }));
+        return json(res, 201, { outfit: outfitForClient(created) });
+      }
       if (url.pathname === "/api/import/outfits/generate" && req.method === "POST") {
         const input = await body(req, 64 * 1024);
         const count = Math.max(1, Math.min(MAX_STYLE_COUNT, Math.round(Number(input.count) || 4)));
@@ -339,6 +356,18 @@ export function createWardrobeApi(options = {}) {
         return json(res, 201, { outfits: created.map(outfitForClient) });
       }
       const outfitMatch = url.pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
+      if (outfitMatch && req.method === "PATCH") {
+        const id = outfitMatch[1];
+        const input = await body(req, 64 * 1024);
+        const updated = await updateOutfits((outfits) => {
+          const index = outfits.findIndex((outfit) => outfit.id === id);
+          if (index === -1) return { value: null };
+          const next = applyOutfitEdit(outfits[index], input);
+          return { outfits: outfits.map((outfit, i) => (i === index ? next : outfit)), value: next };
+        });
+        if (!updated) return json(res, 404, { error: "Outfit not found" });
+        return json(res, 200, outfitForClient(updated));
+      }
       if (outfitMatch && req.method === "DELETE") {
         const id = outfitMatch[1];
         const removed = await updateOutfits((outfits) => {

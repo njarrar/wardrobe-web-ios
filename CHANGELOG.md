@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.1.0 — Outfit builder and color filter
+
+### Outfits
+- Build an outfit by hand: pick pieces, name it, add occasions and a note (`POST /api/import/outfits`).
+- Edit an outfit's name, occasions and note (`PATCH /api/import/outfits/:id`). The pieces never change.
+- Filter outfits by occasion, and quick idea chips for the styling note.
+- Tap a piece in an outfit to open it.
+
+### Closet
+- Filter by color family (black, blue, beige and so on). Search now matches these words too, so "blue" finds navy pieces.
+
+### Fixes
+- Settings shows whether the server asks for a token, as the server reports it, not whether this device saved one.
+- `/api/health` now also answers in `npm run dev` and on the Cloudflare Worker, and Worker imports record `addedAt`.
+- The page no longer scrolls behind an open outfit, and the import button hides while a dialog is open.
+
 ## 2.0.0 — Modern redesign and self-hosting
 
 ### Design
