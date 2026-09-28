@@ -1,4 +1,4 @@
-const CACHE = "open-wardrobe-shell-v1";
+const CACHE = "open-wardrobe-shell-v2";
 const IMAGE_CACHE = "wardrobe-images-v1";
 const ACTIVE_CACHES = new Set([CACHE, IMAGE_CACHE]);
 const MAX_IMAGE_ENTRIES = 800;

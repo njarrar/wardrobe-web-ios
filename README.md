@@ -4,9 +4,12 @@
 
 Your closet on the web and on your iPhone. Snap a photo, and Claude finds each piece, cuts it out, and styles outfits from what you own.
 
+[![Version 2.1.0](https://img.shields.io/badge/version-2.1.0-191919?style=flat-square)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-191919?style=flat-square)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-22%2B-191919?style=flat-square)](package.json)
 [![Claude](https://img.shields.io/badge/AI-Claude-191919?style=flat-square)](https://www.anthropic.com/claude)
+[![Docker](https://img.shields.io/badge/docker-amd64%20%7C%20arm64-191919?style=flat-square)](docs/synology.md)
+[![Synology](https://img.shields.io/badge/Synology-Container%20Manager-191919?style=flat-square)](docs/synology.md)
 
 Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original post](https://x.com/cdngdev/status/2076812846793650485)).
 
@@ -16,39 +19,71 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 
 <sub>A real closet from the original project. The other screenshots below use a small drawn sample closet.</sub>
 
+**[What's new](#whats-new-in-21)** ·
+**[What it does](#what-it-does)** ·
+**[Screenshots](#screenshots)** ·
+**[Quick start](#quick-start-on-your-computer)** ·
+**[Synology NAS](#run-it-on-your-synology-nas-docker)** ·
+**[Cloudflare](#run-it-on-cloudflare)** ·
+**[iPhone app](#iphone-app)** ·
+**[Settings](#settings)**
+
+## What's new in 2.1
+
+Version 2.1 brings together the best of two other builds of this app with our own work. See the [changelog](CHANGELOG.md) for every change.
+
+- **Build outfits yourself.** Pick pieces, give the look a name, occasions and a note, and save it next to the ones Claude styles.
+- **Edit and filter outfits.** Rename an outfit, change its occasions or note, filter the list by occasion, and tap any piece to open it.
+- **Filter by color.** Tap a color dot to see only blue, beige or black pieces. Search understands color words too, so "blue" finds navy.
+- **New look with dark mode**, a settings sheet, search and sort, from the 2.0 redesign.
+- **Run it on a Synology NAS** with Docker, with a step-by-step guide.
+
 ## What it does
 
 - **Add clothes from a photo.** Drop, paste, choose or take a picture of one piece or a whole outfit. Claude finds every garment and suggests a name, category, colors and tags.
 - **Clean cutouts.** Each piece is cut out of the real photo with background removal, so it looks like your actual item. You check the crop and the cutout before anything is saved.
-- **Style outfits.** Press **Style new outfits** and Claude builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city" to steer it.
+- **Style outfits.** Press **Style new outfits** and Claude builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city", or tap an idea such as "Dinner out", to steer it.
+- **Build your own outfits.** Press **Build your own**, pick two or more pieces, and save the look. Edit any outfit's name, occasions and note later, and filter outfits by occasion.
 - **Edit and sort.** Filter by tops, jackets, bottoms, accessories and shoes. Change names, colors and tags at any time.
-- **Works everywhere.** Run it on your computer, or on Cloudflare so the web app, phone browsers and the iPhone app share one closet.
+- **Search, filter and sort.** Find pieces by name, tag, category or color word, tap a color dot to filter, and sort by category, newest, color or name.
+- **Light and dark.** A clean, modern look that follows your system theme, on desktop and phone.
+- **Self-host it.** Run it as a container on your Synology NAS (or any Docker host) so all photos and data stay at home, or on Cloudflare. The web app, phone browsers and the iPhone app share one closet.
 
 ## Screenshots
 
-| Your closet | Edit a piece |
+| Your closet | Filter by color |
 | --- | --- |
-| ![Gallery](docs/screenshots/gallery.png) | ![Editor](docs/screenshots/editor.png) |
+| ![Closet](docs/screenshots/gallery.png) | ![Color filter](docs/screenshots/color-filter.png) |
 
-| Outfits styled by Claude | One outfit |
+| Edit a piece | Server & settings |
+| --- | --- |
+| ![Editor](docs/screenshots/editor.png) | ![Settings](docs/screenshots/settings.png) |
+
+**Outfits.** Claude styles looks from your closet. Filter them by occasion, open one to see its pieces, or edit its name, occasions and note.
+
+| Outfits | One outfit |
 | --- | --- |
 | ![Outfits](docs/screenshots/outfits.png) | ![Outfit](docs/screenshots/outfit.png) |
+
+**Build your own.** Pick the pieces and the collage fills in as you go.
+
+![Build an outfit](docs/screenshots/outfit-builder.png)
 
 **Review before saving.** After Claude finds a piece and the background is removed, you check the details, then approve, reject, or keep the background.
 
 ![Import review](docs/screenshots/import-review.png)
 
-**On the phone.** The closet, the outfits, and the iPhone app's first screen.
+**On the phone.** The closet in dark mode, outfits, and the iPhone app's connect screen.
 
-![Phone](docs/screenshots/phone.png)
+<p><img src="docs/screenshots/phone-dark.png" width="250"> <img src="docs/screenshots/phone-outfits.png" width="250"> <img src="docs/screenshots/phone-connect.png" width="250"></p>
 
 ## Quick start (on your computer)
 
 You need Node 22 or newer and an Anthropic API key from [console.anthropic.com](https://console.anthropic.com/settings/keys).
 
 ```bash
-git clone https://github.com/njarrar/wardrobe-web-ios.git
-cd wardrobe-web-ios
+git clone https://github.com/njarrar/wardrobe-najeeb.git
+cd wardrobe-najeeb
 npm install
 cp .env.example .env     # then put your key in ANTHROPIC_API_KEY
 npm run dev              # http://localhost:5173
@@ -73,6 +108,24 @@ WARDROBE_TOKEN=pick-a-long-random-string
 ```
 
 The server refuses to listen on your network without a token. The browser and the app ask for it once and remember it.
+
+## Run it on your Synology NAS (Docker)
+
+The app ships as a single container. All data (closet, photos, cutouts, outfits, the cutout model cache) lives in one folder you mount at `/data`, so it sits on your NAS and is covered by your normal backups.
+
+```bash
+cp .env.example .env     # set ANTHROPIC_API_KEY and a long WARDROBE_TOKEN
+docker compose up -d --build
+# open http://<nas-ip>:4173 and enter your token
+```
+
+On DSM 7.2+, use **Container Manager → Project → Create**, point it at this folder and it picks up `docker-compose.yml`. Set `PUID`/`PGID` to your DSM user (`id` over SSH) so files in `./data` belong to you. The GitHub workflow in `.github/workflows/docker.yml` also publishes a multi-arch image (amd64 + arm64) to GHCR if you prefer pulling an image.
+
+For the iPhone app away from home, put the NAS behind HTTPS with the DSM reverse proxy (plus DDNS and Let's Encrypt) or use Tailscale. QuickConnect can't relay the app's port.
+
+Step-by-step guide, reverse proxy, backups and troubleshooting: **[docs/synology.md](docs/synology.md)**.
+
+Health check (no token needed): `GET /api/health` answers `{ ok, version, protected }`. It works the same with `npm start`, `npm run dev` and on Cloudflare.
 
 ## Run it on Cloudflare
 
@@ -107,7 +160,7 @@ Run `npm run cf:deploy` again after each update. To try the Worker on your compu
 
 ## iPhone app
 
-The `ios/` folder holds a Capacitor app that shows the same closet. Point it at your Cloudflare Worker (easiest, works anywhere) or at the server on your computer (set `WARDROBE_HOST` and `WARDROBE_TOKEN` first, see above).
+The `ios/` folder holds a Capacitor app that shows the same closet. Point it at your NAS container (e.g. `http://192.168.1.20:4173` at home, or your HTTPS reverse-proxy / Tailscale address anywhere), your Cloudflare Worker, or the server on your computer (set `WARDROBE_HOST` and `WARDROBE_TOKEN` first, see above).
 
 You need a Mac with Xcode 16 or newer:
 
@@ -116,7 +169,7 @@ npm install
 npm run ios        # builds the web app, copies it into ios/, opens Xcode
 ```
 
-In Xcode, pick your team under Signing & Capabilities, choose your iPhone, and press Run. On first launch the app asks for your server address and token. You can browse, edit, delete, add photos from your library or camera, and style outfits.
+In Xcode, pick your team under Signing & Capabilities, choose your iPhone, and press Run. On first launch the app asks for your server address and token, and tests the connection before saving it. Tap the gear icon later to see the connection status or switch servers. You can browse, edit, delete, add photos from your library or camera, and style outfits.
 
 On any phone, the add button offers **Take photo** next to **Choose images**. Photos are turned upright and shrunk to 2048 px before upload.
 
@@ -135,11 +188,14 @@ The import skill finds each garment, cuts it out, checks every cutout, then writ
 
 | Part | Where |
 | --- | --- |
-| Web app (React 19 + Vite) | `src/` |
+| Web app (React 19 + Vite) | `src/` (closet in `App.jsx`, outfits in `Outfits.jsx`, settings in `SettingsSheet.jsx`) |
 | Local server and API | `scripts/import-job-api.mjs`, `scripts/serve.mjs` |
+| Rules shared by the server and the Worker (item edits, outfits) | `shared/core.mjs` |
 | Cloudflare Worker (R2, D1, Queue, Images) | `worker/`, `wrangler.jsonc` |
 | Claude calls (finding clothes, styling outfits) | `shared/claude.mjs` |
 | iPhone app (Capacitor) | `ios/` |
+| Docker image and Synology setup | `Dockerfile`, `docker/`, `docker-compose.yml`, `docs/synology.md` |
+| Image publishing (GHCR, amd64 + arm64) | `.github/workflows/docker.yml` |
 | Claude Code skills | `.claude/skills/` |
 
 Claude calls use `claude-opus-5` with structured JSON output. If Claude declines to read a photo, the API retries on the model Anthropic recommends (`fallbacks: "default"`).
@@ -157,6 +213,9 @@ Your photos and closet stay in `data/` on your computer (or in your own R2 and D
 | `WARDROBE_HOST` | `127.0.0.1` |
 | `WARDROBE_TOKEN` | Required when `WARDROBE_HOST` is not local, and on Cloudflare |
 | `PORT` | `4173` (for `npm start`) |
+| `PUID` / `PGID` | `1026` / `100` (Docker only: owner of files in `./data`) |
+| `TZ` | `Europe/London` (Docker only) |
+| `WITH_CUTOUT` | `true` (Docker build arg; `false` = smaller image without on-device cutouts) |
 
 ## Tests
 
@@ -164,6 +223,10 @@ Your photos and closet stay in `data/` on your computer (or in your own R2 and D
 npm test           # API and image tests, with a stand-in for the Claude API
 npm run check      # build, then test
 ```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Publishing your own copy: [docs/github.md](docs/github.md).
 
 ## License
 
