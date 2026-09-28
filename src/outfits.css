@@ -1,0 +1,88 @@
+.outfit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 26px;
+  padding: 43px 52px 70px;
+}
+
+.outfit-card {
+  appearance: none;
+  display: grid;
+  gap: 10px;
+  border: 1px solid transparent;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: zoom-in;
+}
+
+.outfit-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: rgba(25, 25, 25, .05);
+}
+
+.outfit-card__name {
+  font-size: 12px;
+  font-weight: 520;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.outfit-card:focus-visible { outline: 1px solid var(--ink); outline-offset: 3px; }
+
+.outfit-viewer {
+  position: relative;
+  width: min(960px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  margin: 16px auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: start;
+  align-content: start;
+  overflow: auto;
+  background: var(--paper);
+}
+
+.outfit-viewer__photo { width: 100%; aspect-ratio: 1; object-fit: cover; }
+
+.outfit-viewer__details { padding: 32px 28px; }
+.outfit-viewer__details h2 { margin: 0 0 8px; font-size: 22px; font-weight: 520; }
+.outfit-viewer__details p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.outfit-viewer__occasion { font-size: 11px !important; letter-spacing: .1em; text-transform: uppercase; }
+
+.outfit-viewer__pieces {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.outfit-viewer__pieces figure { margin: 0; }
+.outfit-viewer__pieces img { width: 100%; aspect-ratio: .78; object-fit: contain; }
+.outfit-viewer__pieces figcaption { font-size: 11px; color: var(--muted); }
+
+.connect-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) 16px 24px;
+}
+
+.connect-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 18px;
+}
+
+.connect-card h1 { margin: 0; font-size: 28px; font-weight: 520; }
+.connect-card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+@media (max-width: 860px) {
+  .outfit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 28px 16px 60px; }
+  .outfit-viewer { grid-template-columns: 1fr; }
+}
+
+.outfit-viewer .viewer-icon-close { top: 12px; right: 12px; z-index: 1; background: var(--paper); }

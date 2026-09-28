@@ -122,11 +122,11 @@ After all requested outfits pass:
 
 1. Create `data/outfit-images/` if needed.
 2. Copy each accepted PNG to `data/outfit-images/OUTFIT-ID.png`.
-3. Set every accepted manifest image to `/api/import/outfits/OUTFIT-ID.png` only if the app exposes that endpoint; otherwise keep the repository-relative `outfit-images/OUTFIT-ID.png` path.
+3. Set every accepted manifest image to the repository-relative `outfit-images/OUTFIT-ID.png` path. The app serves it at `/api/import/outfits/OUTFIT-ID.png`.
 4. Atomically write the exact requested collection to `data/outfits.json`.
 5. Reopen every copied file and verify that the count of images, unique outfit IDs, and accepted manifest records all equal the number the user requested.
 
-Do not claim the current gallery displays outfits unless the app has an outfit route. The completed local assets and manifest are still the deliverable.
+The app's Outfits tab shows every outfit in `data/outfits.json`.
 
 ## Finish
 
