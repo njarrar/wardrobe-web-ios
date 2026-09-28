@@ -1,32 +1,31 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
+import {
+  ANALYZE_PROMPT,
+  ANALYZE_SCHEMA,
+  MODELED_PROMPT,
+  buildGarmentPrompt,
+  chooseChromaKey,
+  cleanupTolerance,
+  isLoopbackHost,
+  normalizeBoundingBox,
+  normalizeItemEdit,
+  normalizeMetadata,
+  publicJob,
+  stageState,
+  tokensMatch,
+} from "../shared/core.mjs";
+
+export { buildGarmentPrompt, isLoopbackHost };
 
 const API_ROOT = "/api/import/jobs";
 const ASSET_ROOT = "/api/import/assets";
 const LIBRARY_ASSET_ROOT = "/api/import/library";
 const OUTFIT_ASSET_ROOT = "/api/import/outfits";
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const STAGES = new Set(["crop", "garment", "modeled"]);
 const DECISIONS = new Set(["approve", "reject"]);
-const PARTS = new Set(["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"]);
-const HEX_COLOR = /^#[0-9a-f]{6}$/i;
-
-export function isLoopbackHost(host = "") {
-  const value = String(host).trim().toLowerCase();
-  const hostname = value.startsWith("[")
-    ? value.slice(0, value.indexOf("]") + 1)
-    : value.split(":").length > 2 ? value : value.split(":")[0];
-  return LOOPBACK_HOSTS.has(hostname) || hostname.endsWith(".localhost");
-}
-
-function tokensMatch(expected, actual) {
-  if (!expected || typeof actual !== "string") return false;
-  const a = Buffer.from(expected);
-  const b = Buffer.from(actual);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 function json(res, status, value) {
   res.statusCode = status;
@@ -48,12 +47,6 @@ async function body(req, limit = 25 * 1024 * 1024) {
   catch { throw Object.assign(new Error("Expected a JSON request body"), { status: 400 }); }
 }
 
-function publicJob(job) {
-  const copy = structuredClone(job);
-  delete copy.internal;
-  return copy;
-}
-
 function extension(mime = "image/png") {
   return ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" })[mime] || "png";
 }
@@ -66,55 +59,6 @@ function decodeImage(input) {
   const data = Buffer.from(match?.[2] || raw, "base64");
   if (!data.length) throw Object.assign(new Error("Image payload is empty"), { status: 400 });
   return { data, mime };
-}
-
-function normalizeMetadata(value = {}) {
-  const metadata = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const color = typeof metadata.color === "string" && HEX_COLOR.test(metadata.color) ? metadata.color.toLowerCase() : "#d8d0c2";
-  const secondaryColor = typeof metadata.secondaryColor === "string" && HEX_COLOR.test(metadata.secondaryColor) ? metadata.secondaryColor.toLowerCase() : null;
-  return {
-    name: typeof metadata.name === "string" ? metadata.name.trim().slice(0, 120) || "New piece" : "New piece",
-    part: PARTS.has(metadata.part) ? metadata.part : "upperbody",
-    color,
-    secondaryColor,
-    tags: Array.isArray(metadata.tags) ? metadata.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim().toLowerCase().slice(0, 40)).filter(Boolean).slice(0, 12) : [],
-    boundingBox: normalizeBoundingBox(metadata.boundingBox),
-  };
-}
-
-function normalizeItemEdit(record, value = {}) {
-  const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const next = { ...record };
-  if ("name" in input) next.name = typeof input.name === "string" ? input.name.trim().slice(0, 120) : record.name;
-  if ("part" in input) {
-    if (!PARTS.has(input.part)) throw Object.assign(new Error("Unknown category"), { status: 400 });
-    next.part = input.part;
-  }
-  if ("color" in input) {
-    if (typeof input.color !== "string" || !HEX_COLOR.test(input.color)) throw Object.assign(new Error("color must be a hex color"), { status: 400 });
-    next.color = input.color.toLowerCase();
-  }
-  if ("secondaryColor" in input) {
-    if (input.secondaryColor === null || input.secondaryColor === "") next.secondaryColor = null;
-    else if (typeof input.secondaryColor === "string" && HEX_COLOR.test(input.secondaryColor)) next.secondaryColor = input.secondaryColor.toLowerCase();
-    else throw Object.assign(new Error("secondaryColor must be a hex color or null"), { status: 400 });
-  }
-  if ("tags" in input) {
-    if (!Array.isArray(input.tags)) throw Object.assign(new Error("tags must be an array"), { status: 400 });
-    next.tags = [...new Set(input.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim().slice(0, 40)).filter(Boolean))].slice(0, 12);
-  }
-  next.palette = [...new Set([next.color, next.secondaryColor, ...(Array.isArray(record.palette) ? record.palette : [])].filter(Boolean))].slice(0, 5);
-  return next;
-}
-
-function normalizeBoundingBox(value = {}) {
-  const box = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const number = (key, fallback) => Number.isFinite(Number(box[key])) ? Math.round(Number(box[key])) : fallback;
-  const x = Math.max(0, Math.min(999, number("x", 0)));
-  const y = Math.max(0, Math.min(999, number("y", 0)));
-  const width = Math.max(1, Math.min(1000 - x, number("width", 1000 - x)));
-  const height = Math.max(1, Math.min(1000 - y, number("height", 1000 - y)));
-  return { x, y, width, height };
 }
 
 async function normalizeImage(bytes) {
@@ -135,51 +79,6 @@ async function cropDetectedItem(bytes, boundingBox) {
   const right = Math.min(width, Math.ceil(rawLeft + rawWidth + padding));
   const bottom = Math.min(height, Math.ceil(rawTop + rawHeight + padding));
   return sharp(normalized).extract({ left, top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) }).png().toBuffer();
-}
-
-function chooseChromaKey(primary = "#808080") {
-  const value = HEX_COLOR.test(primary) ? primary : "#808080";
-  const source = [1, 3, 5].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
-  const candidates = [[0, 255, 0], [255, 0, 255], [0, 255, 255]];
-  const selected = candidates.sort((a, b) => {
-    const distance = (color) => color.reduce((total, channel, index) => total + ((channel - source[index]) ** 2), 0);
-    return distance(b) - distance(a);
-  })[0];
-  return `#${selected.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
-}
-
-export function buildGarmentPrompt(metadata = {}, chromaKey = "#00ff00") {
-  const name = metadata.name || "clothing item";
-  const category = metadata.part || "wardrobe item";
-  const primary = metadata.color || "the exact visible color";
-  const secondary = metadata.secondaryColor ? ` with distinct secondary color ${metadata.secondaryColor}` : "";
-  const details = Array.isArray(metadata.tags) && metadata.tags.length
-    ? metadata.tags.join(", ")
-    : "all visible construction and design details";
-
-  return `Use case: background-extraction
-Asset type: ecommerce catalog product cutout source
-
-Input image: The reference photograph shows the exact garment, either by itself or worn by a person. Use it only to identify and reconstruct the garment.
-
-Primary request: Reconstruct ONLY the complete empty ${name} (${category}) as a clean, front-facing ecommerce catalog product photograph. If a wearer is present, remove them. Remove every other garment, object, and background element. Show the complete item naturally arranged and symmetrical, with no person, body, mannequin, or hanger visible.
-
-Garment fidelity: Preserve the reference garment's exact primary color ${primary}${secondary}, material and texture, silhouette, neckline, sleeves, fastenings, pattern, and distinctive details (${details}). Preserve any clearly legible existing graphic or logo exactly, but do not invent or reinterpret uncertain logos, text, pockets, seams, hardware, colors, or decoration.
-
-Composition: Centered straight-on product view. Keep the entire garment inside the frame with generous, even padding on every side. No cropping or truncation.
-
-Background: Perfectly flat, absolutely uniform solid ${chromaKey} chroma-key color, edge-to-edge. No shadows, gradient, texture, vignette, floor, horizon, reflection, or lighting variation.
-
-Lighting: Neutral diffuse product lighting contained on the garment only.
-
-Avoid: person, body, skin, hair, mannequin, hanger, props, other garments, retail tags, cast shadow, contact shadow, reflection, watermark, caption, border, background variation, or chroma spill.
-
-Critical: Use no ${chromaKey} anywhere in the garment. Produce exactly one complete garment with a crisp, separable outer silhouette.`;
-}
-
-function cleanupTolerance(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(18, Math.min(110, Math.round(parsed))) : 46;
 }
 
 function removeKeyedSpill(data, index, keyedChannels, neutralLevel) {
@@ -334,10 +233,6 @@ async function atomicJson(file, value) {
   }
 }
 
-function stageState() {
-  return { status: "pending", decision: null, attempts: 0, assetUrl: null, failedAssetUrl: null, cleanupPreviewUrl: null, cleanupTolerance: 46, cleanupDiagnostics: null, error: null, prompt: null, updatedAt: null };
-}
-
 async function openAIEdit({ key, baseUrl, model, prompt, images, size, background, quality }) {
   const form = new FormData();
   form.set("model", model);
@@ -367,10 +262,10 @@ async function openAIAnalyze({ key, baseUrl, model, image, mime }) {
     body: JSON.stringify({
       model,
       input: [{ role: "user", content: [
-        { type: "input_text", text: "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody, wholebody_up, lowerbody, accessories_up, shoes. Suggest a concise specific name, primary hex color, optional genuinely distinct secondary hex color, and 1-4 useful lowercase detail tags." },
+        { type: "input_text", text: ANALYZE_PROMPT },
         { type: "input_image", image_url: `data:${mime};base64,${image.toString("base64")}` },
       ] }],
-      text: { format: { type: "json_schema", name: "wardrobe_items", strict: true, schema: { type: "object", additionalProperties: false, properties: { items: { type: "array", minItems: 0, maxItems: 8, items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, part: { type: "string", enum: ["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"] }, color: { type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }, secondaryColor: { anyOf: [{ type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }, { type: "null" }] }, tags: { type: "array", items: { type: "string" }, maxItems: 4 }, boundingBox: { type: "object", additionalProperties: false, properties: { x: { type: "integer", minimum: 0, maximum: 999 }, y: { type: "integer", minimum: 0, maximum: 999 }, width: { type: "integer", minimum: 1, maximum: 1000 }, height: { type: "integer", minimum: 1, maximum: 1000 } }, required: ["x", "y", "width", "height"] } }, required: ["name", "part", "color", "secondaryColor", "tags", "boundingBox"] } } }, required: ["items"] } } },
+      text: { format: { type: "json_schema", name: "wardrobe_items", strict: true, schema: ANALYZE_SCHEMA } },
     }),
   });
   const result = await response.json().catch(() => ({}));
@@ -409,6 +304,8 @@ export function createWardrobeApi(options = {}) {
       hasApiKey,
       hasModelReference,
       modelReference: referenceSetting,
+      canUploadModelReference: true,
+      storage: "local",
     };
   }
 
@@ -548,7 +445,7 @@ export function createWardrobeApi(options = {}) {
             throw error;
           }
           const model = { data: modelData, mime: "image/png", name: "model.png" };
-          const basePrompt = options.modeledPrompt || "Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.";
+          const basePrompt = options.modeledPrompt || MODELED_PROMPT;
           bytes = await openAIEdit({ key, baseUrl: apiBaseUrl(), model: setting("OPENAI_MODELED_MODEL", setting("OPENAI_IMAGE_MODEL", "gpt-image-2")), quality: setting("OPENAI_IMAGE_QUALITY", "high"), size: "1536x1024", images: [model, garment], prompt: current.stages.modeled.prompt ? `${basePrompt}\nUser regeneration direction: ${current.stages.modeled.prompt}` : basePrompt });
         }
         await writeFile(output, bytes);
@@ -587,6 +484,13 @@ export function createWardrobeApi(options = {}) {
         return json(res, 200, await loadImported());
       }
       if (url.pathname === "/api/import/config" && req.method === "GET") {
+        return json(res, 200, await setupStatus());
+      }
+      if (url.pathname === "/api/import/model-reference" && req.method === "PUT") {
+        const image = decodeImage(await body(req));
+        const referencePath = path.resolve(root, setting("WARDROBE_MODEL_REFERENCE", "data/model-reference.png"));
+        await mkdir(path.dirname(referencePath), { recursive: true });
+        await writeFile(referencePath, await normalizeImage(image.data));
         return json(res, 200, await setupStatus());
       }
       if (url.pathname === "/api/import/outfits" && req.method === "GET") {

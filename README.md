@@ -47,9 +47,43 @@ WARDROBE_TOKEN=pick-a-long-random-string
 
 The server refuses to listen on your network without a token. Browsers and the app ask for the token once and remember it.
 
+## Run it on Cloudflare
+
+Instead of keeping everything on your computer, you can run Wardrobe on Cloudflare. Photos and images go in R2, your closet and outfits go in D1, and the slow AI steps run from a Queue. The app, the iPhone app and phone browsers all talk to the same Worker, so your closet is the same everywhere.
+
+You need:
+
+- A Cloudflare account on the **Workers Paid** plan ($5 a month). Queues need it, and cleaning up each garment image takes more CPU time than the free plan allows.
+- An OpenAI API key.
+
+One-time setup:
+
+```bash
+npx wrangler login
+npx wrangler r2 bucket create wardrobe
+npx wrangler d1 create wardrobe        # copy the database_id it prints into wrangler.jsonc
+npx wrangler queues create wardrobe-jobs
+npm run cf:migrate                     # creates the tables
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put WARDROBE_TOKEN # pick a long random string
+npm run cf:deploy
+```
+
+Open the `workers.dev` address it prints, enter your token, and upload a photo of yourself when the app asks. To copy a closet you already built locally (including anything the Codex skills made), run:
+
+```bash
+WARDROBE_TOKEN=your-token npm run cf:upload -- https://wardrobe.your-name.workers.dev
+```
+
+Run `npm run cf:deploy` again after each update. To try the Worker on your computer first, put `WARDROBE_TOKEN` and `OPENAI_API_KEY` in `.dev.vars`, run `npx wrangler d1 migrations apply wardrobe --local`, then `npm run cf:dev`.
+
+## Take photos from your phone
+
+On a phone, the add button offers **Take photo** next to **Choose images**. It opens the camera straight away in the iPhone app and in phone browsers. Photos are turned upright and shrunk to 2048px before upload.
+
 ## iPhone app
 
-The `ios/` folder holds a Capacitor app that shows the same closet. It talks to the server on your computer, so set `WARDROBE_HOST=0.0.0.0` and `WARDROBE_TOKEN` first (see above), then run `npm start` on that computer.
+The `ios/` folder holds a Capacitor app that shows the same closet. Point it at your Cloudflare Worker (easiest, works anywhere) or at the server on your computer. For the computer, set `WARDROBE_HOST=0.0.0.0` and `WARDROBE_TOKEN` first (see above), then run `npm start` there.
 
 To build it you need a Mac with Xcode 16 or newer:
 
@@ -58,7 +92,7 @@ npm install
 npm run ios        # builds the web app, copies it into ios/, opens Xcode
 ```
 
-In Xcode pick your team under Signing & Capabilities, choose your iPhone, and press Run. On first launch the app asks for the server address (for example `http://192.168.1.20:4173`) and the token. You can browse, edit, delete, add photos from your library or camera, and view outfits.
+In Xcode pick your team under Signing & Capabilities, choose your iPhone, and press Run. On first launch the app asks for the server address (your `https://…workers.dev` address, or for example `http://192.168.1.20:4173`) and the token. You can browse, edit, delete, add photos from your library or camera, and view outfits.
 
 ## Import with Codex
 

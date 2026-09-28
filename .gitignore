@@ -6,3 +6,5 @@ dist/
 !.env.example
 *.log
 data/
+.wrangler/
+.dev.vars

@@ -318,3 +318,4 @@
   .import-status.is-processing::before,
   .import-spinner { animation: none !important; }
 }
+.import-drop-target .import-actions { justify-content: center; }
