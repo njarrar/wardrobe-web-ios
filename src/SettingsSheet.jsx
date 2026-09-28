@@ -66,7 +66,7 @@ export function SettingsSheet({ onClose, pieces }) {
           <div><dt>Pieces</dt><dd>{pieces}</dd></div>
           <div><dt>Photos stored on</dt><dd>{status.state === "ok" ? storage : "—"}</dd></div>
           <div><dt>AI styling</dt><dd>{status.state !== "ok" ? "—" : config.ready ? "Ready" : "Needs ANTHROPIC_API_KEY"}</dd></div>
-          <div><dt>Protected by token</dt><dd>{accessToken() ? "Yes" : "No"}</dd></div>
+          <div><dt>Protected by token</dt><dd>{typeof status.server?.protected !== "boolean" ? "—" : status.server.protected ? "Yes" : "No, this computer only"}</dd></div>
           {version && <div><dt>Server version</dt><dd>{version}</dd></div>}
         </dl>
 

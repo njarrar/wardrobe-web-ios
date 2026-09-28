@@ -86,6 +86,46 @@ describe("wardrobe api without a token", () => {
     assert.deepEqual(await (await fetch(`${ctx.base}/api/import/outfits`)).json(), []);
   });
 
+  test("saves an outfit built by hand, then edits it", async () => {
+    const created = await fetch(`${ctx.base}/api/import/outfits`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: " Easy Saturday ", occasion: ["Weekend", " "], reason: "Soft colors.", garmentIds: ["import-a", "import-a", "import-gone"] }),
+    });
+    assert.equal(created.status, 400, "one real piece is not enough");
+    await writeFile(path.join(ctx.dataDir, "library.json"), JSON.stringify([item("import-a"), item("import-c", { part: "lowerbody" })]));
+    const response = await fetch(`${ctx.base}/api/import/outfits`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: " Easy Saturday ", occasion: ["Weekend", " "], reason: "Soft colors.", garmentIds: ["import-a", "import-c", "import-gone"] }),
+    });
+    assert.equal(response.status, 201);
+    const { outfit } = await response.json();
+    assert.equal(outfit.name, "Easy Saturday");
+    assert.deepEqual(outfit.occasion, ["weekend"]);
+    assert.deepEqual(outfit.garmentIds, ["import-a", "import-c"]);
+
+    const edited = await fetch(`${ctx.base}/api/import/outfits/${outfit.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Lazy Sunday", occasion: "home, Rest", garmentIds: ["import-a"] }),
+    });
+    assert.equal(edited.status, 200);
+    const stored = JSON.parse(await readFile(path.join(ctx.dataDir, "outfits.json"), "utf8")).outfits.find((entry) => entry.id === outfit.id);
+    assert.equal(stored.name, "Lazy Sunday");
+    assert.deepEqual(stored.occasion, ["home", "rest"]);
+    assert.equal(stored.reason, "Soft colors.");
+    assert.deepEqual(stored.garmentIds, ["import-a", "import-c"], "an edit never changes the pieces");
+
+    assert.equal((await fetch(`${ctx.base}/api/import/outfits/no-such-outfit`, { method: "PATCH", body: "{}" })).status, 404);
+  });
+
+  test("reports health without a token", async () => {
+    const response = await fetch(`${ctx.base}/api/health`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, app: "wardrobe", version: "dev", protected: false });
+  });
+
   test("refuses requests addressed to a non-local host name", async () => {
     // fetch() ignores a custom Host header, so use a raw request.
     const status = await new Promise((resolve, reject) => {
@@ -113,6 +153,13 @@ describe("wardrobe api with a token", () => {
   test("accepts the token as a header or query parameter", async () => {
     assert.equal((await fetch(`${ctx.base}/api/import/wardrobe`, { headers: { Authorization: "Bearer s3cret" } })).status, 200);
     assert.equal((await fetch(`${ctx.base}/api/import/wardrobe?token=s3cret`)).status, 200);
+  });
+
+  test("health needs no token and says the server is protected", async () => {
+    const response = await fetch(`${ctx.base}/api/health`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("access-control-allow-origin"), "*");
+    assert.equal((await response.json()).protected, true);
   });
 
   test("answers CORS preflight for the iOS app", async () => {

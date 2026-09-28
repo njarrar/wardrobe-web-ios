@@ -165,6 +165,45 @@ function colorSortKey(item) {
   return sat < 0.14 ? 1000 + (light * 100) : hue;
 }
 
+// Plain color words, so "blue" or "beige" finds pieces by their hex color.
+const COLOR_FAMILIES = [
+  { id: "black", label: "Black", swatch: "#1f1f1f" },
+  { id: "grey", label: "Grey", swatch: "#8d8d8d" },
+  { id: "white", label: "White", swatch: "#f1efea" },
+  { id: "beige", label: "Beige", swatch: "#d6c4a3" },
+  { id: "brown", label: "Brown", swatch: "#7a5134" },
+  { id: "red", label: "Red", swatch: "#c23b32" },
+  { id: "orange", label: "Orange", swatch: "#e0823a" },
+  { id: "yellow", label: "Yellow", swatch: "#e6c34a" },
+  { id: "green", label: "Green", swatch: "#5f7a45" },
+  { id: "blue", label: "Blue", swatch: "#34528f" },
+  { id: "purple", label: "Purple", swatch: "#7a4e98" },
+  { id: "pink", label: "Pink", swatch: "#e79bb4" },
+];
+
+function colorFamily(hex) {
+  const { hue, sat, light } = hexToHue(hex);
+  if (!/^#?[0-9a-f]{6}$/i.test(hex || "")) return null;
+  if (light < 0.16) return "black";
+  if (light > 0.9) return "white";
+  if (sat < 0.14) return light > 0.75 ? "white" : "grey";
+  if (hue >= 15 && hue < 50) {
+    if (light < 0.45) return "brown";
+    if (sat < 0.55 || light > 0.7) return "beige";
+    return "orange";
+  }
+  if (hue >= 50 && hue < 70) return sat < 0.4 ? "beige" : "yellow";
+  if (hue >= 70 && hue < 170) return "green";
+  if (hue >= 170 && hue < 255) return "blue";
+  if (hue >= 255 && hue < 295) return "purple";
+  if (hue >= 295 && hue < 345) return light > 0.6 ? "pink" : "purple";
+  return light > 0.72 ? "pink" : light < 0.3 ? "brown" : "red";
+}
+
+function itemFamilies(item) {
+  return [...new Set([item.color, item.secondaryColor].map(colorFamily).filter(Boolean))];
+}
+
 const SORTS = [
   { id: "category", label: "Category" },
   { id: "recent", label: "Recently added" },
@@ -594,6 +633,7 @@ function Wardrobe({ onConnectionFailed }) {
   const [error, setError] = useState("");
   const [view, setView] = useState("closet");
   const [query, setQuery] = useState("");
+  const [colorFilter, setColorFilter] = useState(null);
   const [sort, setSort] = useState(() => {
     try { return localStorage.getItem("wardrobe-sort") || "category"; } catch { return "category"; }
   });
@@ -639,8 +679,9 @@ function Wardrobe({ onConnectionFailed }) {
     const needle = query.trim().toLowerCase();
     const filtered = items.filter((item) => {
       if (activeType !== "all" && item.part !== activeType) return false;
+      if (colorFilter && !itemFamilies(item).includes(colorFilter)) return false;
       if (!needle) return true;
-      const haystack = [item.name, TYPE_MAP[item.part]?.label, TYPE_MAP[item.part]?.singular, item.color, item.secondaryColor, ...(item.tags || [])]
+      const haystack = [item.name, TYPE_MAP[item.part]?.label, TYPE_MAP[item.part]?.singular, ...itemFamilies(item), ...(item.tags || [])]
         .filter(Boolean).join(" ").toLowerCase();
       return needle.split(/\s+/).every((word) => haystack.includes(word));
     });
@@ -655,7 +696,17 @@ function Wardrobe({ onConnectionFailed }) {
       const typeDifference = (TYPE_ORDER[a.part] ?? 99) - (TYPE_ORDER[b.part] ?? 99);
       return typeDifference || a.id.localeCompare(b.id);
     });
-  }, [activeType, items, query, sort]);
+  }, [activeType, colorFilter, items, query, sort]);
+
+  const familiesInCloset = useMemo(() => {
+    const present = new Set(items.flatMap(itemFamilies));
+    return COLOR_FAMILIES.filter((family) => present.has(family.id));
+  }, [items]);
+
+  // Clear a color filter that no longer matches anything, e.g. after a delete.
+  useEffect(() => {
+    if (colorFilter && !familiesInCloset.some((family) => family.id === colorFilter)) setColorFilter(null);
+  }, [colorFilter, familiesInCloset]);
 
   const chooseType = (typeId) => {
     setActiveType(typeId);
@@ -765,12 +816,35 @@ function Wardrobe({ onConnectionFailed }) {
                   </button>
                 ))}
               </nav>
+
+              {familiesInCloset.length > 1 && (
+                <div className="color-filter" role="group" aria-label="Filter by color">
+                  {familiesInCloset.map((family) => (
+                    <button
+                      key={family.id}
+                      type="button"
+                      className={colorFilter === family.id ? "active" : ""}
+                      aria-pressed={colorFilter === family.id}
+                      title={family.label}
+                      onClick={() => setColorFilter((current) => (current === family.id ? null : family.id))}
+                    >
+                      <span style={{ backgroundColor: family.swatch }} aria-hidden="true" />
+                      <span className="visually-hidden">{family.label}</span>
+                    </button>
+                  ))}
+                  {colorFilter && (
+                    <button type="button" className="color-filter__clear" onClick={() => setColorFilter(null)}>
+                      {COLOR_FAMILIES.find((family) => family.id === colorFilter)?.label} <X size={12} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              )}
             </>
           )}
         </header>
 
         {error && <p className="status error">{error}</p>}
-        {showingOutfits && <OutfitGallery items={items} />}
+        {showingOutfits && <OutfitGallery items={items} onSelectGarment={setSelectedId} />}
 
         {!showingOutfits && !error && loading && (
           <section className="gallery-grid" aria-hidden="true">
@@ -789,9 +863,9 @@ function Wardrobe({ onConnectionFailed }) {
 
         {!showingOutfits && !!items.length && !visibleItems.length && (
           <div className="empty-state compact">
-            <h2>{query ? "No matches" : `No ${TYPE_MAP[activeType]?.label.toLowerCase() || "pieces"} yet`}</h2>
-            <p>{query ? `Nothing in ${TYPE_MAP[activeType]?.label.toLowerCase() || "your closet"} matches “${query}”.` : "Add a photo and it will show up here."}</p>
-            <button className="secondary-button" type="button" onClick={() => { setQuery(""); chooseType("all"); }}>Clear filters</button>
+            <h2>{query || colorFilter ? "No matches" : `No ${TYPE_MAP[activeType]?.label.toLowerCase() || "pieces"} yet`}</h2>
+            <p>{query || colorFilter ? `Nothing in ${TYPE_MAP[activeType]?.label.toLowerCase() || "your closet"} matches these filters.` : "Add a photo and it will show up here."}</p>
+            <button className="secondary-button" type="button" onClick={() => { setQuery(""); setColorFilter(null); chooseType("all"); }}>Clear filters</button>
           </div>
         )}
 
