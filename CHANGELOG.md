@@ -15,6 +15,10 @@
 - Settings shows whether the server asks for a token, as the server reports it, not whether this device saved one.
 - `/api/health` now also answers in `npm run dev` and on the Cloudflare Worker, and Worker imports record `addedAt`.
 - The page no longer scrolls behind an open outfit, and the import button hides while a dialog is open.
+- Category and occasion chips no longer snap under the screen edge on phones.
+
+### Docs
+- README rewritten for 2.1 with new screenshots: color filter, outfit, outfit builder and phone outfits.
 
 ## 2.0.0 — Modern redesign and self-hosting
 

@@ -4,6 +4,7 @@
 
 Your closet on the web and on your iPhone. Snap a photo, and Claude finds each piece, cuts it out, and styles outfits from what you own.
 
+[![Version 2.1.0](https://img.shields.io/badge/version-2.1.0-191919?style=flat-square)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-191919?style=flat-square)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-22%2B-191919?style=flat-square)](package.json)
 [![Claude](https://img.shields.io/badge/AI-Claude-191919?style=flat-square)](https://www.anthropic.com/claude)
@@ -18,6 +19,7 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 
 <sub>A real closet from the original project. The other screenshots below use a small drawn sample closet.</sub>
 
+**[What's new](#whats-new-in-21)** ·
 **[What it does](#what-it-does)** ·
 **[Screenshots](#screenshots)** ·
 **[Quick start](#quick-start-on-your-computer)** ·
@@ -26,41 +28,62 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 **[iPhone app](#iphone-app)** ·
 **[Settings](#settings)**
 
+## What's new in 2.1
+
+Version 2.1 brings together the best of two other builds of this app with our own work. See the [changelog](CHANGELOG.md) for every change.
+
+- **Build outfits yourself.** Pick pieces, give the look a name, occasions and a note, and save it next to the ones Claude styles.
+- **Edit and filter outfits.** Rename an outfit, change its occasions or note, filter the list by occasion, and tap any piece to open it.
+- **Filter by color.** Tap a color dot to see only blue, beige or black pieces. Search understands color words too, so "blue" finds navy.
+- **New look with dark mode**, a settings sheet, search and sort, from the 2.0 redesign.
+- **Run it on a Synology NAS** with Docker, with a step-by-step guide.
+
 ## What it does
 
 - **Add clothes from a photo.** Drop, paste, choose or take a picture of one piece or a whole outfit. Claude finds every garment and suggests a name, category, colors and tags.
 - **Clean cutouts.** Each piece is cut out of the real photo with background removal, so it looks like your actual item. You check the crop and the cutout before anything is saved.
-- **Style outfits.** Press **Style new outfits** and Claude builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city" to steer it. Or build one yourself from your pieces, and filter or edit outfits by occasion.
+- **Style outfits.** Press **Style new outfits** and Claude builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city", or tap an idea such as "Dinner out", to steer it.
+- **Build your own outfits.** Press **Build your own**, pick two or more pieces, and save the look. Edit any outfit's name, occasions and note later, and filter outfits by occasion.
 - **Edit and sort.** Filter by tops, jackets, bottoms, accessories and shoes. Change names, colors and tags at any time.
-- **Search and sort.** Find pieces by name, tag, category or colour, and sort by category, newest, colour or name.
+- **Search, filter and sort.** Find pieces by name, tag, category or color word, tap a color dot to filter, and sort by category, newest, color or name.
 - **Light and dark.** A clean, modern look that follows your system theme, on desktop and phone.
 - **Self-host it.** Run it as a container on your Synology NAS (or any Docker host) so all photos and data stay at home, or on Cloudflare. The web app, phone browsers and the iPhone app share one closet.
 
 ## Screenshots
 
-| Your closet | Edit a piece |
+| Your closet | Filter by color |
 | --- | --- |
-| ![Gallery](docs/screenshots/gallery.png) | ![Editor](docs/screenshots/editor.png) |
+| ![Closet](docs/screenshots/gallery.png) | ![Color filter](docs/screenshots/color-filter.png) |
 
-| Outfits styled by Claude | Server & settings |
+| Edit a piece | Server & settings |
 | --- | --- |
-| ![Outfits](docs/screenshots/outfits.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Editor](docs/screenshots/editor.png) | ![Settings](docs/screenshots/settings.png) |
+
+**Outfits.** Claude styles looks from your closet. Filter them by occasion, open one to see its pieces, or edit its name, occasions and note.
+
+| Outfits | One outfit |
+| --- | --- |
+| ![Outfits](docs/screenshots/outfits.png) | ![Outfit](docs/screenshots/outfit.png) |
+
+**Build your own.** Pick the pieces and the collage fills in as you go.
+
+![Build an outfit](docs/screenshots/outfit-builder.png)
 
 **Review before saving.** After Claude finds a piece and the background is removed, you check the details, then approve, reject, or keep the background.
 
 ![Import review](docs/screenshots/import-review.png)
 
-**On the phone.** The closet in dark mode, and the iPhone app's connect screen.
+**On the phone.** The closet in dark mode, outfits, and the iPhone app's connect screen.
 
-<p><img src="docs/screenshots/phone-dark.png" width="280"> <img src="docs/screenshots/phone-connect.png" width="280"></p>
+<p><img src="docs/screenshots/phone-dark.png" width="250"> <img src="docs/screenshots/phone-outfits.png" width="250"> <img src="docs/screenshots/phone-connect.png" width="250"></p>
 
 ## Quick start (on your computer)
 
 You need Node 22 or newer and an Anthropic API key from [console.anthropic.com](https://console.anthropic.com/settings/keys).
 
 ```bash
-git clone https://github.com/njarrar/wardrobe-web-ios.git
-cd wardrobe-web-ios
+git clone https://github.com/njarrar/wardrobe-najeeb.git
+cd wardrobe-najeeb
 npm install
 cp .env.example .env     # then put your key in ANTHROPIC_API_KEY
 npm run dev              # http://localhost:5173
@@ -102,7 +125,7 @@ For the iPhone app away from home, put the NAS behind HTTPS with the DSM reverse
 
 Step-by-step guide, reverse proxy, backups and troubleshooting: **[docs/synology.md](docs/synology.md)**.
 
-Health check (no token needed): `GET /api/health`.
+Health check (no token needed): `GET /api/health` answers `{ ok, version, protected }`. It works the same with `npm start`, `npm run dev` and on Cloudflare.
 
 ## Run it on Cloudflare
 
@@ -165,8 +188,9 @@ The import skill finds each garment, cuts it out, checks every cutout, then writ
 
 | Part | Where |
 | --- | --- |
-| Web app (React 19 + Vite) | `src/` |
+| Web app (React 19 + Vite) | `src/` (closet in `App.jsx`, outfits in `Outfits.jsx`, settings in `SettingsSheet.jsx`) |
 | Local server and API | `scripts/import-job-api.mjs`, `scripts/serve.mjs` |
+| Rules shared by the server and the Worker (item edits, outfits) | `shared/core.mjs` |
 | Cloudflare Worker (R2, D1, Queue, Images) | `worker/`, `wrangler.jsonc` |
 | Claude calls (finding clothes, styling outfits) | `shared/claude.mjs` |
 | iPhone app (Capacitor) | `ios/` |
