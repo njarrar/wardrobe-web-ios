@@ -4,7 +4,9 @@
 // background from a Queue so requests return right away.
 import {
   MAX_STYLE_COUNT,
+  applyOutfitEdit,
   normalizeItemEdit,
+  normalizeManualOutfit,
   normalizeMetadata,
   publicJob,
   stageState,
@@ -174,6 +176,7 @@ async function persistImported(env, job) {
     image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
     thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
     importJobId: job.id,
+    addedAt: new Date().toISOString(),
   };
   await upsertItem(env, record);
   return record;
@@ -239,12 +242,21 @@ async function handleApi(request, env) {
   const { pathname } = url;
   const method = request.method;
   if (method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+  // Open liveness check for the connect screen. The Worker always needs a token.
+  if (pathname === "/api/health" && method === "GET") return json(200, { ok: true, app: "wardrobe", version: "cloudflare", protected: true });
   if (!env.WARDROBE_TOKEN) return json(503, { error: "Set the WARDROBE_TOKEN secret on this Worker first." });
   if (!authorized(request, url, env)) return json(401, { error: "Wardrobe access token required" });
 
   if (pathname === "/api/import/wardrobe" && method === "GET") return json(200, await listItems(env));
   if (pathname === "/api/import/config" && method === "GET") return json(200, await setupStatus(env));
   if (pathname === "/api/import/outfits" && method === "GET") return json(200, await listOutfits(env));
+
+  // Same rules as the local server: see normalizeManualOutfit and applyOutfitEdit in shared/core.mjs.
+  if (pathname === "/api/import/outfits" && method === "POST") {
+    const created = normalizeManualOutfit(await readJson(request, 64 * 1024), await listItems(env));
+    await saveOutfit(env, created);
+    return json(201, { outfit: created });
+  }
 
   if (pathname === "/api/import/outfits/generate" && method === "POST") {
     const input = await readJson(request, 64 * 1024);
@@ -296,6 +308,14 @@ async function handleApi(request, env) {
   }
 
   const outfitMatch = pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
+  if (outfitMatch && method === "PATCH") {
+    const row = await env.DB.prepare("SELECT data FROM outfits WHERE id = ?").bind(outfitMatch[1]).first();
+    if (!row) return json(404, { error: "Outfit not found" });
+    const next = applyOutfitEdit(JSON.parse(row.data), await readJson(request, 64 * 1024));
+    await saveOutfit(env, next);
+    const fileName = typeof next.image === "string" ? next.image.split("/").pop() : null;
+    return json(200, { ...next, image: fileName ? `${OUTFIT_ASSET_ROOT}/${fileName}` : null });
+  }
   if (outfitMatch && method === "DELETE") {
     const id = outfitMatch[1];
     const { meta } = await env.DB.prepare("DELETE FROM outfits WHERE id = ?").bind(id).run();
@@ -421,7 +441,7 @@ async function handleApi(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith("/api/import/")) return env.ASSETS.fetch(request);
+    if (url.pathname !== "/api/health" && !url.pathname.startsWith("/api/import/")) return env.ASSETS.fetch(request);
     try {
       return await handleApi(request, env);
     } catch (error) {
