@@ -3,14 +3,14 @@ import { accessToken, isNativeApp, saveConnection, serverUrl } from "./api.js";
 import "./outfits.css";
 
 const MESSAGES = {
-  setup: "Enter the address of the computer running Wardrobe and its access token.",
+  setup: "Enter your Wardrobe address (your Cloudflare Worker or your computer) and its access token.",
   token: "This wardrobe is protected. Enter the WARDROBE_TOKEN from its .env file.",
-  unreachable: "Could not reach your wardrobe. Check that the server is running and on the same network.",
+  unreachable: "Could not reach your wardrobe. Check the address, and that the server is running.",
 };
 
 export function ConnectScreen({ reason }) {
   const native = isNativeApp();
-  const [server, setServer] = useState(serverUrl() || "http://");
+  const [server, setServer] = useState(serverUrl() || "https://");
   const [token, setToken] = useState(accessToken());
 
   const submit = (event) => {
@@ -27,7 +27,7 @@ export function ConnectScreen({ reason }) {
         {native && (
           <label className="field">
             <span>Server address</span>
-            <input type="url" inputMode="url" autoCapitalize="off" autoCorrect="off" value={server} onChange={(event) => setServer(event.target.value)} placeholder="http://192.168.1.20:4173" required />
+            <input type="url" inputMode="url" autoCapitalize="off" autoCorrect="off" value={server} onChange={(event) => setServer(event.target.value)} placeholder="https://wardrobe.you.workers.dev" required />
           </label>
         )}
         <label className="field">

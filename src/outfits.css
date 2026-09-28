@@ -105,6 +105,8 @@
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   align-items: start;
   align-content: start;
+  align-self: flex-start;
+  height: fit-content;
   overflow: auto;
   background: var(--paper);
 }
