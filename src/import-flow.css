@@ -204,8 +204,7 @@
   letter-spacing: 0.13em;
   text-transform: uppercase;
 }
-.import-editor + .import-card-list,
-.import-cleanup-editor + .import-card-list { margin-top: 28px; }
+.import-editor + .import-card-list { margin-top: 28px; }
 .import-card-list + .import-actions { margin-top: 28px; }
 .import-card {
   display: grid;
@@ -237,16 +236,6 @@
 
 .import-editor { display: grid; grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1.2fr); gap: 20px; }
 .import-editor__preview { width: 100%; max-height: 360px; object-fit: contain; background: var(--import-ivory); border-radius: 16px; }
-.import-cleanup-editor { display: grid; gap: 14px; }
-.import-cleanup-editor > .import-card__detail { max-width: 680px; line-height: 1.45; }
-.import-cleanup-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.import-cleanup-comparison figure { margin: 0; overflow: hidden; border: 1px solid var(--import-line); border-radius: 14px; background-color: var(--import-ivory); background-image: linear-gradient(45deg, rgba(36, 35, 31, .045) 25%, transparent 25%), linear-gradient(-45deg, rgba(36, 35, 31, .045) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(36, 35, 31, .045) 75%), linear-gradient(-45deg, transparent 75%, rgba(36, 35, 31, .045) 75%); background-position: 0 0, 0 7px, 7px -7px, -7px 0; background-size: 14px 14px; }
-.import-cleanup-comparison img { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
-.import-cleanup-comparison figcaption { padding: 9px 11px; border-top: 1px solid var(--import-line); color: var(--import-muted); background: rgba(244, 240, 232, .92); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
-.import-cleanup-strength label { display: flex; justify-content: space-between; gap: 16px; }
-.import-cleanup-strength label strong { color: var(--import-ink); font-weight: 600; }
-.import-cleanup-strength input[type="range"] { padding-inline: 0; border: 0; accent-color: var(--import-ink); }
-.import-cleanup-scale { display: flex; justify-content: space-between; gap: 16px; color: var(--import-muted); font-size: 10px; }
 .import-fields { display: grid; gap: 14px; align-content: start; }
 .import-field { display: grid; gap: 6px; }
 .import-field label { color: var(--import-muted); font-size: 11px; }
@@ -282,8 +271,7 @@
   .import-card { grid-template-columns: 68px minmax(0, 1fr); }
   .import-card__image { width: 68px; }
   .import-card__actions { grid-column: 2; }
-  .import-editor + .import-card-list,
-  .import-cleanup-editor + .import-card-list { margin-top: 22px; }
+  .import-editor + .import-card-list { margin-top: 22px; }
   .import-card-list + .import-actions { margin-top: 22px; }
   .import-editor { grid-template-columns: 1fr; }
   .import-editor__preview { max-height: 240px; }

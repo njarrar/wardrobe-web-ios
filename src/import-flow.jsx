@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowCounterClockwise, Camera, Check, Plus, SpinnerGap, Trash, UploadSimple, UserCircle, WarningCircle, X } from "@phosphor-icons/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowCounterClockwise, Camera, Check, Crop, Plus, SpinnerGap, Trash, UploadSimple, WarningCircle, X } from "@phosphor-icons/react";
 import { apiFetch, assetUrl } from "./api.js";
 import "./import-flow.css";
 
@@ -55,28 +55,21 @@ async function api(path, options) {
 function deriveStatus(job) {
   const crop = job.stages?.crop;
   const garment = job.stages?.garment;
-  const modeled = job.stages?.modeled;
-  if (job.error || crop?.status === "failed" || garment?.status === "failed" || modeled?.status === "failed") return { tone: "error", text: "Import needs attention", detail: crop?.error || garment?.error || modeled?.error || job.error };
-  if (modeled?.status === "review") return { tone: "ready", text: "Modeled image ready for review" };
-  if (modeled?.status === "processing") return { tone: "processing", text: "Styling modeled image" };
+  if (job.error || crop?.status === "failed" || garment?.status === "failed") return { tone: "error", text: "Import needs attention", detail: crop?.error || garment?.error || job.error };
   if (garment?.status === "review") return { tone: "ready", text: "Ready for review" };
-  if (garment?.status === "approved") return { tone: "processing", text: "Creating modeled image" };
   if (crop?.status === "review") return { tone: "ready", text: "Crop ready for review" };
-  if (crop?.status === "approved") return { tone: "processing", text: "Creating garment image" };
-  if (crop?.status === "rejected" || garment?.status === "rejected" || modeled?.status === "rejected") return { tone: "complete", text: "Import declined" };
-  return { tone: "processing", text: "Extracting clothing from image" };
+  if (crop?.status === "approved") return { tone: "processing", text: "Cutting out the garment" };
+  if (crop?.status === "rejected" || garment?.status === "rejected") return { tone: "complete", text: "Import declined" };
+  return { tone: "processing", text: "Finding clothes in the photo" };
 }
 
 function reviewStageFor(job) {
-  if (job.stages?.modeled?.status === "review") return "modeled";
   if (job.stages?.garment?.status === "review") return "garment";
   if (job.stages?.crop?.status === "review") return "crop";
   return null;
 }
 
-function hasCleanupFailure(job) {
-  return job.stages?.garment?.status === "failed" && Boolean(job.stages?.garment?.failedAssetUrl);
-}
+const isCutting = (job) => job.stages?.crop?.status === "approved" && ["pending", "queued", "processing"].includes(job.stages?.garment?.status);
 
 function defaultDraft(job) {
   const metadata = job.metadata || {};
@@ -89,18 +82,18 @@ function defaultDraft(job) {
   };
 }
 
-function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt, busy, onAction }) {
+function ReviewEditor({ job, stage, draft, setDraft, busy, onAction }) {
   const asset = job.stages[stage]?.assetUrl;
   const isCrop = stage === "crop";
-  const isGarment = stage === "garment";
+  const keptBackground = Boolean(job.stages.garment?.keptBackground);
   const primaryValid = HEX_COLOR.test(draft.color);
   const secondaryValid = !draft.secondaryColor || HEX_COLOR.test(draft.secondaryColor);
   return (
     <div className="import-editor">
-      <img className="import-editor__preview" src={assetUrl(asset)} alt={isCrop ? "Detected item crop" : isGarment ? "Extracted garment" : "Generated modeled look"} />
+      <img className="import-editor__preview" src={assetUrl(asset)} alt={isCrop ? "Detected item crop" : "Garment cutout"} />
       <div className="import-fields">
-        <p className="import-editor__stage">{isCrop ? "Detected item" : isGarment ? "Garment image" : "Modeled image"}</p>
-        {isCrop ? <p className="import-card__detail">Check that this crop contains the complete intended item. Approving it starts the clean garment-image generation.</p> : isGarment ? (
+        <p className="import-editor__stage">{isCrop ? "Detected item" : "Garment image"}</p>
+        {isCrop ? <p className="import-card__detail">Check that this crop holds the whole item. Approving it cuts the garment out of its background.</p> : (
           <>
             <div className="import-field"><label htmlFor={`name-${job.id}`}>Name</label><input id={`name-${job.id}`} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div>
             <div className="import-field"><label htmlFor={`part-${job.id}`}>Category</label><select id={`part-${job.id}`} value={draft.part} onChange={(event) => setDraft({ ...draft, part: event.target.value })}>{PARTS.map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></div>
@@ -108,59 +101,23 @@ function ReviewEditor({ job, stage, draft, setDraft, regenPrompt, setRegenPrompt
             <div className="import-field"><label htmlFor={`secondary-${job.id}`}>Secondary color <span>optional</span></label><input id={`secondary-${job.id}`} type="text" aria-invalid={!secondaryValid} placeholder="#hex or leave blank" value={draft.secondaryColor} onChange={(event) => setDraft({ ...draft, secondaryColor: event.target.value })} />{!secondaryValid && <small className="import-field-error">Use a six-digit hex color or leave this empty.</small>}</div>
             <div className="import-field"><label htmlFor={`tags-${job.id}`}>Details</label><input id={`tags-${job.id}`} value={draft.tags} placeholder="casual, cotton, striped" onChange={(event) => setDraft({ ...draft, tags: event.target.value })} /></div>
           </>
-        ) : <p className="import-card__detail">Approve this editorial image to attach it to the new wardrobe piece, or regenerate it with a more specific direction.</p>}
-        {!isCrop && <div className="import-field import-regenerate-field">
-          <label htmlFor={`regenerate-${job.id}-${stage}`}>Regeneration direction <span>optional</span></label>
-          <textarea id={`regenerate-${job.id}-${stage}`} rows="3" value={regenPrompt} onChange={(event) => setRegenPrompt(event.target.value)} placeholder={isGarment ? "Example: preserve the original zipper and remove the retail tag" : "Example: use a quiet evening street and show the full garment"} />
-        </div>}
+        )}
         <div className="import-actions">
           <button className="import-button" disabled={busy} onClick={() => onAction("reject")}><Trash size={14} /> Reject</button>
-          {!isCrop && <button className="import-button" disabled={busy} onClick={() => onAction("regenerate", regenPrompt)}><ArrowCounterClockwise size={14} /> Regenerate</button>}
-          <button className="import-button import-button--primary" disabled={busy || (isGarment && (!draft.name.trim() || !primaryValid || !secondaryValid))} onClick={() => onAction("approve")}><Check size={14} weight="bold" /> {isCrop ? "Use crop" : "Approve"}</button>
+          {!isCrop && (keptBackground
+            ? <button className="import-button" disabled={busy} onClick={() => onAction("retry")}><ArrowCounterClockwise size={14} /> Remove background</button>
+            : <button className="import-button" disabled={busy} onClick={() => onAction("use-crop")}><Crop size={14} /> Keep background</button>)}
+          <button className="import-button import-button--primary" disabled={busy || (!isCrop && (!draft.name.trim() || !primaryValid || !secondaryValid))} onClick={() => onAction("approve")}><Check size={14} weight="bold" /> {isCrop ? "Use crop" : "Approve"}</button>
         </div>
       </div>
     </div>
   );
 }
 
-function CleanupEditor({ job, tolerance, setTolerance, busy, onPreview, onAccept }) {
-  const stage = job.stages.garment;
-  const contaminated = stage.cleanupDiagnostics?.contaminatedPixels;
-  const previewTimer = useRef(null);
-  useEffect(() => () => clearTimeout(previewTimer.current), []);
-  const updateTolerance = (next) => {
-    setTolerance(next);
-    clearTimeout(previewTimer.current);
-    previewTimer.current = setTimeout(() => onPreview(next), 300);
-  };
-  return (
-    <div className="import-cleanup-editor">
-      <p className="import-editor__stage">Background cleanup</p>
-      <p className="import-card__detail">The generated garment is preserved below. Adjust the cleanup locally—this does not call the image model again.</p>
-      <div className="import-cleanup-comparison">
-        <figure><img src={assetUrl(stage.failedAssetUrl)} alt="Generated garment on its chroma background" /><figcaption>Generated source</figcaption></figure>
-        <figure><img src={assetUrl(stage.cleanupPreviewUrl || stage.failedAssetUrl)} alt="Transparent garment cleanup preview" /><figcaption>{stage.cleanupPreviewUrl ? "Cleanup preview" : "Preview appears here"}</figcaption></figure>
-      </div>
-      <div className="import-field import-cleanup-strength">
-        <label htmlFor={`cleanup-${job.id}`}>Cleanup strength <strong>{tolerance}</strong></label>
-        <input id={`cleanup-${job.id}`} type="range" min="18" max="110" step="2" value={tolerance} onChange={(event) => updateTolerance(Number(event.target.value))} />
-        <div className="import-cleanup-scale"><span>Preserve more edge detail</span><span>Remove more background</span></div>
-      </div>
-      {Number.isFinite(contaminated) && <p className="import-card__detail">The automated check sees {contaminated.toLocaleString()} tinted edge {contaminated === 1 ? "pixel" : "pixels"}. If the preview looks clean, you can still use it.</p>}
-      <div className="import-actions">
-        <button className="import-button" disabled={busy} onClick={() => onPreview(tolerance)}><ArrowCounterClockwise size={14} /> Preview cleanup</button>
-        <button className="import-button import-button--primary" disabled={busy} onClick={onAccept}><Check size={14} weight="bold" /> Use this cleanup</button>
-      </div>
-    </div>
-  );
-}
-
-export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved }) {
+export function WardrobeImportFlow({ onGarmentApproved }) {
   const inputRef = useRef(null);
   const [jobs, setJobs] = useState([]);
   const [drafts, setDrafts] = useState({});
-  const [regenerationPrompts, setRegenerationPrompts] = useState({});
-  const [cleanupTolerances, setCleanupTolerances] = useState({});
   const [dragging, setDragging] = useState(false);
   const [open, setOpen] = useState(false);
   const [selectedReviewId, setSelectedReviewId] = useState(null);
@@ -168,16 +125,14 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(null);
   const [setup, setSetup] = useState(null);
-  const [uploadingReference, setUploadingReference] = useState(false);
   const cameraRef = useRef(null);
-  const referenceRef = useRef(null);
   const showCamera = canUseCamera();
 
   useEffect(() => {
     api(CONFIG_API).then(setSetup).catch((requestError) => setSetup({ ready: false, error: requestError.message }));
     api(API)
       .then((storedJobs) => {
-        const visibleJobs = storedJobs.filter((job) => job.status !== "complete" && job.stages?.crop?.status !== "rejected" && job.stages?.garment?.status !== "rejected" && job.stages?.modeled?.status !== "rejected");
+        const visibleJobs = storedJobs.filter((job) => job.status !== "complete" && job.stages?.crop?.status !== "rejected" && job.stages?.garment?.status !== "rejected");
         setJobs(visibleJobs);
         setDrafts(Object.fromEntries(visibleJobs.map((job) => [job.id, defaultDraft(job)])));
       })
@@ -193,8 +148,8 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved }) {
   }, []);
 
   useEffect(() => {
-    if (!jobs.some((job) => (job.stages?.crop?.status === "approved" && ["processing", "pending", "queued"].includes(job.stages?.garment?.status)) || ["processing", "queued"].includes(job.stages?.modeled?.status) || (job.stages?.garment?.status === "approved" && job.stages?.modeled?.status === "pending"))) return undefined;
-    const timer = setInterval(() => jobs.forEach((job) => refresh(job.id)), 900);
+    if (!jobs.some(isCutting)) return undefined;
+    const timer = setInterval(() => jobs.filter(isCutting).forEach((job) => refresh(job.id)), 900);
     return () => clearInterval(timer);
   }, [jobs, refresh]);
 
@@ -230,42 +185,29 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved }) {
     return () => { window.removeEventListener("dragenter", onDragEnter); window.removeEventListener("dragover", onDragOver); window.removeEventListener("dragleave", onDragLeave); window.removeEventListener("drop", onDrop); window.removeEventListener("paste", onPaste); };
   }, [submitFiles]);
 
-  const perform = async (job, stage, action, prompt = "") => {
+  const dropJob = (id) => {
+    const remaining = jobs.filter((item) => item.id !== id);
+    setJobs((current) => current.filter((item) => item.id !== id));
+    setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)));
+    setSelectedReviewId(null);
+    if (!remaining.length) setOpen(false);
+  };
+
+  const perform = async (job, stage, action) => {
     setBusyId(job.id); setError("");
     try {
       if (stage === "garment" && action === "approve") {
         const draft = drafts[job.id];
         const metadata = { ...draft, secondaryColor: draft.secondaryColor || null, tags: draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean) };
         await api(`${API}/${job.id}/metadata`, { method: "PATCH", body: JSON.stringify({ metadata }) });
-        const updated = await api(`${API}/${job.id}/stages/garment/approve`, { method: "POST" });
-        const garmentPath = `/api/import/library/import-${job.id}-garment.png`;
-        onGarmentApproved?.({ id: `import-${job.id}`, ...metadata, image: garmentPath, thumbnail: garmentPath, modeledImage: null, palette: [metadata.color, metadata.secondaryColor].filter(Boolean), importJobId: job.id });
-        setJobs((current) => current.map((item) => item.id === job.id ? updated : item));
+        const result = await api(`${API}/${job.id}/stages/garment/approve`, { method: "POST" });
+        onGarmentApproved?.(result.item);
+        dropJob(job.id);
       } else {
-        const updated = await api(`${API}/${job.id}/stages/${stage}/${action}`, { method: "POST", body: action === "regenerate" ? JSON.stringify({ prompt }) : undefined });
-        const removeFromQueue = action === "reject" || (stage === "modeled" && action === "approve");
-        const remainingJobs = removeFromQueue ? jobs.filter((item) => item.id !== job.id) : null;
-        setJobs((current) => removeFromQueue ? current.filter((item) => item.id !== job.id) : current.map((item) => item.id === job.id ? updated : item));
-        if (removeFromQueue) {
-          setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== job.id)));
-          setSelectedReviewId(null);
-          if (!remainingJobs.length) setOpen(false);
-        }
-        if (action === "regenerate") setRegenerationPrompts((current) => ({ ...current, [`${job.id}:${stage}`]: "" }));
-        if (stage === "modeled" && action === "approve") onModeledApproved?.(job.id, `/api/import/library/import-${job.id}-modeled.png`);
+        const updated = await api(`${API}/${job.id}/stages/${stage}/${action}`, { method: "POST" });
+        if (action === "reject") dropJob(job.id);
+        else setJobs((current) => current.map((item) => item.id === job.id ? updated : item));
       }
-    } catch (requestError) { setError(requestError.message); }
-    finally { setBusyId(null); }
-  };
-
-  const performCleanup = async (job, action, requestedTolerance) => {
-    setBusyId(job.id); setError("");
-    try {
-      const tolerance = requestedTolerance ?? cleanupTolerances[job.id] ?? job.stages?.garment?.cleanupTolerance ?? 46;
-      const updated = await api(`${API}/${job.id}/stages/garment/cleanup-${action}`, { method: "POST", body: JSON.stringify({ tolerance }) });
-      setJobs((current) => current.map((item) => item.id === job.id ? updated : item));
-      setCleanupTolerances((current) => ({ ...current, [job.id]: updated.stages?.garment?.cleanupTolerance ?? tolerance }));
-      setSelectedReviewId(job.id);
     } catch (requestError) { setError(requestError.message); }
     finally { setBusyId(null); }
   };
@@ -284,24 +226,16 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved }) {
   };
 
   const active = jobs[jobs.length - 1];
-  const uploadReference = async (file) => {
-    if (!file) return;
-    setUploadingReference(true); setError("");
-    try {
-      const imageDataUrl = await prepareImage(file);
-      setSetup(await api("/api/import/model-reference", { method: "PUT", body: JSON.stringify({ imageDataUrl }) }));
-    } catch (requestError) { setError(requestError.message); }
-    finally { setUploadingReference(false); }
-  };
-
   const setupRequired = setup?.ready === false;
-  const setupMessage = !setup ? null : !setup.hasApiKey
-    ? (setup.storage === "cloudflare" ? "Add your OpenAI API key to the Worker with wrangler secret put OPENAI_API_KEY." : "Add your OpenAI API key to .env, then restart the app.")
-    : "Add a clear photo of yourself. Wardrobe uses it to show how each piece looks on you.";
+  const setupMessage = !setup ? null : setup.error
+    ? setup.error
+    : setup.storage === "cloudflare"
+      ? "Add your Anthropic API key to the Worker with npx wrangler secret put ANTHROPIC_API_KEY."
+      : "Add your Anthropic API key to .env as ANTHROPIC_API_KEY, then restart the app.";
   const activeStatus = setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
   const readyCount = jobs.filter((job) => deriveStatus(job).tone === "ready").length;
-  const selectedReviewJob = jobs.find((job) => job.id === selectedReviewId && (reviewStageFor(job) || hasCleanupFailure(job)));
-  const reviewJob = selectedReviewJob || jobs.find((job) => reviewStageFor(job)) || jobs.find((job) => hasCleanupFailure(job)) || active;
+  const selectedReviewJob = jobs.find((job) => job.id === selectedReviewId && reviewStageFor(job));
+  const reviewJob = selectedReviewJob || jobs.find((job) => reviewStageFor(job)) || active;
   const reviewStage = reviewJob ? reviewStageFor(reviewJob) : null;
   const progress = 0;
   const hasImportActivity = Boolean(jobs.length || notice || setupRequired);
@@ -310,20 +244,19 @@ export function WardrobeImportFlow({ onGarmentApproved, onModeledApproved }) {
     <>
       <input ref={inputRef} type="file" accept="image/*" multiple hidden disabled={!setup?.ready} onChange={(event) => { submitFiles(event.target.files); event.target.value = ""; }} />
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden disabled={!setup?.ready} onChange={(event) => { submitFiles(event.target.files); event.target.value = ""; }} />
-      <input ref={referenceRef} type="file" accept="image/*" hidden onChange={(event) => { uploadReference(event.target.files?.[0]); event.target.value = ""; }} />
       <div className="import-drop-overlay" data-active={dragging && !setupRequired} aria-hidden={!dragging || setupRequired}><div className="import-drop-target is-over"><UploadSimple size={34} weight="light" /><h2>Drop clothing images</h2><p>A single garment or a photo of a full outfit works. Your wardrobe stays exactly where you left it.</p></div></div>
       <aside className={`import-tray${hasImportActivity ? " is-expanded" : ""}`} aria-label="Wardrobe imports">
         <button className="import-tray__button" type="button" onClick={() => setupRequired || hasImportActivity || showCamera ? setOpen(true) : inputRef.current?.click()} aria-label={setupRequired ? "Open setup instructions" : hasImportActivity ? "Open import progress" : "Add clothes"}>{activeStatus?.tone === "processing" ? <SpinnerGap size={19} className="import-spinner" /> : activeStatus?.tone === "error" ? <WarningCircle size={19} /> : readyCount ? <span>{readyCount}</span> : notice ? <X size={18} /> : <Plus size={19} />}</button>
-        <div className="import-tray__actions">{active && <img className="import-tray__preview" src={assetUrl(active.stages?.garment?.assetUrl || active.stages?.garment?.failedAssetUrl || active.stages?.crop?.assetUrl || active.originalAssetUrl)} alt="" />}<span className="import-tray__label">{activeStatus?.text || "Add clothes"}</span>{!setupRequired && showCamera && <button className="import-icon-button" type="button" onClick={() => cameraRef.current?.click()} aria-label="Take a photo"><Camera size={17} /></button>}{!setupRequired && <button className="import-icon-button" type="button" onClick={() => inputRef.current?.click()} aria-label="Choose images"><UploadSimple size={17} /></button>}</div>
+        <div className="import-tray__actions">{active && <img className="import-tray__preview" src={assetUrl(active.stages?.garment?.assetUrl || active.stages?.crop?.assetUrl || active.originalAssetUrl)} alt="" />}<span className="import-tray__label">{activeStatus?.text || "Add clothes"}</span>{!setupRequired && showCamera && <button className="import-icon-button" type="button" onClick={() => cameraRef.current?.click()} aria-label="Take a photo"><Camera size={17} /></button>}{!setupRequired && <button className="import-icon-button" type="button" onClick={() => inputRef.current?.click()} aria-label="Choose images"><UploadSimple size={17} /></button>}</div>
       </aside>
       <div className="import-popover-backdrop" data-open={open} onMouseDown={(event) => event.target === event.currentTarget && setOpen(false)}>
         <section className="import-popover" role="dialog" aria-modal="true" aria-labelledby="import-title">
           <header className="import-popover__header"><div><p className="import-popover__eyebrow">Wardrobe import</p><h2 className="import-popover__title" id="import-title">{readyCount ? `${readyCount} ready for review` : activeStatus?.tone === "error" ? "Import needs attention" : jobs.length ? "Preparing new pieces" : notice?.text || "Add to your wardrobe"}</h2></div><button className="import-icon-button" type="button" onClick={() => setOpen(false)} aria-label="Close import progress"><X size={20} /></button></header>
-          {!jobs.length ? setupRequired ? <div className="import-drop-target import-setup-warning"><WarningCircle size={30} /><h2>Setup required</h2><p>{setupMessage}</p>{setup.hasApiKey && !setup.hasModelReference && <div className="import-actions"><button className="import-button import-button--primary" disabled={uploadingReference} onClick={() => referenceRef.current?.click()}>{uploadingReference ? <SpinnerGap size={14} className="import-spinner" /> : <UserCircle size={14} />} Choose a photo of you</button></div>}</div> : <div className="import-drop-target"><UploadSimple size={28} /><h2>{notice ? "Try another image" : "Choose or paste an image"}</h2><p>{notice?.detail || "We’ll isolate each clothing item, suggest its details, and hold everything for your approval."}</p><div className="import-actions"><button className="import-button import-button--primary" disabled={!setup?.ready} onClick={() => { setNotice(null); inputRef.current?.click(); }}>Choose images</button>{showCamera && <button className="import-button" disabled={!setup?.ready} onClick={() => { setNotice(null); cameraRef.current?.click(); }}><Camera size={14} /> Take photo</button>}</div></div> : (
+          {!jobs.length ? setupRequired ? <div className="import-drop-target import-setup-warning"><WarningCircle size={30} /><h2>Setup required</h2><p>{setupMessage}</p></div> : <div className="import-drop-target"><UploadSimple size={28} /><h2>{notice ? "Try another image" : "Choose or paste an image"}</h2><p>{notice?.detail || "We’ll isolate each clothing item, suggest its details, and hold everything for your approval."}</p><div className="import-actions"><button className="import-button import-button--primary" disabled={!setup?.ready} onClick={() => { setNotice(null); inputRef.current?.click(); }}>Choose images</button>{showCamera && <button className="import-button" disabled={!setup?.ready} onClick={() => { setNotice(null); cameraRef.current?.click(); }}><Camera size={14} /> Take photo</button>}</div></div> : (
             <>
               <div className={`import-progress${activeStatus?.tone !== "processing" ? " is-reviewing" : progress < 100 ? " is-indeterminate" : ""}`}><div className="import-progress__meta"><span>{activeStatus?.text}</span><span>{jobs.length} {jobs.length === 1 ? "item" : "items"}</span></div>{activeStatus?.tone === "processing" && <div className="import-progress__track"><div className="import-progress__bar" style={{ "--import-progress": `${progress}%` }} /></div>}</div>
-              {reviewJob && reviewStage ? <ReviewEditor job={reviewJob} stage={reviewStage} draft={drafts[reviewJob.id] || defaultDraft(reviewJob)} setDraft={(draft) => setDrafts((current) => ({ ...current, [reviewJob.id]: draft }))} regenPrompt={regenerationPrompts[`${reviewJob.id}:${reviewStage}`] || ""} setRegenPrompt={(prompt) => setRegenerationPrompts((current) => ({ ...current, [`${reviewJob.id}:${reviewStage}`]: prompt }))} busy={busyId === reviewJob.id} onAction={(action, prompt) => perform(reviewJob, reviewStage, action, prompt)} /> : reviewJob && hasCleanupFailure(reviewJob) ? <CleanupEditor job={reviewJob} tolerance={cleanupTolerances[reviewJob.id] ?? reviewJob.stages.garment.cleanupTolerance ?? 46} setTolerance={(tolerance) => setCleanupTolerances((current) => ({ ...current, [reviewJob.id]: tolerance }))} busy={busyId === reviewJob.id} onPreview={(tolerance) => performCleanup(reviewJob, "preview", tolerance)} onAccept={() => performCleanup(reviewJob, "accept")} /> : null}
-              <div className="import-card-list">{jobs.map((job) => { const status = deriveStatus(job); const itemName = drafts[job.id]?.name || job.metadata?.name || "New piece"; const failedStage = job.stages?.garment?.status === "failed" ? "garment" : job.stages?.modeled?.status === "failed" ? "modeled" : null; return <article className={`import-card is-${status.tone}${reviewJob?.id === job.id ? " is-selected" : ""}`} key={job.id}><img className="import-card__image" src={assetUrl(job.stages?.garment?.assetUrl || job.stages?.garment?.failedAssetUrl || job.stages?.crop?.assetUrl || job.originalAssetUrl)} alt="" /><div className="import-card__body"><h3 className="import-card__title">{itemName}</h3><p className="import-card__detail import-card__detail--status" data-tone={status.tone}>{status.tone === "error" ? status.detail : status.text}</p></div><div className="import-card__actions">{status.tone === "ready" && <button className="import-icon-button" onClick={() => { setSelectedReviewId(job.id); setOpen(true); }} aria-label={`Review ${itemName}`}><Check size={17} /></button>}{failedStage && <button className="import-button import-card__retry" disabled={busyId === job.id} onClick={() => perform(job, failedStage, "regenerate", "")}><ArrowCounterClockwise size={14} /> Retry</button>}<button className="import-icon-button import-card__delete" disabled={busyId === job.id} onClick={() => deleteJob(job)} aria-label={`Delete ${itemName} from import queue`}><Trash size={16} /></button></div></article>; })}</div>
+              {reviewJob && reviewStage ? <ReviewEditor job={reviewJob} stage={reviewStage} draft={drafts[reviewJob.id] || defaultDraft(reviewJob)} setDraft={(draft) => setDrafts((current) => ({ ...current, [reviewJob.id]: draft }))} busy={busyId === reviewJob.id} onAction={(action) => perform(reviewJob, reviewStage, action)} /> : null}
+              <div className="import-card-list">{jobs.map((job) => { const status = deriveStatus(job); const itemName = drafts[job.id]?.name || job.metadata?.name || "New piece"; const cutoutFailed = job.stages?.garment?.status === "failed"; return <article className={`import-card is-${status.tone}${reviewJob?.id === job.id ? " is-selected" : ""}`} key={job.id}><img className="import-card__image" src={assetUrl(job.stages?.garment?.assetUrl || job.stages?.crop?.assetUrl || job.originalAssetUrl)} alt="" /><div className="import-card__body"><h3 className="import-card__title">{itemName}</h3><p className="import-card__detail import-card__detail--status" data-tone={status.tone}>{status.tone === "error" ? status.detail : status.text}</p></div><div className="import-card__actions">{status.tone === "ready" && <button className="import-icon-button" onClick={() => { setSelectedReviewId(job.id); setOpen(true); }} aria-label={`Review ${itemName}`}><Check size={17} /></button>}{cutoutFailed && <button className="import-button import-card__retry" disabled={busyId === job.id} onClick={() => perform(job, "garment", "retry")}><ArrowCounterClockwise size={14} /> Retry</button>}{cutoutFailed && <button className="import-button import-card__retry" disabled={busyId === job.id} onClick={() => perform(job, "garment", "use-crop")}><Crop size={14} /> Keep background</button>}<button className="import-icon-button import-card__delete" disabled={busyId === job.id} onClick={() => deleteJob(job)} aria-label={`Delete ${itemName} from import queue`}><Trash size={16} /></button></div></article>; })}</div>
               <div className="import-actions"><button className="import-button" onClick={() => inputRef.current?.click()}><Plus size={14} /> Add another</button>{showCamera && <button className="import-button" onClick={() => cameraRef.current?.click()}><Camera size={14} /> Take photo</button>}</div>
             </>
           )}
