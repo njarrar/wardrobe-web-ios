@@ -36,8 +36,8 @@
 .outfit-viewer {
   position: relative;
   width: min(960px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  margin: 16px auto;
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top));
+  margin: max(16px, env(safe-area-inset-top)) auto 16px;
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   align-items: start;

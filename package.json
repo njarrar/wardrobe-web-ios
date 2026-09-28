@@ -11,9 +11,13 @@
     "start": "node scripts/serve.mjs",
     "preview": "vite preview",
     "test": "node --test test/*.test.mjs",
-    "check": "npm run build && npm test"
+    "check": "npm run build && npm test",
+    "ios:sync": "vite build && cap sync ios",
+    "ios": "npm run ios:sync && cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@fontsource-variable/instrument-sans": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",
     "@unpic/react": "^1.0.2",
@@ -23,5 +27,8 @@
     "react-dom": "19.2.0",
     "sharp": "^0.34.5",
     "vite": "6.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
   }
 }

@@ -47,6 +47,19 @@ WARDROBE_TOKEN=pick-a-long-random-string
 
 The server refuses to listen on your network without a token. Browsers and the app ask for the token once and remember it.
 
+## iPhone app
+
+The `ios/` folder holds a Capacitor app that shows the same closet. It talks to the server on your computer, so set `WARDROBE_HOST=0.0.0.0` and `WARDROBE_TOKEN` first (see above), then run `npm start` on that computer.
+
+To build it you need a Mac with Xcode 16 or newer:
+
+```bash
+npm install
+npm run ios        # builds the web app, copies it into ios/, opens Xcode
+```
+
+In Xcode pick your team under Signing & Capabilities, choose your iPhone, and press Run. On first launch the app asks for the server address (for example `http://192.168.1.20:4173`) and the token. You can browse, edit, delete, add photos from your library or camera, and view outfits.
+
 ## Import with Codex
 
 This repo includes two Codex skills: one imports clothes and generates modeled item photos; the other styles complete outfits and generates a modeled lookbook.
