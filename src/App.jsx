@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Plus, Trash, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
+import { OutfitGallery } from "./Outfits.jsx";
+import { ConnectScreen } from "./ConnectScreen.jsx";
+import { AUTH_EVENT, apiFetch, isNativeApp, needsServerUrl } from "./api.js";
 
-const STORAGE_KEY = "open-wardrobe-edits-v1";
-const DELETED_STORAGE_KEY = "open-wardrobe-deleted-v1";
+const LEGACY_EDITS_KEY = "open-wardrobe-edits-v1";
+const LEGACY_DELETED_KEY = "open-wardrobe-deleted-v1";
 
 const TYPES = [
   { id: "all", label: "All" },
@@ -19,46 +22,28 @@ const TYPE_MAP = Object.fromEntries(TYPES.map((type) => [type.id, type]));
 const TYPE_ORDER = Object.fromEntries(TYPES.slice(1).map((type, index) => [type.id, index]));
 
 
-function readEdits() {
+// Older versions kept edits in this browser only. Read them once so they can
+// be moved into library.json, then drop them.
+function takeLegacyEdits() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    const edits = JSON.parse(localStorage.getItem(LEGACY_EDITS_KEY) || "{}");
+    localStorage.removeItem(LEGACY_EDITS_KEY);
+    localStorage.removeItem(LEGACY_DELETED_KEY);
+    return edits && typeof edits === "object" ? edits : {};
   } catch {
     return {};
   }
 }
 
-
-function persistEdit(item) {
-  const edits = readEdits();
-  edits[item.id] = {
-    name: item.name || "",
-    part: item.part,
-    color: item.color || null,
-    secondaryColor: item.secondaryColor || null,
-    tags: item.tags || [],
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(edits));
-}
-
-function removePersistedEdit(id) {
-  const edits = readEdits();
-  delete edits[id];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(edits));
-}
-
-function readDeletedItems() {
-  try {
-    const value = JSON.parse(localStorage.getItem(DELETED_STORAGE_KEY) || "[]");
-    return new Set(Array.isArray(value) ? value : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function persistDeletedItem(id) {
-  const deleted = readDeletedItems();
-  deleted.add(id);
-  localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify([...deleted]));
+async function saveItemToServer(id, changes) {
+  const response = await apiFetch(`/api/import/wardrobe/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+  const value = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(value.error || "Could not save your changes.");
+  return value;
 }
 
 function rgbToHex(red, green, blue) {
@@ -421,10 +406,14 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
     onClose();
   };
 
-  const saveEditing = () => {
-    onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
+  const saveEditing = async () => {
     setSampling(null);
-    setSampleStatus("Changes saved.");
+    try {
+      await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
+      setSampleStatus("Changes saved.");
+    } catch (error) {
+      setSampleStatus(error.message);
+    }
   };
 
   const handleImageLoad = (event) => {
@@ -533,6 +522,21 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
 }
 
 export function App() {
+  const [connectReason, setConnectReason] = useState(() => needsServerUrl() ? "setup" : null);
+
+  useEffect(() => {
+    const onAuthRequired = () => setConnectReason("token");
+    window.addEventListener(AUTH_EVENT, onAuthRequired);
+    return () => window.removeEventListener(AUTH_EVENT, onAuthRequired);
+  }, []);
+
+  const onConnectionFailed = useCallback(() => setConnectReason("unreachable"), []);
+
+  if (connectReason) return <ConnectScreen reason={connectReason} />;
+  return <Wardrobe onConnectionFailed={onConnectionFailed} />;
+}
+
+function Wardrobe({ onConnectionFailed }) {
   const [items, setItems] = useState([]);
   const [activeType, setActiveType] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
@@ -540,22 +544,30 @@ export function App() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/import/wardrobe", { cache: "no-store" })
+    apiFetch("/api/import/wardrobe", { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error("Could not load the wardrobe.");
         return response.json();
       })
-      .then((loadedItems) => {
-        const edits = readEdits();
-        const deleted = readDeletedItems();
-        const visibleItems = loadedItems.filter((item) => !deleted.has(item.id));
-        setItems(visibleItems.map((item) => ({ ...item, ...(edits[item.id] || {}) })));
+      .then(async (loadedItems) => {
+        const legacyEdits = takeLegacyEdits();
+        const migrated = await Promise.all(loadedItems.map(async (item) => {
+          const edit = legacyEdits[item.id];
+          if (!edit) return item;
+          try { return await saveItemToServer(item.id, edit); }
+          catch { return { ...item, ...edit }; }
+        }));
+        setItems(migrated);
       })
-      .catch((requestError) => setError(requestError.message))
+      .catch((requestError) => {
+        if (isNativeApp() && requestError instanceof TypeError) onConnectionFailed();
+        else setError(requestError.message);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [onConnectionFailed]);
 
   const selectedItem = items.find((item) => item.id === selectedId) || null;
+  const showingOutfits = activeType === "outfits";
 
   const visibleItems = useMemo(() => {
     const filtered = activeType === "all" ? items : items.filter((item) => item.part === activeType);
@@ -573,24 +585,26 @@ export function App() {
     setSelectedId(null);
   };
 
-  const saveItem = (updatedItem) => {
-    setItems((current) => current.map((item) => item.id === updatedItem.id ? updatedItem : item));
-    persistEdit(updatedItem);
+  const saveItem = async (updatedItem) => {
+    const saved = await saveItemToServer(updatedItem.id, {
+      name: updatedItem.name,
+      part: updatedItem.part,
+      color: updatedItem.color,
+      secondaryColor: updatedItem.secondaryColor || null,
+      tags: updatedItem.tags,
+    });
+    setItems((current) => current.map((item) => item.id === saved.id ? saved : item));
   };
 
   const deleteItem = async (id) => {
-    if (id.startsWith("import-")) {
-      try {
-        const response = await fetch(`/api/import/wardrobe/${id}`, { method: "DELETE" });
-        if (!response.ok && response.status !== 404) throw new Error("Could not delete the imported item.");
-      } catch (requestError) {
-        setError(requestError.message);
-        return;
-      }
+    try {
+      const response = await apiFetch(`/api/import/wardrobe/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 404) throw new Error("Could not delete the item.");
+    } catch (requestError) {
+      setError(requestError.message);
+      return;
     }
     setItems((current) => current.filter((item) => item.id !== id));
-    removePersistedEdit(id);
-    persistDeletedItem(id);
     setSelectedId(null);
   };
 
@@ -611,7 +625,7 @@ export function App() {
             <p className="piece-count">{items.length} {items.length === 1 ? "piece" : "pieces"}</p>
           </div>
           <nav className="category-nav" aria-label="Filter wardrobe by item type">
-            {TYPES.map((type) => (
+            {[...TYPES, { id: "outfits", label: "Outfits" }].map((type) => (
               <button
                 key={type.id}
                 type="button"
@@ -626,10 +640,11 @@ export function App() {
         </header>
 
         {error && <p className="status error">{error}</p>}
-        {!error && loading && <p className="status">Loading wardrobe</p>}
-        {!error && !loading && !items.length && <p className="status empty">Drop, paste, or add a photo to import your first piece.</p>}
+        {showingOutfits && <OutfitGallery items={items} />}
+        {!showingOutfits && !error && loading && <p className="status">Loading wardrobe</p>}
+        {!showingOutfits && !error && !loading && !items.length && <p className="status empty">Drop, paste, or add a photo to import your first piece.</p>}
 
-        {!!items.length && (
+        {!showingOutfits && !!items.length && (
           <section className="gallery-grid" aria-label={`${TYPE_MAP[activeType]?.label || "All"} wardrobe items`}>
             {visibleItems.map((item) => (
               <GalleryItem

@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import { Image } from "@unpic/react";
+import { assetUrl, serverUrl } from "./api.js";
 
 const IPX_OPTIONS = { ipx: { baseURL: "/_ipx" } };
 const DEFAULT_BREAKPOINTS = [160, 240, 320, 480, 640, 800, 960, 1280];
@@ -23,7 +24,9 @@ export const OptimizedImage = forwardRef(function OptimizedImage({
   const normalizedSource = sourcePath(src);
 
   if (!normalizedSource || normalizedSource.startsWith("data:") || normalizedSource.startsWith("blob:") || normalizedSource.startsWith("/api/")) {
-    return <img ref={ref} src={src} alt={alt} sizes={sizes} loading={loading || (priority ? "eager" : "lazy")} decoding={decoding || "async"} {...props} />;
+    // A remote server (the iOS app) needs CORS mode so color sampling can read pixels.
+    const crossOrigin = normalizedSource?.startsWith("/api/") && serverUrl() ? "anonymous" : undefined;
+    return <img ref={ref} src={assetUrl(src)} crossOrigin={crossOrigin} alt={alt} sizes={sizes} loading={loading || (priority ? "eager" : "lazy")} decoding={decoding || "async"} {...props} />;
   }
 
   return (

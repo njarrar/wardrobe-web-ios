@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
@@ -6,10 +6,27 @@ import sharp from "sharp";
 const API_ROOT = "/api/import/jobs";
 const ASSET_ROOT = "/api/import/assets";
 const LIBRARY_ASSET_ROOT = "/api/import/library";
+const OUTFIT_ASSET_ROOT = "/api/import/outfits";
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const STAGES = new Set(["crop", "garment", "modeled"]);
 const DECISIONS = new Set(["approve", "reject"]);
 const PARTS = new Set(["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"]);
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+export function isLoopbackHost(host = "") {
+  const value = String(host).trim().toLowerCase();
+  const hostname = value.startsWith("[")
+    ? value.slice(0, value.indexOf("]") + 1)
+    : value.split(":").length > 2 ? value : value.split(":")[0];
+  return LOOPBACK_HOSTS.has(hostname) || hostname.endsWith(".localhost");
+}
+
+function tokensMatch(expected, actual) {
+  if (!expected || typeof actual !== "string") return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(actual);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 function json(res, status, value) {
   res.statusCode = status;
@@ -63,6 +80,31 @@ function normalizeMetadata(value = {}) {
     tags: Array.isArray(metadata.tags) ? metadata.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim().toLowerCase().slice(0, 40)).filter(Boolean).slice(0, 12) : [],
     boundingBox: normalizeBoundingBox(metadata.boundingBox),
   };
+}
+
+function normalizeItemEdit(record, value = {}) {
+  const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const next = { ...record };
+  if ("name" in input) next.name = typeof input.name === "string" ? input.name.trim().slice(0, 120) : record.name;
+  if ("part" in input) {
+    if (!PARTS.has(input.part)) throw Object.assign(new Error("Unknown category"), { status: 400 });
+    next.part = input.part;
+  }
+  if ("color" in input) {
+    if (typeof input.color !== "string" || !HEX_COLOR.test(input.color)) throw Object.assign(new Error("color must be a hex color"), { status: 400 });
+    next.color = input.color.toLowerCase();
+  }
+  if ("secondaryColor" in input) {
+    if (input.secondaryColor === null || input.secondaryColor === "") next.secondaryColor = null;
+    else if (typeof input.secondaryColor === "string" && HEX_COLOR.test(input.secondaryColor)) next.secondaryColor = input.secondaryColor.toLowerCase();
+    else throw Object.assign(new Error("secondaryColor must be a hex color or null"), { status: 400 });
+  }
+  if ("tags" in input) {
+    if (!Array.isArray(input.tags)) throw Object.assign(new Error("tags must be an array"), { status: 400 });
+    next.tags = [...new Set(input.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim().slice(0, 40)).filter(Boolean))].slice(0, 12);
+  }
+  next.palette = [...new Set([next.color, next.secondaryColor, ...(Array.isArray(record.palette) ? record.palette : [])].filter(Boolean))].slice(0, 5);
+  return next;
 }
 
 function normalizeBoundingBox(value = {}) {
@@ -340,11 +382,14 @@ async function openAIAnalyze({ key, baseUrl, model, image, mime }) {
   return parsed.items;
 }
 
-export function wardrobeImportApi(options = {}) {
+export function createWardrobeApi(options = {}) {
   let root;
   let jobsDir;
   let importedFile;
   let libraryAssetDir;
+  let outfitsFile;
+  let outfitAssetDir;
+  let libraryQueue = Promise.resolve();
   const running = new Map();
   const setting = (name, fallback = "") => options.env?.[name] || process.env[name] || fallback;
   const apiBaseUrl = () => setting("OPENAI_API_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
@@ -383,6 +428,48 @@ export function wardrobeImportApi(options = {}) {
     catch (error) { if (error.code === "ENOENT") return []; throw error; }
   }
 
+  // Every read-modify-write of library.json runs through this queue so two
+  // approvals or edits landing at once cannot drop each other's changes.
+  function updateLibrary(change) {
+    const task = libraryQueue.then(async () => {
+      const records = await loadImported();
+      const result = await change(records);
+      if (result?.records) await atomicJson(importedFile, result.records);
+      return result?.value;
+    });
+    libraryQueue = task.catch(() => undefined);
+    return task;
+  }
+
+  async function loadOutfits() {
+    try {
+      const value = JSON.parse(await readFile(outfitsFile, "utf8"));
+      const list = Array.isArray(value) ? value : Array.isArray(value?.outfits) ? value.outfits : [];
+      return list.map((outfit) => {
+        const image = typeof outfit.image === "string" ? outfit.image : null;
+        const fileName = image ? path.basename(image) : null;
+        return { ...outfit, image: fileName ? `${OUTFIT_ASSET_ROOT}/${fileName}` : null };
+      });
+    } catch (error) { if (error.code === "ENOENT") return []; throw error; }
+  }
+
+  function authorize(req, url) {
+    const token = setting("WARDROBE_TOKEN").trim();
+    if (!token) return isLoopbackHost(req.headers.host);
+    const header = req.headers.authorization || "";
+    const bearer = header.startsWith("Bearer ") ? header.slice(7) : null;
+    return tokensMatch(token, bearer) || tokensMatch(token, url.searchParams.get("token"));
+  }
+
+  function applyCors(req, res) {
+    // Cross-origin access is only opened up when a token guards the API, so
+    // a random web page cannot drive the local server through the browser.
+    if (!setting("WARDROBE_TOKEN").trim()) return;
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+  }
+
   async function persistImported(job, includeModeled = false) {
     const id = `import-${job.id}`;
     await mkdir(libraryAssetDir, { recursive: true });
@@ -401,24 +488,23 @@ export function wardrobeImportApi(options = {}) {
       modeledImage = `${LIBRARY_ASSET_ROOT}/${modeledName}`;
     }
     const metadata = job.metadata || {};
-    const records = await loadImported();
-    const existing = records.find((record) => record.id === id);
-    const record = {
-      id,
-      name: metadata.name || "New piece",
-      part: metadata.part || "upperbody",
-      color: metadata.color || "#d8d0c2",
-      secondaryColor: metadata.secondaryColor || null,
-      palette: [metadata.color, metadata.secondaryColor].filter(Boolean),
-      tags: Array.isArray(metadata.tags) ? metadata.tags : [],
-      image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
-      thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
-      modeledImage: modeledImage || existing?.modeledImage || null,
-      importJobId: job.id,
-    };
-    const next = [...records.filter((item) => item.id !== id), record];
-    await atomicJson(importedFile, next);
-    return record;
+    return updateLibrary((records) => {
+      const existing = records.find((record) => record.id === id);
+      const record = {
+        id,
+        name: metadata.name || "New piece",
+        part: metadata.part || "upperbody",
+        color: metadata.color || "#d8d0c2",
+        secondaryColor: metadata.secondaryColor || null,
+        palette: [metadata.color, metadata.secondaryColor].filter(Boolean),
+        tags: Array.isArray(metadata.tags) ? metadata.tags : [],
+        image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
+        thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
+        modeledImage: modeledImage || existing?.modeledImage || null,
+        importJobId: job.id,
+      };
+      return { records: [...records.filter((item) => item.id !== id), record], value: record };
+    });
   }
 
   async function generate(job, stageName) {
@@ -490,6 +576,12 @@ export function wardrobeImportApi(options = {}) {
   async function handler(req, res, next) {
     const url = new URL(req.url, "http://localhost");
     if (!url.pathname.startsWith("/api/import/")) return next();
+    applyCors(req, res);
+    if (req.method === "OPTIONS") {
+      res.statusCode = 204;
+      return res.end();
+    }
+    if (!authorize(req, url)) return json(res, 401, { error: "Wardrobe access token required" });
     try {
       if (url.pathname === "/api/import/wardrobe" && req.method === "GET") {
         return json(res, 200, await loadImported());
@@ -497,18 +589,44 @@ export function wardrobeImportApi(options = {}) {
       if (url.pathname === "/api/import/config" && req.method === "GET") {
         return json(res, 200, await setupStatus());
       }
-      const wardrobeDeleteMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[a-f0-9-]{36})$/i);
-      if (wardrobeDeleteMatch && req.method === "DELETE") {
-        const id = wardrobeDeleteMatch[1];
-        const records = await loadImported();
-        const next = records.filter((record) => record.id !== id);
-        if (next.length === records.length) return json(res, 404, { error: "Imported wardrobe item not found" });
-        await atomicJson(importedFile, next);
+      if (url.pathname === "/api/import/outfits" && req.method === "GET") {
+        return json(res, 200, await loadOutfits());
+      }
+      const outfitAssetMatch = url.pathname.match(/^\/api\/import\/outfits\/([\w.-]+\.png)$/i);
+      if (outfitAssetMatch && req.method === "GET") {
+        const file = path.join(outfitAssetDir, path.basename(outfitAssetMatch[1]));
+        await stat(file);
+        res.setHeader("Content-Type", "image/png");
+        res.setHeader("Cache-Control", "no-cache");
+        return res.end(await readFile(file));
+      }
+      const wardrobeItemMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[\w-]{1,80})$/i);
+      if (wardrobeItemMatch && req.method === "DELETE") {
+        const id = wardrobeItemMatch[1];
+        const deleted = await updateLibrary((records) => {
+          const next = records.filter((record) => record.id !== id);
+          return next.length === records.length ? { value: false } : { records: next, value: true };
+        });
+        if (!deleted) return json(res, 404, { error: "Imported wardrobe item not found" });
         await Promise.all([
           rm(path.join(libraryAssetDir, `${id}-garment.png`), { force: true }),
           rm(path.join(libraryAssetDir, `${id}-modeled.png`), { force: true }),
         ]);
         return json(res, 200, { deleted: true, id });
+      }
+      if (wardrobeItemMatch && (req.method === "PATCH" || req.method === "PUT")) {
+        const id = wardrobeItemMatch[1];
+        const input = await body(req, 64 * 1024);
+        const updated = await updateLibrary((records) => {
+          const index = records.findIndex((record) => record.id === id);
+          if (index === -1) return { value: null };
+          const record = normalizeItemEdit(records[index], input);
+          const next = [...records];
+          next[index] = record;
+          return { records: next, value: record };
+        });
+        if (!updated) return json(res, 404, { error: "Imported wardrobe item not found" });
+        return json(res, 200, updated);
       }
       const libraryAssetMatch = url.pathname.match(/^\/api\/import\/library\/([\w.-]+)$/i);
       if (libraryAssetMatch && req.method === "GET") {
@@ -661,51 +779,60 @@ export function wardrobeImportApi(options = {}) {
     }
   }
 
+  async function init(projectRoot) {
+    root = projectRoot;
+    const dataDir = path.resolve(root, setting("WARDROBE_DATA_DIR", "data"));
+    jobsDir = path.join(dataDir, "jobs");
+    importedFile = path.join(dataDir, "library.json");
+    libraryAssetDir = path.join(dataDir, "imported");
+    outfitsFile = path.join(dataDir, "outfits.json");
+    outfitAssetDir = path.join(dataDir, "outfit-images");
+    await mkdir(jobsDir, { recursive: true });
+    await mkdir(libraryAssetDir, { recursive: true });
+    const ids = await readdir(jobsDir).catch(() => []);
+    for (const id of ids) {
+      const job = await loadJob(id);
+      if (!job) continue;
+      if (job.status === "complete") {
+        try {
+          await persistImported(job, true);
+          await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
+        } catch (error) {
+          job.status = "active";
+          job.stages.modeled.status = "review";
+          job.stages.modeled.decision = null;
+          job.stages.modeled.error = null;
+          await saveJob(job);
+        }
+        continue;
+      }
+      if (job.stages.crop?.status === "rejected" || job.stages.garment.status === "rejected" || job.stages.modeled.status === "rejected") {
+        await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
+        continue;
+      }
+      if (job.stages.crop && job.stages.crop.status !== "approved") continue;
+      if (["processing", "queued"].includes(job.stages.garment.status)) {
+        job.stages.garment.status = "pending";
+        await saveJob(job);
+        void generate(job, "garment");
+      } else if (job.stages.garment.status === "approved" && ["pending", "processing", "queued"].includes(job.stages.modeled.status)) {
+        job.stages.modeled.status = "pending";
+        await saveJob(job);
+        void generate(job, "modeled");
+      }
+    }
+  }
+
+  return { init, handler };
+}
+
+export function wardrobeImportApi(options = {}) {
+  const api = createWardrobeApi(options);
   return {
     name: "wardrobe-import-job-api",
     apply: "serve",
-    async configResolved(config) {
-      root = config.root;
-      const dataDir = path.resolve(root, setting("WARDROBE_DATA_DIR", "data"));
-      jobsDir = path.join(dataDir, "jobs");
-      importedFile = path.join(dataDir, "library.json");
-      libraryAssetDir = path.join(dataDir, "imported");
-      await mkdir(jobsDir, { recursive: true });
-      await mkdir(libraryAssetDir, { recursive: true });
-      const ids = await readdir(jobsDir).catch(() => []);
-      for (const id of ids) {
-        const job = await loadJob(id);
-        if (!job) continue;
-        if (job.status === "complete") {
-          try {
-            await persistImported(job, true);
-            await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
-          } catch (error) {
-            job.status = "active";
-            job.stages.modeled.status = "review";
-            job.stages.modeled.decision = null;
-            job.stages.modeled.error = null;
-            await saveJob(job);
-          }
-          continue;
-        }
-        if (job.stages.crop?.status === "rejected" || job.stages.garment.status === "rejected" || job.stages.modeled.status === "rejected") {
-          await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
-          continue;
-        }
-        if (job.stages.crop && job.stages.crop.status !== "approved") continue;
-        if (["processing", "queued"].includes(job.stages.garment.status)) {
-          job.stages.garment.status = "pending";
-          await saveJob(job);
-          void generate(job, "garment");
-        } else if (job.stages.garment.status === "approved" && ["pending", "processing", "queued"].includes(job.stages.modeled.status)) {
-          job.stages.modeled.status = "pending";
-          await saveJob(job);
-          void generate(job, "modeled");
-        }
-      }
-    },
-    configureServer(server) { server.middlewares.use(handler); },
-    configurePreviewServer(server) { server.middlewares.use(handler); },
+    async configResolved(config) { await api.init(config.root); },
+    configureServer(server) { server.middlewares.use(api.handler); },
+    configurePreviewServer(server) { server.middlewares.use(api.handler); },
   };
 }
