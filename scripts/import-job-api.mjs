@@ -336,6 +336,7 @@ export function createWardrobeApi(options = {}) {
       if (url.pathname === "/api/import/outfits" && req.method === "GET") {
         return json(res, 200, (await loadOutfitRecords()).map(outfitForClient));
       }
+      // An outfit built by hand in the app. The pieces must already be in the closet.
       if (url.pathname === "/api/import/outfits" && req.method === "POST") {
         const created = normalizeManualOutfit(await body(req, 64 * 1024), await loadImported());
         await updateOutfits((outfits) => ({ outfits: [created, ...outfits] }));
@@ -356,6 +357,7 @@ export function createWardrobeApi(options = {}) {
         return json(res, 201, { outfits: created.map(outfitForClient) });
       }
       const outfitMatch = url.pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
+      // Rename an outfit or change its occasions or note. The pieces stay as they are.
       if (outfitMatch && req.method === "PATCH") {
         const id = outfitMatch[1];
         const input = await body(req, 64 * 1024);

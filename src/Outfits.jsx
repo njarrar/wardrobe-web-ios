@@ -3,6 +3,9 @@ import { Check, CoatHanger, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X 
 import { apiFetch, assetUrl } from "./api.js";
 import "./outfits.css";
 
+// The Outfits tab: outfits Claude styles, outfits built by hand, an occasion
+// filter, and a viewer where an outfit can be edited or deleted.
+
 const PART_ORDER = ["wholebody_up", "upperbody", "lowerbody", "shoes", "accessories_up"];
 const PART_LABELS = {
   wholebody_up: "Jackets",
@@ -90,6 +93,7 @@ function StyleForm({ busy, onStyle, onCompose, canCompose }) {
   );
 }
 
+// The pieces inside an open outfit. Tapping one opens it in the item editor.
 function PieceList({ pieces, onSelect }) {
   return (
     <div className="outfit-viewer__pieces">
@@ -123,6 +127,7 @@ function OutfitFields({ draft, setDraft }) {
   );
 }
 
+// "Build your own": pick two or more pieces, then save them as an outfit.
 function OutfitBuilder({ items, onClose, onCreated }) {
   const [draft, setDraft] = useState({ name: "", occasion: "", reason: "" });
   const [selectedIds, setSelectedIds] = useState([]);

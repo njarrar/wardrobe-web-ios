@@ -251,6 +251,7 @@ async function handleApi(request, env) {
   if (pathname === "/api/import/config" && method === "GET") return json(200, await setupStatus(env));
   if (pathname === "/api/import/outfits" && method === "GET") return json(200, await listOutfits(env));
 
+  // Same rules as the local server: see normalizeManualOutfit and applyOutfitEdit in shared/core.mjs.
   if (pathname === "/api/import/outfits" && method === "POST") {
     const created = normalizeManualOutfit(await readJson(request, 64 * 1024), await listItems(env));
     await saveOutfit(env, created);
