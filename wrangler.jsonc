@@ -1,0 +1,36 @@
+// Cloudflare deployment. See "Run it on Cloudflare" in README.md.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wardrobe",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "wardrobe" }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "wardrobe",
+      // Replace with the id that `wrangler d1 create wardrobe` prints.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "JOBS", "queue": "wardrobe-jobs" }],
+    "consumers": [{ "queue": "wardrobe-jobs", "max_batch_size": 1, "max_retries": 2 }]
+  },
+  "limits": { "cpu_ms": 60000 },
+  "vars": {
+    "OPENAI_VISION_MODEL": "gpt-5.4-mini",
+    "OPENAI_IMAGE_MODEL": "gpt-image-2",
+    "OPENAI_IMAGE_QUALITY": "high"
+  },
+  "observability": { "enabled": true }
+}

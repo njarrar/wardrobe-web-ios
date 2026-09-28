@@ -125,3 +125,19 @@ test("isLoopbackHost", () => {
   for (const host of ["localhost", "localhost:5173", "127.0.0.1:4173", "[::1]:4173", "::1", "app.localhost"]) assert.equal(isLoopbackHost(host), true, host);
   for (const host of ["0.0.0.0", "192.168.1.5:4173", "evil.example", ""]) assert.equal(isLoopbackHost(host), false, host);
 });
+
+test("uploads a model reference photo", async () => {
+  const ctx = await startServer({ OPENAI_API_KEY: "sk-test" });
+  try {
+    const before = await (await fetch(`${ctx.base}/api/import/config`)).json();
+    assert.equal(before.hasModelReference, false);
+    const sharp = (await import("sharp")).default;
+    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#aa8866" } }).png().toBuffer();
+    const response = await fetch(`${ctx.base}/api/import/model-reference`, { method: "PUT", body: JSON.stringify({ imageDataUrl: `data:image/png;base64,${png.toString("base64")}` }) });
+    const after = await response.json();
+    assert.equal(after.ready, true);
+    assert.equal((await readFile(path.join(ctx.dataDir, "model-reference.png"))).subarray(1, 4).toString(), "PNG");
+  } finally {
+    await ctx.close();
+  }
+});
