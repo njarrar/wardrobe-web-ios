@@ -61,11 +61,4 @@ for (const outfit of outfits) {
   console.log(`Uploaded outfit ${outfit.name || outfit.id}`);
 }
 
-const referencePath = path.resolve(root, env.WARDROBE_MODEL_REFERENCE || "data/model-reference.png");
-const reference = await readOptional(referencePath);
-if (reference) {
-  await send("/api/import/model-reference", "PUT", { imageDataUrl: `data:image/png;base64,${reference.toString("base64")}` });
-  console.log("Uploaded your model reference photo");
-}
-
 console.log(`Done: ${items} items, ${outfits.length} outfits.`);

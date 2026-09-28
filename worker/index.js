@@ -1,26 +1,22 @@
 // Cloudflare Worker version of the wardrobe API (see scripts/import-job-api.mjs
-// for the local Node version). Images live in R2, records in D1, and the slow
-// OpenAI image steps run from a Queue so requests return right away.
+// for the local Node version). Images live in R2, records in D1, Claude finds
+// and styles the clothes, and Cloudflare Images cuts each garment out of its
+// background from a Queue so requests return right away.
 import {
-  ANALYZE_PROMPT,
-  ANALYZE_SCHEMA,
-  MODELED_PROMPT,
-  buildGarmentPrompt,
-  chooseChromaKey,
-  cleanupTolerance,
+  MAX_STYLE_COUNT,
   normalizeItemEdit,
   normalizeMetadata,
   publicJob,
   stageState,
   tokensMatch,
 } from "../shared/core.mjs";
-import { cropDetectedItem, decodePng, encodePng, processChromaBackground } from "../shared/pixels.mjs";
+import { CLAUDE_IMAGE_EDGE, createClaude, detectClothing, styleOutfits } from "../shared/claude.mjs";
+import { cropDetectedItem, decodePng, encodePng, frameTransparentGarment, resize } from "../shared/pixels.mjs";
 
 const API_ROOT = "/api/import/jobs";
 const ASSET_ROOT = "/api/import/assets";
 const LIBRARY_ASSET_ROOT = "/api/import/library";
 const OUTFIT_ASSET_ROOT = "/api/import/outfits";
-const MODEL_REFERENCE_KEY = "model-reference";
 const MAX_BODY = 25 * 1024 * 1024;
 
 class HttpError extends Error {
@@ -74,7 +70,36 @@ function setting(env, name, fallback = "") {
   return (typeof env[name] === "string" && env[name]) || fallback;
 }
 
-const apiBaseUrl = (env) => setting(env, "OPENAI_API_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, "");
+function claudeFor(env) {
+  if (!env.ANTHROPIC_API_KEY) throw new HttpError(503, "Setup required: add the ANTHROPIC_API_KEY secret to the Worker.");
+  return createClaude({ apiKey: env.ANTHROPIC_API_KEY, baseURL: setting(env, "ANTHROPIC_BASE_URL") || undefined });
+}
+
+const claudeModel = (env) => setting(env, "WARDROBE_CLAUDE_MODEL");
+
+// ---------- images ----------
+
+async function transformImage(env, bytes, transform, format) {
+  const result = await env.IMAGES.input(new Blob([bytes]).stream()).transform(transform).output({ format });
+  return new Uint8Array(await result.response().arrayBuffer());
+}
+
+// Claude reads images up to 1568px on the long edge. Cloudflare Images makes
+// a JPEG that size; without the binding (tests), fall back to a small PNG.
+async function imageForClaude(env, image, pngBytes) {
+  if (env.IMAGES) {
+    const jpeg = await transformImage(env, pngBytes, { width: CLAUDE_IMAGE_EDGE, height: CLAUDE_IMAGE_EDGE, fit: "scale-down" }, "image/jpeg");
+    return { imageBase64: toBase64(jpeg), mediaType: "image/jpeg" };
+  }
+  const scale = Math.min(1, 1024 / Math.max(image.width, image.height));
+  const small = scale < 1 ? resize(image, Math.round(image.width * scale), Math.round(image.height * scale)) : image;
+  return { imageBase64: toBase64(encodePng(small)), mediaType: "image/png" };
+}
+
+async function removeBackground(env, cropBytes) {
+  if (!env.IMAGES) throw new Error("Background removal needs the Cloudflare Images binding. Use the crop as is, or add the binding.");
+  return transformImage(env, cropBytes, { segment: "foreground" }, "image/png");
+}
 
 // ---------- storage ----------
 
@@ -133,20 +158,10 @@ function assetName(url) {
   return new URL(url, "http://localhost").pathname.split("/").pop();
 }
 
-async function persistImported(env, job, includeModeled = false) {
+async function persistImported(env, job) {
   const id = `import-${job.id}`;
   const garmentName = `${id}-garment.png`;
-  const garmentSource = job.stages.garment.assetUrl ? assetName(job.stages.garment.assetUrl) : `garment-${job.stages.garment.attempts}.png`;
-  await putPng(env, `library/${garmentName}`, await getObjectBytes(env, `jobs/${job.id}/${garmentSource}`));
-  let modeledImage = null;
-  if (includeModeled) {
-    const modeledName = `${id}-modeled.png`;
-    const modeledSource = job.stages.modeled.assetUrl ? assetName(job.stages.modeled.assetUrl) : `modeled-${job.stages.modeled.attempts}.png`;
-    await putPng(env, `library/${modeledName}`, await getObjectBytes(env, `jobs/${job.id}/${modeledSource}`));
-    modeledImage = `${LIBRARY_ASSET_ROOT}/${modeledName}`;
-  }
-  const existingRow = await env.DB.prepare("SELECT data FROM items WHERE id = ?").bind(id).first();
-  const existing = existingRow ? JSON.parse(existingRow.data) : null;
+  await putPng(env, `library/${garmentName}`, await getObjectBytes(env, `jobs/${job.id}/${assetName(job.stages.garment.assetUrl)}`));
   const metadata = job.metadata || {};
   const record = {
     id,
@@ -158,139 +173,51 @@ async function persistImported(env, job, includeModeled = false) {
     tags: Array.isArray(metadata.tags) ? metadata.tags : [],
     image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
     thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
-    modeledImage: modeledImage || existing?.modeledImage || null,
     importJobId: job.id,
   };
   await upsertItem(env, record);
   return record;
 }
 
-// ---------- OpenAI ----------
-
-async function openAIEdit(env, { model, prompt, images, size }) {
-  const form = new FormData();
-  form.set("model", model);
-  form.set("prompt", prompt);
-  form.set("size", size);
-  form.set("quality", setting(env, "OPENAI_IMAGE_QUALITY", "high"));
-  form.set("output_format", "png");
-  for (const image of images) form.append("image[]", new Blob([image.bytes], { type: image.mime }), image.name);
-  const response = await fetch(`${apiBaseUrl(env)}/images/edits`, {
-    method: "POST", headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` }, body: form,
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error?.message || `OpenAI image request failed (${response.status})`);
-  const encoded = result.data?.[0]?.b64_json;
-  if (!encoded) throw new Error("OpenAI response did not contain image data");
-  return decodeDataUrl({ imageBase64: encoded }).bytes;
+async function saveOutfit(env, outfit) {
+  await env.DB.prepare(`INSERT INTO outfits (id, data, position) VALUES (?1, ?2, (SELECT COALESCE(MAX(position), 0) + 1 FROM outfits))
+    ON CONFLICT(id) DO UPDATE SET data = excluded.data`).bind(outfit.id, JSON.stringify(outfit)).run();
 }
 
-async function openAIAnalyze(env, bytes) {
-  const response = await fetch(`${apiBaseUrl(env)}/responses`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: setting(env, "OPENAI_VISION_MODEL", "gpt-5.4-mini"),
-      input: [{ role: "user", content: [
-        { type: "input_text", text: ANALYZE_PROMPT },
-        { type: "input_image", image_url: `data:image/png;base64,${toBase64(bytes)}` },
-      ] }],
-      text: { format: { type: "json_schema", name: "wardrobe_items", strict: true, schema: ANALYZE_SCHEMA } },
-    }),
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error?.message || `OpenAI analysis failed (${response.status})`);
-  const outputText = result.output_text || result.output?.flatMap((item) => item.content || []).find((item) => item.type === "output_text")?.text;
-  if (!outputText) throw new Error("OpenAI analysis returned no structured result");
-  const parsed = JSON.parse(outputText);
-  if (!Array.isArray(parsed.items)) throw new Error("OpenAI analysis returned an invalid clothing list");
-  return parsed.items;
-}
+// ---------- garment cutout (Queue consumer) ----------
 
-// ---------- background generation (Queue consumer) ----------
-
-export async function generate(env, jobId, stageName) {
+export async function makeGarment(env, jobId, keepBackground = false) {
   const current = await loadJob(env, jobId);
-  if (!current || !["queued", "pending"].includes(current.stages[stageName]?.status)) return;
-  const stage = current.stages[stageName];
-  stage.status = "processing"; stage.decision = null; stage.error = null; stage.attempts += 1; stage.updatedAt = new Date().toISOString();
+  if (!current || current.stages.garment?.status !== "queued") return;
+  const stage = current.stages.garment;
+  Object.assign(stage, { status: "processing", decision: null, error: null, attempts: stage.attempts + 1, updatedAt: new Date().toISOString() });
   await saveJob(env, current);
-  let failedAssetUrl = null;
-  let chromaKeyUsed = null;
+  const outputName = `garment-${stage.attempts}.png`;
   try {
-    if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured");
-    const outputName = `${stageName}-${stage.attempts}.png`;
-    let bytes;
-    if (stageName === "garment") {
-      const sourceFile = current.internal.cropFile || current.internal.originalFile;
-      const source = { bytes: await getObjectBytes(env, `jobs/${current.id}/${sourceFile}`), mime: "image/png", name: sourceFile };
-      chromaKeyUsed = chooseChromaKey(current.metadata.color);
-      const basePrompt = buildGarmentPrompt(current.metadata, chromaKeyUsed);
-      bytes = await openAIEdit(env, {
-        model: setting(env, "OPENAI_GARMENT_MODEL", setting(env, "OPENAI_IMAGE_MODEL", "gpt-image-2")),
-        size: "1024x1024",
-        images: [source],
-        prompt: stage.prompt ? `${basePrompt}\nUser regeneration direction: ${stage.prompt}` : basePrompt,
-      });
-      const rawName = `${stageName}-${stage.attempts}-source.png`;
-      await putPng(env, `jobs/${current.id}/${rawName}`, bytes);
-      failedAssetUrl = `${ASSET_ROOT}/${current.id}/${rawName}`;
-      const cleaned = processChromaBackground(decodePng(bytes), chromaKeyUsed);
-      if (cleaned.verification.contaminatedPixels > 1) {
-        throw new Error(`Background cleanup left ${cleaned.verification.contaminatedPixels} chroma-contaminated pixels`);
-      }
-      bytes = encodePng(cleaned.image);
-    } else {
-      const garmentName = current.stages.garment.assetUrl ? assetName(current.stages.garment.assetUrl) : `garment-${current.stages.garment.attempts}.png`;
-      const garment = { bytes: await getObjectBytes(env, `jobs/${current.id}/${garmentName}`), mime: "image/png", name: "garment.png" };
-      const reference = await env.BUCKET.get(MODEL_REFERENCE_KEY);
-      if (!reference) throw new Error("Upload a photo of yourself before creating modeled images.");
-      const referenceMime = reference.httpMetadata?.contentType || "image/png";
-      const model = { bytes: new Uint8Array(await reference.arrayBuffer()), mime: referenceMime, name: `model.${referenceMime.split("/")[1] || "png"}` };
-      bytes = await openAIEdit(env, {
-        model: setting(env, "OPENAI_MODELED_MODEL", setting(env, "OPENAI_IMAGE_MODEL", "gpt-image-2")),
-        size: "1536x1024",
-        images: [model, garment],
-        prompt: stage.prompt ? `${MODELED_PROMPT}\nUser regeneration direction: ${stage.prompt}` : MODELED_PROMPT,
-      });
-    }
-    await putPng(env, `jobs/${current.id}/${outputName}`, bytes);
+    const crop = await getObjectBytes(env, `jobs/${current.id}/${current.internal.cropFile}`);
+    const cut = keepBackground ? crop : await removeBackground(env, crop);
+    await putPng(env, `jobs/${current.id}/${outputName}`, encodePng(frameTransparentGarment(decodePng(cut))));
     const fresh = await loadJob(env, current.id);
     if (!fresh) return;
-    Object.assign(fresh.stages[stageName], {
-      status: "review",
-      assetUrl: `${ASSET_ROOT}/${fresh.id}/${outputName}`,
-      failedAssetUrl: null,
-      cleanupPreviewUrl: null,
-      cleanupDiagnostics: null,
-      updatedAt: new Date().toISOString(),
-      ...(chromaKeyUsed ? { chromaKey: chromaKeyUsed } : {}),
-    });
+    Object.assign(fresh.stages.garment, { status: "review", assetUrl: `${ASSET_ROOT}/${fresh.id}/${outputName}`, keptBackground: keepBackground, updatedAt: new Date().toISOString() });
     await saveJob(env, fresh);
   } catch (error) {
     const fresh = await loadJob(env, current.id);
     if (!fresh) return;
-    Object.assign(fresh.stages[stageName], {
-      status: "failed",
-      error: error.message,
-      updatedAt: new Date().toISOString(),
-      ...(failedAssetUrl ? { failedAssetUrl } : {}),
-      ...(chromaKeyUsed ? { chromaKey: chromaKeyUsed } : {}),
-    });
+    Object.assign(fresh.stages.garment, { status: "failed", error: error.message, updatedAt: new Date().toISOString() });
     await saveJob(env, fresh);
   }
 }
 
-async function enqueue(env, jobId, stage) {
-  await env.JOBS.send({ jobId, stage });
+async function enqueue(env, jobId, keepBackground = false) {
+  await env.JOBS.send({ jobId, stage: "garment", keepBackground });
 }
 
 // ---------- routes ----------
 
 async function setupStatus(env) {
-  const hasApiKey = Boolean(env.OPENAI_API_KEY?.trim());
-  const hasModelReference = Boolean(await env.BUCKET.head(MODEL_REFERENCE_KEY));
-  return { ready: hasApiKey && hasModelReference, hasApiKey, hasModelReference, canUploadModelReference: true, storage: "cloudflare" };
+  const hasApiKey = Boolean(env.ANTHROPIC_API_KEY?.trim());
+  return { ready: hasApiKey, hasApiKey, storage: "cloudflare", cutouts: Boolean(env.IMAGES) };
 }
 
 async function serveObject(env, key, cacheControl) {
@@ -319,11 +246,18 @@ async function handleApi(request, env) {
   if (pathname === "/api/import/config" && method === "GET") return json(200, await setupStatus(env));
   if (pathname === "/api/import/outfits" && method === "GET") return json(200, await listOutfits(env));
 
-  if (pathname === "/api/import/model-reference" && method === "PUT") {
-    const { bytes, mime } = decodeDataUrl(await readJson(request));
-    if (!["image/png", "image/jpeg", "image/webp"].includes(mime)) throw new HttpError(400, "Use a PNG, JPEG or WebP photo");
-    await env.BUCKET.put(MODEL_REFERENCE_KEY, bytes, { httpMetadata: { contentType: mime } });
-    return json(200, await setupStatus(env));
+  if (pathname === "/api/import/outfits/generate" && method === "POST") {
+    const input = await readJson(request, 64 * 1024);
+    const count = Math.max(1, Math.min(MAX_STYLE_COUNT, Math.round(Number(input.count) || 4)));
+    const notes = typeof input.notes === "string" ? input.notes.trim().slice(0, 500) : "";
+    const items = await listItems(env);
+    if (!items.some((item) => item.part === "upperbody") || !items.some((item) => item.part === "lowerbody")) {
+      throw new HttpError(409, "Add at least one top and one bottom before styling outfits.");
+    }
+    const client = claudeFor(env);
+    const created = await styleOutfits(client, { model: claudeModel(env), items, outfits: await listOutfits(env), count, notes });
+    for (const outfit of created) await saveOutfit(env, outfit);
+    return json(201, { outfits: created });
   }
 
   // Used by scripts/upload-to-cloudflare.mjs to copy a local closet up.
@@ -357,9 +291,17 @@ async function handleApi(request, env) {
       image = `outfit-images/${outfit.id}.png`;
     }
     const stored = { ...outfit, image };
-    await env.DB.prepare(`INSERT INTO outfits (id, data, position) VALUES (?1, ?2, (SELECT COALESCE(MAX(position), 0) + 1 FROM outfits))
-      ON CONFLICT(id) DO UPDATE SET data = excluded.data`).bind(outfit.id, JSON.stringify(stored)).run();
+    await saveOutfit(env, stored);
     return json(200, stored);
+  }
+
+  const outfitMatch = pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
+  if (outfitMatch && method === "DELETE") {
+    const id = outfitMatch[1];
+    const { meta } = await env.DB.prepare("DELETE FROM outfits WHERE id = ?").bind(id).run();
+    if (!meta.changes) return json(404, { error: "Outfit not found" });
+    await env.BUCKET.delete(`outfits/${id}.png`);
+    return json(200, { deleted: true, id });
   }
 
   const outfitAssetMatch = pathname.match(/^\/api\/import\/outfits\/([\w.-]+\.png)$/i);
@@ -390,19 +332,12 @@ async function handleApi(request, env) {
   if (assetMatch && method === "GET") return serveObject(env, `jobs/${assetMatch[1]}/${assetMatch[2]}`, "no-store");
 
   if (pathname === API_ROOT && method === "POST") {
-    const setup = await setupStatus(env);
-    if (!setup.ready) {
-      const missing = [
-        !setup.hasApiKey && "the OPENAI_API_KEY secret on the Worker",
-        !setup.hasModelReference && "a photo of yourself",
-      ].filter(Boolean).join(" and ");
-      return json(503, { error: `Setup required: add ${missing}.` });
-    }
+    const client = claudeFor(env);
     const { bytes } = decodeDataUrl(await readJson(request));
     let image;
     try { image = decodePng(bytes); } catch { throw new HttpError(400, "Send the photo as a PNG. Update the app if you see this."); }
     const normalizedBytes = encodePng(image);
-    const detected = (await openAIAnalyze(env, normalizedBytes)).map(normalizeMetadata);
+    const detected = await detectClothing(client, { model: claudeModel(env), ...(await imageForClaude(env, image, normalizedBytes)) });
     const jobs = [];
     for (const metadata of detected) {
       const id = crypto.randomUUID();
@@ -415,10 +350,10 @@ async function handleApi(request, env) {
         id,
         status: "active",
         metadata,
-        stages: { crop: { ...stageState(), status: "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now }, garment: stageState(), modeled: stageState() },
+        stages: { crop: { ...stageState(), status: "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now }, garment: stageState() },
         createdAt: now,
         updatedAt: now,
-        internal: { originalFile, cropFile, originalMime: "image/png" },
+        internal: { originalFile, cropFile },
         originalAssetUrl: `${ASSET_ROOT}/${id}/${originalFile}`,
       };
       await saveJob(env, job);
@@ -430,7 +365,7 @@ async function handleApi(request, env) {
   if (pathname === API_ROOT && method === "GET") {
     const { results } = await env.DB.prepare("SELECT data FROM jobs ORDER BY created_at").all();
     const loaded = results.map((row) => JSON.parse(row.data));
-    const hidden = loaded.filter((job) => job.status === "complete" || job.stages.crop?.status === "rejected" || job.stages.garment.status === "rejected" || job.stages.modeled.status === "rejected");
+    const hidden = loaded.filter((job) => job.status === "complete" || Object.values(job.stages).some((stage) => stage.status === "rejected"));
     await Promise.all(hidden.map((job) => deleteJob(env, job.id)));
     return json(200, loaded.filter((job) => !hidden.includes(job)).map(publicJob));
   }
@@ -452,63 +387,33 @@ async function handleApi(request, env) {
     await saveJob(env, job);
     return json(200, publicJob(job));
   }
-  const cleanupAction = action.match(/^stages\/garment\/(cleanup-preview|cleanup-accept)$/);
-  if (cleanupAction && method === "POST") {
-    const stage = job.stages.garment;
-    if (stage.status !== "failed" || !stage.failedAssetUrl) throw new HttpError(409, "No failed garment source is available for cleanup");
-    const input = await readJson(request, 64 * 1024);
-    const source = await getObjectBytes(env, `jobs/${job.id}/${assetName(stage.failedAssetUrl)}`);
-    const key = stage.chromaKey || chooseChromaKey(job.metadata?.color);
-    const cleaned = processChromaBackground(decodePng(source), key, { tolerance: cleanupTolerance(input.tolerance) });
-    const previewName = `garment-${stage.attempts}-cleanup-${cleaned.tolerance}.png`;
-    const previewUrl = `${ASSET_ROOT}/${job.id}/${previewName}`;
-    await putPng(env, `jobs/${job.id}/${previewName}`, encodePng(cleaned.image));
-    Object.assign(stage, { chromaKey: key, cleanupTolerance: cleaned.tolerance, cleanupDiagnostics: cleaned.verification, cleanupPreviewUrl: previewUrl, updatedAt: new Date().toISOString() });
-    if (cleanupAction[1] === "cleanup-accept") Object.assign(stage, { status: "review", decision: null, error: null, assetUrl: previewUrl });
-    await saveJob(env, job);
-    return json(200, publicJob(job));
-  }
-  const stageMatch = action.match(/^stages\/(crop|garment|modeled)\/(approve|reject|regenerate)$/);
+  const stageMatch = action.match(/^stages\/(crop|garment)\/(approve|reject|retry|use-crop)$/);
   if (stageMatch && method === "POST") {
     const [, stageName, decision] = stageMatch;
-    if (decision === "regenerate") {
-      if (stageName === "crop") throw new HttpError(400, "Upload the image again to create new crops");
-      const input = await readJson(request, 64 * 1024);
-      job.stages[stageName].prompt = typeof input.prompt === "string" ? input.prompt.trim().slice(0, 1200) || null : null;
-      job.stages[stageName].status = "queued";
-      job.stages[stageName].decision = null;
+    const stage = job.stages[stageName];
+    if (decision === "retry" || decision === "use-crop") {
+      if (stageName !== "garment" || job.stages.crop.status !== "approved" || stage.status === "processing") throw new HttpError(409, "The cutout cannot be redone right now");
+      stage.status = "queued";
       await saveJob(env, job);
-      await enqueue(env, job.id, stageName);
+      await enqueue(env, job.id, decision === "use-crop");
       return json(202, publicJob(job));
     }
-    if (job.stages[stageName].status !== "review") throw new HttpError(409, "Stage is not ready for review");
-    const previous = { status: job.stages[stageName].status, decision: job.stages[stageName].decision, jobStatus: job.status };
-    job.stages[stageName].decision = decision === "approve" ? "approved" : "rejected";
-    job.stages[stageName].status = job.stages[stageName].decision;
-    job.stages[stageName].error = null;
-    job.stages[stageName].updatedAt = new Date().toISOString();
-    const startGarment = stageName === "crop" && decision === "approve" && job.stages.garment.status === "pending";
-    const startModeled = stageName === "garment" && decision === "approve" && job.stages.modeled.status === "pending";
-    if (startGarment) job.stages.garment.status = "queued";
-    if (startModeled) job.stages.modeled.status = "queued";
-    if (stageName === "modeled" && decision === "approve") job.status = "complete";
-    await saveJob(env, job);
-    if (decision === "approve" && stageName !== "crop") {
-      try {
-        await persistImported(env, job, stageName === "modeled");
-      } catch (error) {
-        Object.assign(job.stages[stageName], { status: previous.status, decision: previous.decision });
-        job.status = previous.jobStatus;
-        if (startModeled) job.stages.modeled.status = "pending";
-        await saveJob(env, job);
-        throw error;
-      }
+    if (stage.status !== "review") throw new HttpError(409, "Stage is not ready for review");
+    if (decision === "reject") {
+      await deleteJob(env, job.id);
+      return json(200, publicJob({ ...job, stages: { ...job.stages, [stageName]: { ...stage, status: "rejected", decision: "rejected" } } }));
     }
-    const response = publicJob(job);
-    if (decision === "reject" || job.status === "complete") await deleteJob(env, job.id);
-    if (startGarment) await enqueue(env, job.id, "garment");
-    if (startModeled) await enqueue(env, job.id, "modeled");
-    return json(200, response);
+    Object.assign(stage, { status: "approved", decision: "approved", error: null, updatedAt: new Date().toISOString() });
+    if (stageName === "crop") {
+      job.stages.garment.status = "queued";
+      await saveJob(env, job);
+      await enqueue(env, job.id);
+      return json(200, publicJob(job));
+    }
+    const record = await persistImported(env, job);
+    job.status = "complete";
+    await deleteJob(env, job.id);
+    return json(200, { ...publicJob(job), item: record });
   }
   return json(404, { error: "Not found" });
 }
@@ -528,12 +433,12 @@ export default {
 
   async queue(batch, env) {
     for (const message of batch.messages) {
-      const { jobId, stage } = message.body || {};
-      if (typeof jobId !== "string" || !["garment", "modeled"].includes(stage)) {
+      const { jobId, stage, keepBackground } = message.body || {};
+      if (typeof jobId !== "string" || stage !== "garment") {
         message.ack();
         continue;
       }
-      await generate(env, jobId, stage);
+      await makeGarment(env, jobId, keepBackground === true);
       message.ack();
     }
   },

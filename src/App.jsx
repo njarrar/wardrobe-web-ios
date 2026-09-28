@@ -609,12 +609,8 @@ function Wardrobe({ onConnectionFailed }) {
   };
 
   const addImportedItem = useCallback((newItem) => {
+    if (!newItem) return;
     setItems((current) => current.some((item) => item.id === newItem.id) ? current : [...current, newItem]);
-  }, []);
-
-  const attachImportedModeledImage = useCallback((jobId, modeledImage) => {
-    const id = `import-${jobId}`;
-    setItems((current) => current.map((item) => item.id === id ? { ...item, modeledImage } : item));
   }, []);
 
   return (
@@ -659,7 +655,7 @@ function Wardrobe({ onConnectionFailed }) {
       </main>
 
       {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} />}
-      <WardrobeImportFlow onGarmentApproved={addImportedItem} onModeledApproved={attachImportedModeledImage} />
+      <WardrobeImportFlow onGarmentApproved={addImportedItem} />
     </div>
   );
 }

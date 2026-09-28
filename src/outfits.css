@@ -31,6 +31,69 @@
   text-transform: uppercase;
 }
 
+.outfit-collage {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 10px;
+  box-sizing: border-box;
+  background: rgba(25, 25, 25, .05);
+}
+
+.outfit-collage img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  object-fit: contain;
+  background: transparent;
+}
+
+.outfit-collage--1 { grid-template-columns: 1fr; }
+.outfit-collage--3 img:first-child { grid-row: span 2; }
+
+.outfit-style-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 14px;
+  padding: 32px 52px 0;
+}
+
+.outfit-style-form label { display: grid; gap: 6px; font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.outfit-style-form label em { font-style: normal; opacity: .7; }
+.outfit-style-form__notes { flex: 1 1 260px; }
+.outfit-style-form select,
+.outfit-style-form input {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  padding: 9px 10px;
+  border: 1px solid rgba(25, 25, 25, .18);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.outfit-style-form button,
+.outfit-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  padding: 10px 16px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.outfit-style-form button:disabled { opacity: .6; cursor: progress; }
+.outfit-delete { margin-top: 24px; background: transparent; color: var(--ink); border-color: rgba(25, 25, 25, .25); }
+
 .outfit-card:focus-visible { outline: 1px solid var(--ink); outline-offset: 3px; }
 
 .outfit-viewer {
@@ -47,6 +110,7 @@
 }
 
 .outfit-viewer__photo { width: 100%; aspect-ratio: 1; object-fit: cover; }
+div.outfit-viewer__photo .outfit-collage { height: 100%; }
 
 .outfit-viewer__details { padding: 32px 28px; }
 .outfit-viewer__details h2 { margin: 0 0 8px; font-size: 22px; font-weight: 520; }
@@ -82,6 +146,8 @@
 
 @media (max-width: 860px) {
   .outfit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 28px 16px 60px; }
+  .outfit-style-form { padding: 24px 16px 0; }
+  .outfit-style-form button { width: 100%; justify-content: center; }
   .outfit-viewer { grid-template-columns: 1fr; }
 }
 

@@ -1,7 +1,7 @@
 // Pure-JS image steps for the Cloudflare Worker, which cannot run sharp.
 // Images are { width, height, data } with 8-bit RGBA pixels in `data`.
 import { decode, encode } from "fast-png";
-import { cleanupTolerance, normalizeBoundingBox } from "./core.mjs";
+import { normalizeBoundingBox } from "./core.mjs";
 
 export function decodePng(bytes) {
   const png = decode(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
@@ -102,46 +102,6 @@ export function resize(image, width, height) {
   return { width, height, data: out };
 }
 
-function keyChannels(key) {
-  const target = [1, 3, 5].map((offset) => Number.parseInt(key.slice(offset, offset + 2), 16));
-  return {
-    target,
-    keyed: target.map((channel, index) => channel > 200 ? index : null).filter((index) => index !== null),
-    neutral: target.map((channel, index) => channel < 55 ? index : null).filter((index) => index !== null),
-  };
-}
-
-function spillAt(data, index, keyed, neutral) {
-  const keyedLevel = keyed.reduce((total, channel) => total + data[index + channel], 0) / keyed.length;
-  const neutralLevel = neutral.reduce((total, channel) => total + data[index + channel], 0) / neutral.length;
-  return { spill: Math.max(0, keyedLevel - neutralLevel), neutralLevel };
-}
-
-function removeKeyedSpill(data, index, keyed, neutralLevel) {
-  let remaining = Math.ceil(keyed.reduce((total, channel) => total + data[index + channel], 0) - (neutralLevel * keyed.length));
-  let active = keyed.filter((channel) => data[index + channel] > 0);
-  while (remaining > 0 && active.length) {
-    const share = Math.ceil(remaining / active.length);
-    const next = [];
-    for (const channel of active) {
-      const reduction = Math.min(data[index + channel], share, remaining);
-      data[index + channel] -= reduction;
-      remaining -= reduction;
-      if (data[index + channel] > 0) next.push(channel);
-    }
-    active = next;
-  }
-}
-
-function clearResidualSpill(image, keyed, neutral) {
-  const { data } = image;
-  for (let index = 0; index < data.length; index += 4) {
-    if (data[index + 3] === 0) continue;
-    const { spill, neutralLevel } = spillAt(data, index, keyed, neutral);
-    if (spill > 0) removeKeyedSpill(data, index, keyed, neutralLevel);
-  }
-}
-
 export function frameTransparentGarment(image, canvasSize = 1024, occupancy = 0.88) {
   let minX = image.width;
   let minY = image.height;
@@ -169,50 +129,3 @@ export function frameTransparentGarment(image, canvasSize = 1024, occupancy = 0.
   }
   return { width: canvasSize, height: canvasSize, data: out };
 }
-
-export function verifyNoChromaSpill(image, key) {
-  const { keyed, neutral } = keyChannels(key);
-  let contaminatedPixels = 0;
-  let maxSpill = 0;
-  for (let index = 0; index < image.data.length; index += 4) {
-    if (image.data[index + 3] === 0) continue;
-    const { spill } = spillAt(image.data, index, keyed, neutral);
-    maxSpill = Math.max(maxSpill, spill);
-    if (spill > 1.5) contaminatedPixels += 1;
-  }
-  return { contaminatedPixels, maxSpill };
-}
-
-// Port of processChromaBackground in scripts/import-job-api.mjs.
-export function processChromaBackground(source, key, options = {}) {
-  const tolerance = cleanupTolerance(options.tolerance);
-  const feather = 80;
-  const { target, keyed, neutral } = keyChannels(key);
-  const image = { width: source.width, height: source.height, data: new Uint8Array(source.data) };
-  const { data } = image;
-  for (let index = 0; index < data.length; index += 4) {
-    const distance = Math.sqrt(
-      ((data[index] - target[0]) ** 2)
-      + ((data[index + 1] - target[1]) ** 2)
-      + ((data[index + 2] - target[2]) ** 2),
-    );
-    if (distance <= tolerance) {
-      data.fill(0, index, index + 4);
-      continue;
-    }
-    if (distance < tolerance + feather) data[index + 3] = Math.round(data[index + 3] * ((distance - tolerance) / feather));
-    const { spill, neutralLevel } = spillAt(data, index, keyed, neutral);
-    if (spill > 0) {
-      const spillAlpha = Math.max(0, 1 - (Math.max(0, spill - 4) / 150));
-      data[index + 3] = Math.round(data[index + 3] * spillAlpha);
-      removeKeyedSpill(data, index, keyed, neutralLevel);
-    }
-    if (data[index + 3] <= 8) data.fill(0, index, index + 4);
-  }
-  clearResidualSpill(image, keyed, neutral);
-  const framed = frameTransparentGarment(image);
-  clearResidualSpill(framed, keyed, neutral);
-  return { image: framed, verification: verifyNoChromaSpill(framed, key), tolerance };
-}
-
-export { cleanupTolerance };

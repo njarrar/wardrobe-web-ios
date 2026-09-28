@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import sharp from "sharp";
-import { processChromaBackground as nodeChroma } from "../scripts/import-job-api.mjs";
-import { cropDetectedItem, decodePng, encodePng, processChromaBackground } from "../shared/pixels.mjs";
+import { frameTransparentGarment as nodeFrame } from "../scripts/import-job-api.mjs";
+import { cropDetectedItem, decodePng, encodePng, frameTransparentGarment } from "../shared/pixels.mjs";
 
 async function syntheticGarment() {
-  // A soft-edged red shirt shape on a green chroma background, like gpt-image returns.
+  // A red shirt shape on a transparent background, like background removal returns.
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">
-    <rect width="1024" height="1024" fill="#00ff00"/>
     <path d="M362 200 L662 200 L820 330 L740 430 L680 390 L680 820 L344 820 L344 390 L284 430 L204 330 Z" fill="#b3261e"/>
   </svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
@@ -28,18 +27,15 @@ test("decodes RGB and grayscale PNGs to RGBA", async () => {
   assert.deepEqual([...gray.data.subarray(0, 4)], [128, 128, 128, 255]);
 });
 
-test("worker chroma cleanup matches the Node version", async () => {
+test("worker framing matches the Node version", async () => {
   const bytes = await syntheticGarment();
-  const worker = processChromaBackground(decodePng(bytes), "#00ff00");
-  assert.equal(worker.image.width, 1024);
-  assert.ok(worker.verification.contaminatedPixels <= 1, `contaminated ${worker.verification.contaminatedPixels}`);
-
-  const node = await nodeChroma(bytes, "#00ff00");
-  const { data: nodeData } = await sharp(node.bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const worker = frameTransparentGarment(decodePng(bytes));
+  assert.equal(worker.width, 1024);
+  const { data: nodeData } = await sharp(await nodeFrame(bytes)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   let both = 0;
   let either = 0;
   for (let index = 3; index < nodeData.length; index += 4) {
-    const a = worker.image.data[index] > 128;
+    const a = worker.data[index] > 128;
     const b = nodeData[index] > 128;
     if (a && b) both += 1;
     if (a || b) either += 1;

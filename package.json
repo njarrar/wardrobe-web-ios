@@ -2,7 +2,7 @@
   "name": "wardrobe",
   "version": "1.0.0",
   "private": true,
-  "description": "A local-first AI wardrobe gallery powered by OpenAI.",
+  "description": "A local-first AI wardrobe gallery powered by Claude.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -20,6 +20,7 @@
     "cf:upload": "node scripts/upload-to-cloudflare.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
     "@fontsource-variable/instrument-sans": "^5.2.8",
@@ -36,5 +37,8 @@
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
     "wrangler": "^4.142.0"
+  },
+  "optionalDependencies": {
+    "@huggingface/transformers": "^4.3.0"
   }
 }

@@ -5,10 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { createWardrobeApi, isLoopbackHost } from "../scripts/import-job-api.mjs";
+import { startMockClaude } from "./mock-claude.mjs";
 
-async function startServer(env) {
+async function startServer(env, options = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "wardrobe-test-"));
-  const api = createWardrobeApi({ env: { WARDROBE_DATA_DIR: "data", OPENAI_API_KEY: "", ...env } });
+  const api = createWardrobeApi({ env: { WARDROBE_DATA_DIR: "data", ANTHROPIC_API_KEY: "", ...env }, ...options });
   await api.init(root);
   const server = http.createServer((req, res) => api.handler(req, res, () => { res.statusCode = 404; res.end(); }));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -126,17 +127,114 @@ test("isLoopbackHost", () => {
   for (const host of ["0.0.0.0", "192.168.1.5:4173", "evil.example", ""]) assert.equal(isLoopbackHost(host), false, host);
 });
 
-test("uploads a model reference photo", async () => {
-  const ctx = await startServer({ OPENAI_API_KEY: "sk-test" });
-  try {
-    const before = await (await fetch(`${ctx.base}/api/import/config`)).json();
-    assert.equal(before.hasModelReference, false);
+async function waitFor(check) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const value = await check();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("timed out");
+}
+
+describe("importing and styling with Claude", () => {
+  let ctx;
+  let claude;
+  const post = (url, value) => fetch(`${ctx.base}${url}`, { method: "POST", body: value === undefined ? undefined : JSON.stringify(value) });
+  before(async () => {
+    claude = await startMockClaude();
     const sharp = (await import("sharp")).default;
-    const png = await sharp({ create: { width: 4, height: 4, channels: 3, background: "#aa8866" } }).png().toBuffer();
-    const response = await fetch(`${ctx.base}/api/import/model-reference`, { method: "PUT", body: JSON.stringify({ imageDataUrl: `data:image/png;base64,${png.toString("base64")}` }) });
-    const after = await response.json();
-    assert.equal(after.ready, true);
-    assert.equal((await readFile(path.join(ctx.dataDir, "model-reference.png"))).subarray(1, 4).toString(), "PNG");
+    // Pretend background removal: make the pure-white border transparent.
+    const removeBackground = async (bytes) => {
+      const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      for (let index = 0; index < data.length; index += 4) if (data[index] > 240 && data[index + 1] > 240 && data[index + 2] > 240) data[index + 3] = 0;
+      return sharp(data, { raw: info }).png().toBuffer();
+    };
+    ctx = await startServer({ ANTHROPIC_API_KEY: "sk-ant-test", ANTHROPIC_BASE_URL: claude.url }, { removeBackground });
+  });
+  after(async () => { await ctx.close(); await claude.close(); });
+
+  test("reports setup as ready once the Anthropic key is set", async () => {
+    const config = await (await fetch(`${ctx.base}/api/import/config`)).json();
+    assert.equal(config.ready, true);
+  });
+
+  test("finds clothes, cuts them out and adds them to the library", async () => {
+    const sharp = (await import("sharp")).default;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="#fff"/><rect x="80" y="60" width="240" height="200" fill="#1f2a44"/><rect x="100" y="320" width="200" height="260" fill="#3b5b8c"/></svg>`;
+    const png = await sharp(Buffer.from(svg)).png().toBuffer();
+    const response = await post("/api/import/jobs", { imageDataUrl: `data:image/png;base64,${png.toString("base64")}` });
+    assert.equal(response.status, 202);
+    const { jobs } = await response.json();
+    assert.deepEqual(jobs.map((job) => job.metadata.name), ["Navy tee", "Blue jeans"]);
+    assert.equal(jobs[0].metadata.color, "#1f2a44");
+    assert.equal(jobs[1].metadata.secondaryColor, null);
+    assert.equal(jobs[0].stages.modeled, undefined);
+
+    const sent = claude.requests[0];
+    assert.equal(sent.body.model, "claude-opus-5");
+    assert.equal(sent.body.fallbacks, "default");
+    assert.match(sent.headers["anthropic-beta"], /server-side-fallback-2026-07-01/);
+    assert.equal(sent.body.output_config.format.type, "json_schema");
+    assert.equal(sent.body.messages[0].content[0].source.media_type, "image/jpeg");
+
+    for (const job of jobs) assert.equal((await post(`/api/import/jobs/${job.id}/stages/crop/approve`)).status, 200);
+    const ready = await waitFor(async () => {
+      const job = await (await fetch(`${ctx.base}/api/import/jobs/${jobs[0].id}`)).json();
+      return job.stages.garment.status === "review" && job;
+    });
+    const cutout = await sharp(await (await fetch(`${ctx.base}${ready.stages.garment.assetUrl}`)).arrayBuffer()).raw().ensureAlpha().toBuffer({ resolveWithObject: true });
+    assert.equal(cutout.info.width, 1024);
+    assert.equal(cutout.data[3], 0, "corner should be transparent");
+
+    const approved = await (await post(`/api/import/jobs/${jobs[0].id}/stages/garment/approve`)).json();
+    assert.equal(approved.item.id, `import-${jobs[0].id}`);
+    assert.equal((await fetch(`${ctx.base}/api/import/jobs/${jobs[0].id}`)).status, 404);
+
+    // Keep the second piece with its background to cover the fallback path.
+    await waitFor(async () => (await (await fetch(`${ctx.base}/api/import/jobs/${jobs[1].id}`)).json()).stages.garment.status === "review");
+    assert.equal((await post(`/api/import/jobs/${jobs[1].id}/stages/garment/use-crop`)).status, 202);
+    const kept = await waitFor(async () => {
+      const job = await (await fetch(`${ctx.base}/api/import/jobs/${jobs[1].id}`)).json();
+      return job.stages.garment.status === "review" && job.stages.garment.keptBackground && job;
+    });
+    assert.equal(kept.stages.garment.attempts, 2);
+    assert.equal((await post(`/api/import/jobs/${jobs[1].id}/stages/garment/approve`)).status, 200);
+
+    const library = await (await fetch(`${ctx.base}/api/import/wardrobe`)).json();
+    assert.deepEqual(library.map((entry) => entry.name).sort(), ["Blue jeans", "Navy tee"]);
+  });
+
+  test("styles new outfits and drops ones that use missing pieces", async () => {
+    const response = await post("/api/import/outfits/generate", { count: 2, notes: "weekend" });
+    assert.equal(response.status, 201);
+    const { outfits } = await response.json();
+    assert.equal(outfits.length, 1);
+    assert.equal(outfits[0].name, "Easy Navy");
+    assert.deepEqual(outfits[0].occasion, ["casual"]);
+    assert.equal(outfits[0].image, null);
+    assert.match(claude.requests.at(-1).body.messages[0].content[0].text, /The owner asked for: weekend/);
+
+    const stored = JSON.parse(await readFile(path.join(ctx.dataDir, "outfits.json"), "utf8"));
+    assert.equal(stored.outfits.length, 1);
+    assert.equal((await fetch(`${ctx.base}/api/import/outfits/${outfits[0].id}`, { method: "DELETE" })).status, 200);
+    assert.deepEqual(await (await fetch(`${ctx.base}/api/import/outfits`)).json(), []);
+  });
+
+  test("the same combination is not styled twice", async () => {
+    await post("/api/import/outfits/generate", { count: 1 });
+    const again = await (await post("/api/import/outfits/generate", { count: 1 })).json();
+    assert.deepEqual(again.outfits, []);
+  });
+});
+
+test("asks for the Anthropic key before importing", async () => {
+  const ctx = await startServer({});
+  try {
+    const config = await (await fetch(`${ctx.base}/api/import/config`)).json();
+    assert.equal(config.ready, false);
+    const response = await fetch(`${ctx.base}/api/import/jobs`, { method: "POST", body: JSON.stringify({ imageBase64: "AAAA" }) });
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /ANTHROPIC_API_KEY/);
   } finally {
     await ctx.close();
   }

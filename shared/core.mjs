@@ -5,11 +5,70 @@ export const PARTS = new Set(["upperbody", "wholebody_up", "lowerbody", "accesso
 export const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
-export const ANALYZE_PROMPT = "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody, wholebody_up, lowerbody, accessories_up, shoes. Suggest a concise specific name, primary hex color, optional genuinely distinct secondary hex color, and 1-4 useful lowercase detail tags.";
+export const ANALYZE_PROMPT = "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe, at most 8. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody (tops), wholebody_up (jackets and outer layers), lowerbody (bottoms), accessories_up (accessories), shoes. Suggest a concise specific name, the primary color as a six-digit hex such as #1f2a44, a genuinely distinct secondary hex color or null, and 1-4 useful lowercase detail tags. Return an empty list when there is no clothing.";
 
-export const ANALYZE_SCHEMA = { type: "object", additionalProperties: false, properties: { items: { type: "array", minItems: 0, maxItems: 8, items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, part: { type: "string", enum: ["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"] }, color: { type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }, secondaryColor: { anyOf: [{ type: "string", pattern: "^#[0-9A-Fa-f]{6}$" }, { type: "null" }] }, tags: { type: "array", items: { type: "string" }, maxItems: 4 }, boundingBox: { type: "object", additionalProperties: false, properties: { x: { type: "integer", minimum: 0, maximum: 999 }, y: { type: "integer", minimum: 0, maximum: 999 }, width: { type: "integer", minimum: 1, maximum: 1000 }, height: { type: "integer", minimum: 1, maximum: 1000 } }, required: ["x", "y", "width", "height"] } }, required: ["name", "part", "color", "secondaryColor", "tags", "boundingBox"] } } }, required: ["items"] };
+// Claude structured outputs accept a subset of JSON Schema, so ranges and
+// patterns are checked afterwards by normalizeMetadata instead.
+const BOX_SCHEMA = { type: "object", additionalProperties: false, properties: { x: { type: "integer" }, y: { type: "integer" }, width: { type: "integer" }, height: { type: "integer" } }, required: ["x", "y", "width", "height"] };
+export const ANALYZE_SCHEMA = { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, part: { type: "string", enum: [...PARTS] }, color: { type: "string" }, secondaryColor: { anyOf: [{ type: "string" }, { type: "null" }] }, tags: { type: "array", items: { type: "string" } }, boundingBox: BOX_SCHEMA }, required: ["name", "part", "color", "secondaryColor", "tags", "boundingBox"] } } }, required: ["items"] };
 
-export const MODELED_PROMPT = "Create a professional horizontal 3:2 editorial fashion photograph of the person in Image 1 wearing the exact garment from Image 2. Preserve the person's recognizable identity, face, hair, age and proportions. Preserve every garment color, material, fit, construction, graphic, logo and distinctive detail. Keep the complete featured item clearly visible and unobstructed, use understated neutral supporting clothes, realistic anatomy, natural light, authentic fabric, a tasteful real-world setting, and leave environmental space around the model. No text, watermark, product mockup, or synthetic appearance.";
+export const STYLE_SCHEMA = { type: "object", additionalProperties: false, properties: { outfits: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, occasion: { type: "array", items: { type: "string" } }, garmentIds: { type: "array", items: { type: "string" } }, reason: { type: "string" } }, required: ["name", "occasion", "garmentIds", "reason"] } } }, required: ["outfits"] };
+
+export const MAX_STYLE_COUNT = 12;
+
+export function buildStylePrompt({ items, outfits = [], count = 4, notes = "" }) {
+  const closet = items.map((item) => ({ id: item.id, name: item.name, category: item.part, color: item.color, secondaryColor: item.secondaryColor || undefined, tags: item.tags }));
+  const taken = outfits.map((outfit) => outfit.garmentIds).filter(Array.isArray);
+  return `You are styling outfits from this wardrobe. Every piece is listed as JSON with its id, name, category, colors and tags.
+
+Categories: upperbody = tops, lowerbody = bottoms, wholebody_up = jackets and outer layers, shoes, accessories_up = accessories.
+
+<wardrobe>
+${JSON.stringify(closet)}
+</wardrobe>
+
+Create ${count} new outfits. Each outfit uses exactly one upperbody piece and one lowerbody piece, and may add one outer layer, one pair of shoes and one accessory. Use only ids from the wardrobe. Do not repeat any of these existing combinations: ${JSON.stringify(taken)}.
+
+Styling rules:
+- Favor tonal or nearby colors for a calm look, and use contrast on purpose with one color in charge.
+- Let one pattern, graphic, texture or bright piece carry the look.
+- Balance the shapes: pair fuller bottoms with a cleaner top, and keep heavy layers over a simple base.
+- Spread the pieces across outfits instead of leaning on the same easy basics.
+- Cover a useful mix of occasions such as casual, smart casual, work, evening and warm or cold weather.
+${notes ? `
+The owner asked for: ${notes}
+` : ""}
+Give each outfit a short name (two to four words), one to three lowercase occasion tags, the garment ids, and one plain sentence on why it works. If the wardrobe cannot support ${count} distinct outfits, return as many good ones as it can.`;
+}
+
+// Keep only outfits that use real pieces, have a top and a bottom, and do not
+// repeat a combination we already have.
+export function normalizeStyledOutfits(value, items, existing = []) {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const seen = new Set(existing.map((outfit) => [...(outfit.garmentIds || [])].sort().join("|")));
+  const list = Array.isArray(value?.outfits) ? value.outfits : [];
+  const result = [];
+  for (const outfit of list) {
+    const ids = [...new Set((Array.isArray(outfit?.garmentIds) ? outfit.garmentIds : []).filter((id) => byId.has(id)))];
+    const parts = ids.map((id) => byId.get(id).part);
+    if (!parts.includes("upperbody") || !parts.includes("lowerbody")) continue;
+    const key = [...ids].sort().join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const name = typeof outfit.name === "string" && outfit.name.trim() ? outfit.name.trim().slice(0, 80) : "New outfit";
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "outfit";
+    result.push({
+      id: `${slug}-${crypto.randomUUID().slice(0, 8)}`,
+      name,
+      occasion: (Array.isArray(outfit.occasion) ? outfit.occasion : []).filter((tag) => typeof tag === "string").map((tag) => tag.trim().toLowerCase().slice(0, 30)).filter(Boolean).slice(0, 3),
+      garmentIds: ids,
+      reason: typeof outfit.reason === "string" ? outfit.reason.trim().slice(0, 400) : "",
+      image: null,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  return result;
+}
 
 export function isLoopbackHost(host = "") {
   const value = String(host).trim().toLowerCase();
@@ -81,51 +140,6 @@ export function normalizeBoundingBox(value = {}) {
   return { x, y, width, height };
 }
 
-export function chooseChromaKey(primary = "#808080") {
-  const value = HEX_COLOR.test(primary) ? primary : "#808080";
-  const source = [1, 3, 5].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
-  const candidates = [[0, 255, 0], [255, 0, 255], [0, 255, 255]];
-  const selected = candidates.sort((a, b) => {
-    const distance = (color) => color.reduce((total, channel, index) => total + ((channel - source[index]) ** 2), 0);
-    return distance(b) - distance(a);
-  })[0];
-  return `#${selected.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
-}
-
-export function buildGarmentPrompt(metadata = {}, chromaKey = "#00ff00") {
-  const name = metadata.name || "clothing item";
-  const category = metadata.part || "wardrobe item";
-  const primary = metadata.color || "the exact visible color";
-  const secondary = metadata.secondaryColor ? ` with distinct secondary color ${metadata.secondaryColor}` : "";
-  const details = Array.isArray(metadata.tags) && metadata.tags.length
-    ? metadata.tags.join(", ")
-    : "all visible construction and design details";
-
-  return `Use case: background-extraction
-Asset type: ecommerce catalog product cutout source
-
-Input image: The reference photograph shows the exact garment, either by itself or worn by a person. Use it only to identify and reconstruct the garment.
-
-Primary request: Reconstruct ONLY the complete empty ${name} (${category}) as a clean, front-facing ecommerce catalog product photograph. If a wearer is present, remove them. Remove every other garment, object, and background element. Show the complete item naturally arranged and symmetrical, with no person, body, mannequin, or hanger visible.
-
-Garment fidelity: Preserve the reference garment's exact primary color ${primary}${secondary}, material and texture, silhouette, neckline, sleeves, fastenings, pattern, and distinctive details (${details}). Preserve any clearly legible existing graphic or logo exactly, but do not invent or reinterpret uncertain logos, text, pockets, seams, hardware, colors, or decoration.
-
-Composition: Centered straight-on product view. Keep the entire garment inside the frame with generous, even padding on every side. No cropping or truncation.
-
-Background: Perfectly flat, absolutely uniform solid ${chromaKey} chroma-key color, edge-to-edge. No shadows, gradient, texture, vignette, floor, horizon, reflection, or lighting variation.
-
-Lighting: Neutral diffuse product lighting contained on the garment only.
-
-Avoid: person, body, skin, hair, mannequin, hanger, props, other garments, retail tags, cast shadow, contact shadow, reflection, watermark, caption, border, background variation, or chroma spill.
-
-Critical: Use no ${chromaKey} anywhere in the garment. Produce exactly one complete garment with a crisp, separable outer silhouette.`;
-}
-
-export function cleanupTolerance(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(18, Math.min(110, Math.round(parsed))) : 46;
-}
-
 export function stageState() {
-  return { status: "pending", decision: null, attempts: 0, assetUrl: null, failedAssetUrl: null, cleanupPreviewUrl: null, cleanupTolerance: 46, cleanupDiagnostics: null, error: null, prompt: null, updatedAt: null };
+  return { status: "pending", decision: null, attempts: 0, assetUrl: null, error: null, updatedAt: null };
 }
