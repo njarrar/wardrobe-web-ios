@@ -1,11 +1,11 @@
 :root {
-  --import-ivory: #f4f0e7;
-  --import-paper: #fbf8f1;
-  --import-ink: #24231f;
-  --import-muted: #77736a;
-  --import-line: rgba(36, 35, 31, 0.16);
-  --import-shadow: 0 18px 55px rgba(42, 37, 28, 0.14);
-  --import-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --import-ivory: var(--surface-2);
+  --import-paper: var(--surface);
+  --import-ink: var(--ink);
+  --import-muted: var(--muted);
+  --import-line: var(--line-strong);
+  --import-shadow: var(--shadow-lg);
+  --import-ease: var(--ease);
 }
 
 /* Full-page drag and paste target. */
@@ -307,3 +307,63 @@
   .import-spinner { animation: none !important; }
 }
 .import-drop-target .import-actions { justify-content: center; }
+
+/* ------------------------------------------------------------------ */
+/* Modern refresh: tokens, larger add button, dark-mode safe surfaces. */
+/* ------------------------------------------------------------------ */
+.import-drop-overlay { background: var(--bg-elevated); }
+.import-drop-target { border-color: var(--line-strong); background: var(--surface); }
+.import-drop-target.is-over { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 6px var(--accent-soft); }
+.import-drop-target h2,
+.import-popover__title { font-family: inherit; font-weight: 620; letter-spacing: -0.03em; }
+
+.import-tray {
+  left: auto;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  flex-direction: row-reverse;
+  min-height: 60px;
+  padding: 5px;
+  border: 0;
+  box-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.45);
+}
+.import-tray__actions { flex-direction: row-reverse; transform: translateX(8px); }
+.import-tray__label { padding: 0 4px 0 10px; font-size: 13px; font-weight: 540; }
+.import-tray__button {
+  flex-basis: 50px;
+  width: 50px;
+  height: 50px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 650;
+}
+.import-tray__button:hover,
+.import-tray__button:focus-visible { background: var(--accent); filter: brightness(1.08); }
+.import-tray .import-icon-button:hover,
+.import-tray .import-icon-button:focus-visible { background: color-mix(in srgb, var(--import-paper) 14%, transparent); }
+
+.import-popover { border-color: var(--line); border-radius: var(--radius-lg); transform: translate(36vw, 42vh) scale(0.16); transform-origin: right bottom; }
+.import-popover .import-icon-button:hover,
+.import-popover .import-icon-button:focus-visible { background: var(--surface-2); }
+.import-card { background: var(--bg); border-color: var(--line); }
+.import-card.is-selected { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.import-editor__preview,
+.import-card__image { background: radial-gradient(120% 90% at 50% 20%, var(--surface) 0%, var(--surface-2) 100%); }
+.import-field input,
+.import-field select { min-height: 46px; background: var(--bg); border-color: var(--line-strong); border-radius: var(--radius-sm); font-size: 15px; }
+.import-field input:focus,
+.import-field select:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus); }
+.import-field label { font-size: 12px; font-weight: 560; }
+.import-button { min-height: 42px; font-family: inherit; font-size: 13px; font-weight: 560; }
+.import-button--primary:hover { opacity: 0.88; }
+.import-card__detail--status[data-tone="error"],
+.import-status.is-error,
+.import-field-error { color: var(--danger); }
+.import-card__detail--status[data-tone="complete"],
+.import-status.is-complete { color: var(--success); }
+.import-card__delete { color: var(--danger); }
+
+@media (max-width: 640px) {
+  .import-tray { left: auto; right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); }
+  .import-popover { transform: translateY(100%) scale(0.96); transform-origin: bottom center; }
+}

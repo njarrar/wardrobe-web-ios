@@ -1,34 +1,104 @@
+/* Outfits view. Uses the design tokens defined in styles.css. */
+
+.outfit-style-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin: 24px var(--page-x) 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(80% 140% at 0% 0%, var(--accent-soft), transparent 60%),
+    var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.outfit-style-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 560;
+}
+.outfit-style-form label em { font-style: normal; font-weight: 440; opacity: 0.75; }
+.outfit-style-form__notes { flex: 1 1 260px; }
+
+.outfit-style-form select,
+.outfit-style-form input {
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 15px;
+  outline: none;
+}
+.outfit-style-form select:focus,
+.outfit-style-form input:focus { border-color: var(--accent); box-shadow: var(--focus); }
+
+.outfit-style-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 14px;
+  font-weight: 580;
+  cursor: pointer;
+  transition: opacity 160ms ease, transform 160ms var(--ease);
+}
+.outfit-style-form button:hover { opacity: 0.88; }
+.outfit-style-form button:active { transform: scale(0.97); }
+.outfit-style-form button:disabled { opacity: 0.6; cursor: progress; }
+
 .outfit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 26px;
-  padding: 43px 52px 70px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+  padding: 24px var(--page-x) 40px;
 }
 
 .outfit-card {
   appearance: none;
   display: grid;
   gap: 10px;
-  border: 1px solid transparent;
+  border: 0;
   padding: 0;
   background: transparent;
   color: var(--ink);
   text-align: left;
-  cursor: zoom-in;
+  cursor: pointer;
+  animation: card-in 420ms var(--ease) both;
 }
 
-.outfit-card img {
+.outfit-card > img,
+.outfit-card > .outfit-collage {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  background: rgba(25, 25, 25, .05);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: radial-gradient(120% 90% at 50% 20%, var(--surface) 0%, var(--surface-2) 100%);
+  transition: transform 260ms var(--ease), box-shadow 260ms var(--ease);
 }
+.outfit-card:hover > img,
+.outfit-card:hover > .outfit-collage { transform: translateY(-3px); box-shadow: var(--shadow); }
+.outfit-card:focus-visible { box-shadow: none; }
+.outfit-card:focus-visible > * { box-shadow: var(--focus); }
 
 .outfit-card__name {
-  font-size: 12px;
-  font-weight: 520;
-  letter-spacing: .055em;
-  text-transform: uppercase;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 580;
+  letter-spacing: -0.01em;
 }
 
 .outfit-collage {
@@ -37,120 +107,110 @@
   gap: 6px;
   width: 100%;
   aspect-ratio: 1;
-  padding: 10px;
-  box-sizing: border-box;
-  background: rgba(25, 25, 25, .05);
+  padding: 14px;
 }
-
 .outfit-collage img {
   width: 100%;
   height: 100%;
   min-height: 0;
-  aspect-ratio: auto;
   object-fit: contain;
   background: transparent;
+  filter: drop-shadow(0 8px 10px rgba(22, 21, 20, 0.14));
 }
-
 .outfit-collage--1 { grid-template-columns: 1fr; }
 .outfit-collage--3 img:first-child { grid-row: span 2; }
 
-.outfit-style-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 14px;
-  padding: 32px 52px 0;
+.outfit-viewer {
+  position: relative;
+  width: min(980px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top));
+  margin: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  align-items: start;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  animation: sheet-pop 320ms var(--ease) both;
 }
 
-.outfit-style-form label { display: grid; gap: 6px; font-size: 11px; color: var(--muted); letter-spacing: .04em; }
-.outfit-style-form label em { font-style: normal; opacity: .7; }
-.outfit-style-form__notes { flex: 1 1 260px; }
-.outfit-style-form select,
-.outfit-style-form input {
-  font: inherit;
-  font-size: 14px;
-  color: var(--ink);
-  padding: 9px 10px;
-  border: 1px solid rgba(25, 25, 25, .18);
-  border-radius: 8px;
-  background: var(--paper);
+.outfit-viewer__photo {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: radial-gradient(120% 90% at 50% 20%, var(--surface) 0%, var(--surface-2) 100%);
+}
+div.outfit-viewer__photo .outfit-collage { height: 100%; padding: 28px; }
+
+.outfit-viewer__details { padding: 32px 28px; }
+.outfit-viewer__details h2 { margin: 0 0 8px; padding-right: 44px; font-size: 26px; font-weight: 640; letter-spacing: -0.025em; }
+.outfit-viewer__details p { color: var(--muted); font-size: 15px; line-height: 1.6; }
+.outfit-viewer__occasion {
+  display: inline-block;
+  margin: 0 !important;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent) !important;
+  font-size: 12.5px !important;
+  font-weight: 560;
 }
 
-.outfit-style-form button,
+.outfit-viewer__pieces {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+.outfit-viewer__pieces figure {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.outfit-viewer__pieces img { width: 100%; aspect-ratio: 0.85; object-fit: contain; }
+.outfit-viewer__pieces figcaption { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
 .outfit-delete {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font: inherit;
-  font-size: 13px;
-  padding: 10px 16px;
-  border: 1px solid var(--ink);
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--paper);
+  margin-top: 24px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--danger);
+  font-size: 13.5px;
+  font-weight: 560;
   cursor: pointer;
 }
+.outfit-delete:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
 
-.outfit-style-form button:disabled { opacity: .6; cursor: progress; }
-.outfit-delete { margin-top: 24px; background: transparent; color: var(--ink); border-color: rgba(25, 25, 25, .25); }
-
-.outfit-card:focus-visible { outline: 1px solid var(--ink); outline-offset: 3px; }
-
-.outfit-viewer {
-  position: relative;
-  width: min(960px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px - env(safe-area-inset-top));
-  margin: max(16px, env(safe-area-inset-top)) auto 16px;
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  align-items: start;
-  align-content: start;
-  align-self: flex-start;
-  height: fit-content;
-  overflow: auto;
-  background: var(--paper);
-}
-
-.outfit-viewer__photo { width: 100%; aspect-ratio: 1; object-fit: cover; }
-div.outfit-viewer__photo .outfit-collage { height: 100%; }
-
-.outfit-viewer__details { padding: 32px 28px; }
-.outfit-viewer__details h2 { margin: 0 0 8px; font-size: 22px; font-weight: 520; }
-.outfit-viewer__details p { color: var(--muted); font-size: 14px; line-height: 1.5; }
-.outfit-viewer__occasion { font-size: 11px !important; letter-spacing: .1em; text-transform: uppercase; }
-
-.outfit-viewer__pieces {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.outfit-viewer__pieces figure { margin: 0; }
-.outfit-viewer__pieces img { width: 100%; aspect-ratio: .78; object-fit: contain; }
-.outfit-viewer__pieces figcaption { font-size: 11px; color: var(--muted); }
-
-.connect-screen {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: max(24px, env(safe-area-inset-top)) 16px 24px;
-}
-
-.connect-card {
-  width: min(420px, 100%);
-  display: grid;
-  gap: 18px;
-}
-
-.connect-card h1 { margin: 0; font-size: 28px; font-weight: 520; }
-.connect-card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.outfit-viewer .viewer-icon-close { top: 14px; right: 14px; background: var(--bg-elevated); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 
 @media (max-width: 860px) {
-  .outfit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 28px 16px 60px; }
-  .outfit-style-form { padding: 24px 16px 0; }
-  .outfit-style-form button { width: 100%; justify-content: center; }
-  .outfit-viewer { grid-template-columns: 1fr; }
+  .outfit-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .outfit-style-form button { width: 100%; }
+  .outfit-viewer {
+    width: 100%;
+    max-height: calc(100dvh - max(28px, env(safe-area-inset-top)));
+    margin: auto 0 0;
+    grid-template-columns: 1fr;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: 0;
+    animation-name: sheet-in;
+  }
+  .outfit-viewer__details { padding: 22px 20px calc(28px + env(safe-area-inset-bottom)); }
 }
 
-.outfit-viewer .viewer-icon-close { top: 12px; right: 12px; z-index: 1; background: var(--paper); }
+@media (max-width: 420px) {
+  .outfit-grid { gap: 12px; }
+  .outfit-card__name { font-size: 13.5px; }
+}

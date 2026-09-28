@@ -116,12 +116,16 @@ async function imageForClaude(bytes) {
 // It is an optional install, so the import falls back to the plain crop when
 // it is missing (see the "use-crop" action).
 let cutoutPipeline = null;
-export async function removeBackground(bytes, model) {
+export async function removeBackground(bytes, model, { cacheDir } = {}) {
   if (!cutoutPipeline) {
     cutoutPipeline = (async () => {
       let transformers;
       try { transformers = await import("@huggingface/transformers"); }
       catch { throw new Error("Background removal is not installed. Run npm install @huggingface/transformers, or use the crop as is."); }
+      if (cacheDir) {
+        await mkdir(cacheDir, { recursive: true });
+        transformers.env.cacheDir = cacheDir;
+      }
       return transformers.pipeline("background-removal", model, { dtype: "fp32" }).then((run) => ({ run, RawImage: transformers.RawImage }));
     })();
     cutoutPipeline.catch(() => { cutoutPipeline = null; });
@@ -159,7 +163,7 @@ export function createWardrobeApi(options = {}) {
   const running = new Map();
   const setting = (name, fallback = "") => options.env?.[name] || process.env[name] || fallback;
   const claudeModel = () => setting("WARDROBE_CLAUDE_MODEL");
-  const cutout = options.removeBackground || ((bytes) => removeBackground(bytes, setting("WARDROBE_CUTOUT_MODEL", DEFAULT_CUTOUT_MODEL)));
+  const cutout = options.removeBackground || ((bytes) => removeBackground(bytes, setting("WARDROBE_CUTOUT_MODEL", DEFAULT_CUTOUT_MODEL), { cacheDir: setting("WARDROBE_MODEL_CACHE") || undefined }));
 
   function claudeClient() {
     const apiKey = setting("ANTHROPIC_API_KEY").trim();
@@ -264,6 +268,7 @@ export function createWardrobeApi(options = {}) {
         image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
         thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
         importJobId: job.id,
+        addedAt: new Date().toISOString(),
       };
       return { records: [...records.filter((item) => item.id !== id), record], value: record };
     });

@@ -1,0 +1,16 @@
+node_modules
+dist
+data
+ios
+docs
+.git
+.github
+.wrangler
+.claude
+.env
+.env.*
+!.env.example
+.dev.vars
+*.log
+Dockerfile
+docker-compose*.yml

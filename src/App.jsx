@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Plus, Trash, X } from "@phosphor-icons/react";
+import { ArrowsDownUp, Check, CoatHanger, GearSix, MagnifyingGlass, Plus, Sparkle, Trash, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
 import { ConnectScreen } from "./ConnectScreen.jsx";
+import { SettingsSheet } from "./SettingsSheet.jsx";
 import { AUTH_EVENT, apiFetch, isNativeApp, needsServerUrl } from "./api.js";
 
 const LEGACY_EDITS_KEY = "open-wardrobe-edits-v1";
@@ -138,8 +139,42 @@ function sampleImageColor(image, canvas, event) {
   return null;
 }
 
-function GalleryItem({ item, selected, onOpen }) {
+function hexToHue(hex) {
+  const match = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!match) return { hue: 999, sat: 0, light: 0 };
+  const value = parseInt(match[1], 16);
+  const red = ((value >> 16) & 255) / 255;
+  const green = ((value >> 8) & 255) / 255;
+  const blue = (value & 255) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const light = (max + min) / 2;
+  const delta = max - min;
+  if (!delta) return { hue: 999, sat: 0, light };
+  const sat = delta / (1 - Math.abs((2 * light) - 1));
+  let hue;
+  if (max === red) hue = ((green - blue) / delta) % 6;
+  else if (max === green) hue = ((blue - red) / delta) + 2;
+  else hue = ((red - green) / delta) + 4;
+  return { hue: (hue * 60 + 360) % 360, sat, light };
+}
+
+// Neutrals (low saturation) go last, dark to light; colors follow the wheel.
+function colorSortKey(item) {
+  const { hue, sat, light } = hexToHue(item.color);
+  return sat < 0.14 ? 1000 + (light * 100) : hue;
+}
+
+const SORTS = [
+  { id: "category", label: "Category" },
+  { id: "recent", label: "Recently added" },
+  { id: "color", label: "Color" },
+  { id: "name", label: "Name" },
+];
+
+function GalleryItem({ item, selected, onOpen, index }) {
   const type = TYPE_MAP[item.part]?.singular || "wardrobe item";
+  const swatches = [item.color, item.secondaryColor].filter(Boolean);
 
   return (
     <button
@@ -149,13 +184,27 @@ function GalleryItem({ item, selected, onOpen }) {
       aria-label={`View ${item.name || type}`}
       aria-pressed={selected}
       data-testid={`wardrobe-item-${item.id}`}
+      style={{ "--stagger": `${Math.min(index, 18) * 18}ms` }}
     >
-      <OptimizedImage
-        src={item.thumbnail || item.image}
-        alt=""
-        sizes="(max-width: 520px) calc(50vw - 16px), (max-width: 860px) calc(33vw - 18px), 180px"
-        breakpoints={[120, 180, 240, 320, 480]}
-      />
+      <span className="gallery-item__media">
+        <OptimizedImage
+          src={item.thumbnail || item.image}
+          alt=""
+          sizes="(max-width: 520px) calc(50vw - 24px), (max-width: 860px) calc(33vw - 24px), 220px"
+          breakpoints={[160, 240, 320, 480, 640]}
+        />
+      </span>
+      <span className="gallery-item__meta">
+        <span className="gallery-item__name">{item.name || type}</span>
+        <span className="gallery-item__sub">
+          <span className="gallery-item__type">{type}</span>
+          {!!swatches.length && (
+            <span className="gallery-item__swatches" aria-hidden="true">
+              {swatches.map((color) => <i key={color} style={{ backgroundColor: color }} />)}
+            </span>
+          )}
+        </span>
+      </span>
     </button>
   );
 }
@@ -459,6 +508,7 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
     <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
     <div className="viewer-entry">
     <aside className={`viewer editing${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label="Selected wardrobe item">
+      <span className="sheet-grabber" aria-hidden="true" />
       <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label="Close viewer" ref={closeButtonRef}>
         <X size={24} weight="light" aria-hidden="true" />
       </button>
@@ -542,6 +592,16 @@ function Wardrobe({ onConnectionFailed }) {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [view, setView] = useState("closet");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState(() => {
+    try { return localStorage.getItem("wardrobe-sort") || "category"; } catch { return "category"; }
+  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem("wardrobe-sort", sort); } catch { /* storage unavailable */ }
+  }, [sort]);
 
   useEffect(() => {
     apiFetch("/api/import/wardrobe", { cache: "no-store" })
@@ -567,18 +627,35 @@ function Wardrobe({ onConnectionFailed }) {
   }, [onConnectionFailed]);
 
   const selectedItem = items.find((item) => item.id === selectedId) || null;
-  const showingOutfits = activeType === "outfits";
+  const showingOutfits = view === "outfits";
+
+  const counts = useMemo(() => {
+    const result = { all: items.length };
+    for (const item of items) result[item.part] = (result[item.part] || 0) + 1;
+    return result;
+  }, [items]);
 
   const visibleItems = useMemo(() => {
-    const filtered = activeType === "all" ? items : items.filter((item) => item.part === activeType);
-    return [...filtered].sort((a, b) => {
-      if (activeType === "all") {
-        const typeDifference = (TYPE_ORDER[a.part] ?? 99) - (TYPE_ORDER[b.part] ?? 99);
-        if (typeDifference) return typeDifference;
-      }
-      return a.id.localeCompare(b.id);
+    const needle = query.trim().toLowerCase();
+    const filtered = items.filter((item) => {
+      if (activeType !== "all" && item.part !== activeType) return false;
+      if (!needle) return true;
+      const haystack = [item.name, TYPE_MAP[item.part]?.label, TYPE_MAP[item.part]?.singular, item.color, item.secondaryColor, ...(item.tags || [])]
+        .filter(Boolean).join(" ").toLowerCase();
+      return needle.split(/\s+/).every((word) => haystack.includes(word));
     });
-  }, [activeType, items]);
+    const order = items.map((item) => item.id);
+    return [...filtered].sort((a, b) => {
+      if (sort === "recent") {
+        const byDate = (b.addedAt || "").localeCompare(a.addedAt || "");
+        return byDate || order.indexOf(b.id) - order.indexOf(a.id);
+      }
+      if (sort === "name") return (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
+      if (sort === "color") return colorSortKey(a) - colorSortKey(b);
+      const typeDifference = (TYPE_ORDER[a.part] ?? 99) - (TYPE_ORDER[b.part] ?? 99);
+      return typeDifference || a.id.localeCompare(b.id);
+    });
+  }, [activeType, items, query, sort]);
 
   const chooseType = (typeId) => {
     setActiveType(typeId);
@@ -616,36 +693,115 @@ function Wardrobe({ onConnectionFailed }) {
   return (
     <div className={`app-shell${selectedItem ? " has-selection" : ""}`}>
       <main className="gallery-pane">
-        <header className="gallery-header">
-          <div className="gallery-meta-row">
-            <p className="piece-count">{items.length} {items.length === 1 ? "piece" : "pieces"}</p>
+        <header className="topbar">
+          <div className="topbar__row">
+            <div className="brand">
+              <span className="brand-mark" aria-hidden="true"><CoatHanger size={20} weight="bold" /></span>
+              <div className="brand__text">
+                <h1>Wardrobe</h1>
+                <p className="piece-count">{items.length} {items.length === 1 ? "piece" : "pieces"}</p>
+              </div>
+            </div>
+
+            <div className="view-switch" role="tablist" aria-label="Choose a view">
+              {[{ id: "closet", label: "Closet", Icon: CoatHanger }, { id: "outfits", label: "Outfits", Icon: Sparkle }].map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === id}
+                  className={view === id ? "active" : ""}
+                  onClick={() => { setView(id); setSelectedId(null); }}
+                >
+                  <Icon size={16} weight={view === id ? "fill" : "regular"} aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+
+            <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="Settings and connection">
+              <GearSix size={20} aria-hidden="true" />
+            </button>
           </div>
-          <nav className="category-nav" aria-label="Filter wardrobe by item type">
-            {[...TYPES, { id: "outfits", label: "Outfits" }].map((type) => (
-              <button
-                key={type.id}
-                type="button"
-                className={activeType === type.id ? "active" : ""}
-                onClick={() => chooseType(type.id)}
-                aria-pressed={activeType === type.id}
-              >
-                {type.label}
-              </button>
-            ))}
-          </nav>
+
+          {!showingOutfits && (
+            <>
+              <div className="toolbar">
+                <label className="search">
+                  <MagnifyingGlass size={17} aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search name, color, or detail"
+                    aria-label="Search your wardrobe"
+                  />
+                  {query && (
+                    <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                </label>
+                <label className="sort-select">
+                  <ArrowsDownUp size={16} aria-hidden="true" />
+                  <span className="visually-hidden">Sort by</span>
+                  <select value={sort} onChange={(event) => setSort(event.target.value)}>
+                    {SORTS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <nav className="category-nav" aria-label="Filter wardrobe by item type">
+                {TYPES.map((type) => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    className={activeType === type.id ? "active" : ""}
+                    onClick={() => chooseType(type.id)}
+                    aria-pressed={activeType === type.id}
+                  >
+                    {type.label}
+                    <span className="chip-count">{counts[type.id] || 0}</span>
+                  </button>
+                ))}
+              </nav>
+            </>
+          )}
         </header>
 
         {error && <p className="status error">{error}</p>}
         {showingOutfits && <OutfitGallery items={items} />}
-        {!showingOutfits && !error && loading && <p className="status">Loading wardrobe</p>}
-        {!showingOutfits && !error && !loading && !items.length && <p className="status empty">Drop, paste, or add a photo to import your first piece.</p>}
 
-        {!showingOutfits && !!items.length && (
+        {!showingOutfits && !error && loading && (
+          <section className="gallery-grid" aria-hidden="true">
+            {Array.from({ length: 10 }, (_, index) => <span className="gallery-skeleton" key={index} />)}
+          </section>
+        )}
+
+        {!showingOutfits && !error && !loading && !items.length && (
+          <div className="empty-state">
+            <span className="empty-state__icon" aria-hidden="true"><CoatHanger size={34} weight="light" /></span>
+            <h2>Your closet is empty</h2>
+            <p>Drop, paste, or snap a photo of a piece — or a whole outfit — and it will be cut out and added here.</p>
+            <p className="empty-state__hint"><Plus size={14} aria-hidden="true" /> Use the add button in the corner to start.</p>
+          </div>
+        )}
+
+        {!showingOutfits && !!items.length && !visibleItems.length && (
+          <div className="empty-state compact">
+            <h2>{query ? "No matches" : `No ${TYPE_MAP[activeType]?.label.toLowerCase() || "pieces"} yet`}</h2>
+            <p>{query ? `Nothing in ${TYPE_MAP[activeType]?.label.toLowerCase() || "your closet"} matches “${query}”.` : "Add a photo and it will show up here."}</p>
+            <button className="secondary-button" type="button" onClick={() => { setQuery(""); chooseType("all"); }}>Clear filters</button>
+          </div>
+        )}
+
+        {!showingOutfits && !!visibleItems.length && (
           <section className="gallery-grid" aria-label={`${TYPE_MAP[activeType]?.label || "All"} wardrobe items`}>
-            {visibleItems.map((item) => (
+            {visibleItems.map((item, index) => (
               <GalleryItem
                 key={item.id}
                 item={item}
+                index={index}
                 selected={selectedId === item.id}
                 onOpen={setSelectedId}
               />
@@ -655,6 +811,7 @@ function Wardrobe({ onConnectionFailed }) {
       </main>
 
       {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} />}
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} />}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} />
     </div>
   );
