@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle, CloudCheck, HardDrives, SignOut, SpinnerGap, WarningCircle, X } from "@phosphor-icons/react";
+import { AiSettings } from "./AiSettings.jsx";
 import { accessToken, connectionLabel, forgetConnection, isNativeApp, serverUrl, testConnection } from "./api.js";
 
 // Where the closet lives and how this device is connected to it.
@@ -33,6 +34,10 @@ export function SettingsSheet({ onClose, pieces }) {
   };
 
   const config = status.config || {};
+  const aiChanged = (ai) => setStatus((current) => ({
+    ...current,
+    config: { ...current.config, ready: ai.ready, provider: ai.provider, providerName: ai.providers.find((entry) => entry.id === ai.provider)?.name },
+  }));
   const storage = config.storage === "cloudflare" ? "Cloudflare (R2 + D1)" : "Server disk (e.g. your NAS volume)";
   const version = status.server?.version;
 
@@ -65,10 +70,12 @@ export function SettingsSheet({ onClose, pieces }) {
         <dl className="settings-list">
           <div><dt>Pieces</dt><dd>{pieces}</dd></div>
           <div><dt>Photos stored on</dt><dd>{status.state === "ok" ? storage : "—"}</dd></div>
-          <div><dt>AI styling</dt><dd>{status.state !== "ok" ? "—" : config.ready ? "Ready" : "Needs ANTHROPIC_API_KEY"}</dd></div>
+          <div><dt>AI styling</dt><dd>{status.state !== "ok" ? "—" : config.ready ? `Ready (${config.providerName || "Claude"})` : `Add a ${config.providerName || "Claude"} key below`}</dd></div>
           <div><dt>Protected by token</dt><dd>{typeof status.server?.protected !== "boolean" ? "—" : status.server.protected ? "Yes" : "No, this computer only"}</dd></div>
           {version && <div><dt>Server version</dt><dd>{version}</dd></div>}
         </dl>
+
+        {status.state === "ok" && <AiSettings onChange={aiChanged} />}
 
         <div className="settings-actions">
           {native && (
