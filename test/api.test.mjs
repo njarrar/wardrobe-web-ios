@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { createWardrobeApi, isLoopbackHost } from "../scripts/import-job-api.mjs";
-import { startMockClaude } from "./mock-claude.mjs";
+import { startMockAi } from "./mock-ai.mjs";
 
 async function startServer(env, options = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "wardrobe-test-"));
-  const api = createWardrobeApi({ env: { WARDROBE_DATA_DIR: "data", ANTHROPIC_API_KEY: "", ...env }, ...options });
+  const api = createWardrobeApi({ env: { WARDROBE_DATA_DIR: "data", ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "", GEMINI_API_KEY: "", WARDROBE_AI_PROVIDER: "", ...env }, ...options });
   await api.init(root);
   const server = http.createServer((req, res) => api.handler(req, res, () => { res.statusCode = 404; res.end(); }));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -188,7 +188,7 @@ describe("importing and styling with Claude", () => {
   let claude;
   const post = (url, value) => fetch(`${ctx.base}${url}`, { method: "POST", body: value === undefined ? undefined : JSON.stringify(value) });
   before(async () => {
-    claude = await startMockClaude();
+    claude = await startMockAi();
     const sharp = (await import("sharp")).default;
     // Pretend background removal: make the pure-white border transparent.
     const removeBackground = async (bytes) => {
@@ -200,7 +200,7 @@ describe("importing and styling with Claude", () => {
   });
   after(async () => { await ctx.close(); await claude.close(); });
 
-  test("reports setup as ready once the Anthropic key is set", async () => {
+  test("reports setup as ready once the Anthropic key is set in the environment", async () => {
     const config = await (await fetch(`${ctx.base}/api/import/config`)).json();
     assert.equal(config.ready, true);
   });
@@ -274,15 +274,105 @@ describe("importing and styling with Claude", () => {
   });
 });
 
-test("asks for the Anthropic key before importing", async () => {
+test("asks for an API key before importing", async () => {
   const ctx = await startServer({});
   try {
     const config = await (await fetch(`${ctx.base}/api/import/config`)).json();
     assert.equal(config.ready, false);
+    assert.equal(config.provider, "claude");
     const response = await fetch(`${ctx.base}/api/import/jobs`, { method: "POST", body: JSON.stringify({ imageBase64: "AAAA" }) });
     assert.equal(response.status, 503);
-    assert.match((await response.json()).error, /ANTHROPIC_API_KEY/);
+    assert.match((await response.json()).error, /add your Claude API key in Settings/);
   } finally {
     await ctx.close();
   }
+});
+
+describe("picking the AI in Settings", () => {
+  let ctx;
+  let mock;
+  const put = (value, headers = { "Content-Type": "application/json" }) => fetch(`${ctx.base}/api/import/settings/ai`, { method: "PUT", headers, body: JSON.stringify(value) });
+  before(async () => {
+    mock = await startMockAi();
+    ctx = await startServer({ ANTHROPIC_API_KEY: "sk-ant-from-env-1234", OPENAI_BASE_URL: mock.url, GEMINI_BASE_URL: mock.url });
+    await writeFile(path.join(ctx.dataDir, "library.json"), JSON.stringify([item("import-top"), item("import-jeans", { part: "lowerbody" })]));
+  });
+  after(async () => { await ctx.close(); await mock.close(); });
+
+  test("lists the three providers and uses the key from the server environment", async () => {
+    const settings = await (await fetch(`${ctx.base}/api/import/settings/ai`)).json();
+    assert.equal(settings.provider, "claude");
+    assert.equal(settings.ready, true);
+    assert.deepEqual(settings.providers.map((entry) => entry.id), ["claude", "openai", "gemini"]);
+    const claude = settings.providers[0];
+    assert.equal(claude.keySource, "server");
+    assert.equal(claude.keyHint, "…1234");
+    assert.ok(!JSON.stringify(settings).includes("sk-ant-from-env"), "the whole key must never reach the browser");
+  });
+
+  test("only takes JSON, so other web pages cannot change it", async () => {
+    assert.equal((await put({ provider: "openai" }, { "Content-Type": "text/plain" })).status, 415);
+  });
+
+  test("rejects unknown providers and odd keys", async () => {
+    assert.equal((await put({ provider: "copilot" })).status, 400);
+    assert.equal((await put({ keys: { openai: "short" } })).status, 400);
+    assert.equal((await put({ models: { gemini: "bad model name!" } })).status, 400);
+  });
+
+  test("saves a ChatGPT key and styles outfits with it", async () => {
+    const response = await put({ provider: "openai", keys: { openai: "sk-proj-test-abcd" } });
+    assert.equal(response.status, 200);
+    const settings = await response.json();
+    assert.equal(settings.provider, "openai");
+    assert.equal(settings.providers[1].keyHint, "…abcd");
+    assert.ok(!JSON.stringify(settings).includes("sk-proj-test"));
+
+    const file = path.join(ctx.dataDir, "settings.json");
+    assert.equal(JSON.parse(await readFile(file, "utf8")).ai.keys.openai, "sk-proj-test-abcd");
+    if (process.platform !== "win32") assert.equal((await stat(file)).mode & 0o777, 0o600);
+
+    const config = await (await fetch(`${ctx.base}/api/import/config`)).json();
+    assert.equal(config.providerName, "ChatGPT");
+
+    const styled = await fetch(`${ctx.base}/api/import/outfits/generate`, { method: "POST", body: JSON.stringify({ count: 1 }) });
+    assert.equal(styled.status, 201);
+    assert.equal((await styled.json()).outfits[0].name, "Easy Navy");
+    const sent = mock.requests.at(-1);
+    assert.equal(sent.url, "/chat/completions");
+    assert.equal(sent.headers.authorization, "Bearer sk-proj-test-abcd");
+    assert.equal(sent.body.model, "gpt-6.1-sol");
+    assert.equal(sent.body.response_format.json_schema.strict, true);
+  });
+
+  test("a rejected key says so without signing the app out", async () => {
+    await put({ keys: { openai: "sk-wrong-key" } });
+    const response = await fetch(`${ctx.base}/api/import/outfits/generate`, { method: "POST", body: JSON.stringify({ count: 1 }) });
+    assert.equal(response.status, 502);
+    assert.match((await response.json()).error, /ChatGPT said: Incorrect API key provided\. Check the API key in Settings\./);
+  });
+
+  test("switches to Gemini with its own model and reads photos with it", async () => {
+    await put({ provider: "gemini", keys: { gemini: "AIza-test-key-9876" }, models: { gemini: "gemini-test-model" } });
+    const sharp = (await import("sharp")).default;
+    const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#1f2a44" } }).png().toBuffer();
+    const response = await fetch(`${ctx.base}/api/import/jobs`, { method: "POST", body: JSON.stringify({ imageDataUrl: `data:image/png;base64,${png.toString("base64")}` }) });
+    assert.equal(response.status, 202);
+    assert.deepEqual((await response.json()).jobs.map((job) => job.metadata.name), ["Navy tee", "Blue jeans"]);
+    const sent = mock.requests.at(-1);
+    assert.equal(sent.url, "/models/gemini-test-model:generateContent");
+    assert.equal(sent.headers["x-goog-api-key"], "AIza-test-key-9876");
+    assert.equal(sent.body.contents[0].parts[0].inline_data.mime_type, "image/jpeg");
+    assert.equal(sent.body.generationConfig.responseMimeType, "application/json");
+    assert.ok(!JSON.stringify(sent.body.generationConfig.responseJsonSchema).includes("additionalProperties"));
+  });
+
+  test("removing a saved key falls back to the one on the server", async () => {
+    await put({ provider: "claude", keys: { claude: "sk-ant-saved-5555" } });
+    let settings = await (await fetch(`${ctx.base}/api/import/settings/ai`)).json();
+    assert.equal(settings.providers[0].keyHint, "…5555");
+    settings = await (await put({ keys: { claude: null } })).json();
+    assert.equal(settings.providers[0].keySource, "server");
+    assert.equal(settings.providers[0].keyHint, "…1234");
+  });
 });

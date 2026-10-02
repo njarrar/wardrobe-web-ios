@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.0 (Pick your AI)
+
+### AI
+- Pick Claude, ChatGPT (OpenAI) or Gemini (Google) in Settings to find clothes in photos and style outfits.
+- Paste an API key for each one in the app. No need to edit `.env` or restart.
+- Change the model for each AI, or leave it empty for the default (`claude-opus-5`, `gpt-6.1-sol`, `gemini-3.8-flash`).
+- Keys stay on the server: `data/settings.json` (owner-only file) on a computer or NAS, the new D1 `settings` table on Cloudflare. The browser only ever sees the last four characters.
+- Keys in `.env` or Worker secrets still work: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, plus `WARDROBE_AI_PROVIDER` and a model setting for each.
+- New `GET` and `PUT /api/import/settings/ai`. `PUT` only takes JSON, so other web pages cannot change your keys.
+- A key the AI rejects now shows a clear message instead of signing the app out.
+
+### Cloudflare
+- Run `npm run cf:migrate` before deploying 2.2. It adds the `settings` table.
+
+### Other
+- `shared/claude.mjs` is now `shared/ai.mjs`; the test stand-in (`test/mock-ai.mjs`) speaks all three APIs.
+- App text says "the AI" where it used to say "Claude".
+
 ## 2.1.0 — Outfit builder and color filter
 
 ### Outfits
