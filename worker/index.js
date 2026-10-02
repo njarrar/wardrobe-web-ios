@@ -1,6 +1,6 @@
 // Cloudflare Worker version of the wardrobe API (see scripts/import-job-api.mjs
-// for the local Node version). Images live in R2, records in D1, Claude finds
-// and styles the clothes, and Cloudflare Images cuts each garment out of its
+// for the local Node version). Images live in R2, records in D1, the AI picked
+// in Settings (Claude, ChatGPT or Gemini) finds and styles the clothes, and Cloudflare Images cuts each garment out of its
 // background from a Queue so requests return right away.
 import {
   MAX_STYLE_COUNT,
@@ -12,7 +12,7 @@ import {
   stageState,
   tokensMatch,
 } from "../shared/core.mjs";
-import { CLAUDE_IMAGE_EDGE, createClaude, detectClothing, styleOutfits } from "../shared/claude.mjs";
+import { AI_IMAGE_EDGE, AiError, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, styleOutfits } from "../shared/ai.mjs";
 import { cropDetectedItem, decodePng, encodePng, frameTransparentGarment, resize } from "../shared/pixels.mjs";
 
 const API_ROOT = "/api/import/jobs";
@@ -72,12 +72,28 @@ function setting(env, name, fallback = "") {
   return (typeof env[name] === "string" && env[name]) || fallback;
 }
 
-function claudeFor(env) {
-  if (!env.ANTHROPIC_API_KEY) throw new HttpError(503, "Setup required: add the ANTHROPIC_API_KEY secret to the Worker.");
-  return createClaude({ apiKey: env.ANTHROPIC_API_KEY, baseURL: setting(env, "ANTHROPIC_BASE_URL") || undefined });
+// The AI picked in Settings and the keys pasted there live in the D1
+// settings table. Worker secrets (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY) still work
+// when nothing is saved.
+async function loadAiSettings(env) {
+  const row = await env.DB.prepare("SELECT data FROM settings WHERE key = 'ai'").first().catch(() => null);
+  return row ? JSON.parse(row.data) : {};
 }
 
-const claudeModel = (env) => setting(env, "WARDROBE_CLAUDE_MODEL");
+async function saveAiSettings(env, value) {
+  try {
+    await env.DB.prepare("INSERT INTO settings (key, data) VALUES ('ai', ?1) ON CONFLICT(key) DO UPDATE SET data = excluded.data").bind(JSON.stringify(value)).run();
+  } catch (error) {
+    if (/no such table/i.test(error.message)) throw new HttpError(503, "Update the database first: run npm run cf:migrate, then try again.");
+    throw error;
+  }
+}
+
+const envReader = (env) => (name) => setting(env, name);
+
+async function currentAi(env) {
+  return resolveAi(await loadAiSettings(env), envReader(env));
+}
 
 // ---------- images ----------
 
@@ -86,11 +102,11 @@ async function transformImage(env, bytes, transform, format) {
   return new Uint8Array(await result.response().arrayBuffer());
 }
 
-// Claude reads images up to 1568px on the long edge. Cloudflare Images makes
+// The AI reads images up to 1568px on the long edge. Cloudflare Images makes
 // a JPEG that size; without the binding (tests), fall back to a small PNG.
-async function imageForClaude(env, image, pngBytes) {
+async function imageForAi(env, image, pngBytes) {
   if (env.IMAGES) {
-    const jpeg = await transformImage(env, pngBytes, { width: CLAUDE_IMAGE_EDGE, height: CLAUDE_IMAGE_EDGE, fit: "scale-down" }, "image/jpeg");
+    const jpeg = await transformImage(env, pngBytes, { width: AI_IMAGE_EDGE, height: AI_IMAGE_EDGE, fit: "scale-down" }, "image/jpeg");
     return { imageBase64: toBase64(jpeg), mediaType: "image/jpeg" };
   }
   const scale = Math.min(1, 1024 / Math.max(image.width, image.height));
@@ -219,8 +235,9 @@ async function enqueue(env, jobId, keepBackground = false) {
 // ---------- routes ----------
 
 async function setupStatus(env) {
-  const hasApiKey = Boolean(env.ANTHROPIC_API_KEY?.trim());
-  return { ready: hasApiKey, hasApiKey, storage: "cloudflare", cutouts: Boolean(env.IMAGES) };
+  const ai = publicAiSettings(await loadAiSettings(env), envReader(env));
+  const selected = ai.providers.find((entry) => entry.id === ai.provider);
+  return { ready: ai.ready, hasApiKey: ai.ready, provider: ai.provider, providerName: selected.name, storage: "cloudflare", cutouts: Boolean(env.IMAGES) };
 }
 
 async function serveObject(env, key, cacheControl) {
@@ -250,6 +267,13 @@ async function handleApi(request, env) {
   if (pathname === "/api/import/wardrobe" && method === "GET") return json(200, await listItems(env));
   if (pathname === "/api/import/config" && method === "GET") return json(200, await setupStatus(env));
   if (pathname === "/api/import/outfits" && method === "GET") return json(200, await listOutfits(env));
+  if (pathname === "/api/import/settings/ai" && method === "GET") return json(200, publicAiSettings(await loadAiSettings(env), envReader(env)));
+  if (pathname === "/api/import/settings/ai" && method === "PUT") {
+    if (!(request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) throw new HttpError(415, "Send settings as application/json");
+    const next = applyAiSettingsEdit(await loadAiSettings(env), await readJson(request, 16 * 1024));
+    await saveAiSettings(env, next);
+    return json(200, publicAiSettings(next, envReader(env)));
+  }
 
   // Same rules as the local server: see normalizeManualOutfit and applyOutfitEdit in shared/core.mjs.
   if (pathname === "/api/import/outfits" && method === "POST") {
@@ -266,8 +290,7 @@ async function handleApi(request, env) {
     if (!items.some((item) => item.part === "upperbody") || !items.some((item) => item.part === "lowerbody")) {
       throw new HttpError(409, "Add at least one top and one bottom before styling outfits.");
     }
-    const client = claudeFor(env);
-    const created = await styleOutfits(client, { model: claudeModel(env), items, outfits: await listOutfits(env), count, notes });
+    const created = await styleOutfits(await currentAi(env), { items, outfits: await listOutfits(env), count, notes });
     for (const outfit of created) await saveOutfit(env, outfit);
     return json(201, { outfits: created });
   }
@@ -352,12 +375,12 @@ async function handleApi(request, env) {
   if (assetMatch && method === "GET") return serveObject(env, `jobs/${assetMatch[1]}/${assetMatch[2]}`, "no-store");
 
   if (pathname === API_ROOT && method === "POST") {
-    const client = claudeFor(env);
+    const ai = requireAi(await currentAi(env));
     const { bytes } = decodeDataUrl(await readJson(request));
     let image;
     try { image = decodePng(bytes); } catch { throw new HttpError(400, "Send the photo as a PNG. Update the app if you see this."); }
     const normalizedBytes = encodePng(image);
-    const detected = await detectClothing(client, { model: claudeModel(env), ...(await imageForClaude(env, image, normalizedBytes)) });
+    const detected = await detectClothing(ai, await imageForAi(env, image, normalizedBytes));
     const jobs = [];
     for (const metadata of detected) {
       const id = crypto.randomUUID();
@@ -445,7 +468,7 @@ export default {
     try {
       return await handleApi(request, env);
     } catch (error) {
-      const status = error instanceof HttpError ? error.status : 500;
+      const status = error instanceof HttpError || error instanceof AiError || (error.status >= 400 && error.status < 500) ? error.status : 500;
       if (status === 500) console.error(error);
       return json(status, { error: status === 500 ? "Internal server error" : error.message });
     }

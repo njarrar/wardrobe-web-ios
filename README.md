@@ -2,12 +2,12 @@
 
 # Wardrobe
 
-Your closet on the web and on your iPhone. Snap a photo, and Claude finds each piece, cuts it out, and styles outfits from what you own.
+Your closet on the web and on your iPhone. Snap a photo, and the AI you pick (Claude, ChatGPT or Gemini) finds each piece, cuts it out, and styles outfits from what you own.
 
-[![Version 2.1.0](https://img.shields.io/badge/version-2.1.0-191919?style=flat-square)](CHANGELOG.md)
+[![Version 2.2.0](https://img.shields.io/badge/version-2.2.0-191919?style=flat-square)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-191919?style=flat-square)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-22%2B-191919?style=flat-square)](package.json)
-[![Claude](https://img.shields.io/badge/AI-Claude-191919?style=flat-square)](https://www.anthropic.com/claude)
+[![AI: Claude, ChatGPT or Gemini](https://img.shields.io/badge/AI-Claude%20%7C%20ChatGPT%20%7C%20Gemini-191919?style=flat-square)](#pick-your-ai)
 [![Docker](https://img.shields.io/badge/docker-amd64%20%7C%20arm64-191919?style=flat-square)](docs/synology.md)
 [![Synology](https://img.shields.io/badge/Synology-Container%20Manager-191919?style=flat-square)](docs/synology.md)
 
@@ -19,20 +19,25 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 
 <sub>A real closet from the original project. The other screenshots below use a small drawn sample closet.</sub>
 
-**[What's new](#whats-new-in-21)** ·
+**[What's new](#whats-new-in-22)** ·
 **[What it does](#what-it-does)** ·
 **[Screenshots](#screenshots)** ·
 **[Quick start](#quick-start-on-your-computer)** ·
+**[Pick your AI](#pick-your-ai)** ·
 **[Synology NAS](#run-it-on-your-synology-nas-docker)** ·
 **[Cloudflare](#run-it-on-cloudflare)** ·
 **[iPhone app](#iphone-app)** ·
 **[Settings](#settings)**
 
-## What's new in 2.1
+## What's new in 2.2
+
+- **Pick your AI.** Choose Claude, ChatGPT or Gemini in Settings and paste its API key there. No more editing `.env` and restarting. See [Pick your AI](#pick-your-ai).
+
+## What was new in 2.1
 
 Version 2.1 brings together the best of two other builds of this app with our own work. See the [changelog](CHANGELOG.md) for every change.
 
-- **Build outfits yourself.** Pick pieces, give the look a name, occasions and a note, and save it next to the ones Claude styles.
+- **Build outfits yourself.** Pick pieces, give the look a name, occasions and a note, and save it next to the ones the AI styles.
 - **Edit and filter outfits.** Rename an outfit, change its occasions or note, filter the list by occasion, and tap any piece to open it.
 - **Filter by color.** Tap a color dot to see only blue, beige or black pieces. Search understands color words too, so "blue" finds navy.
 - **New look with dark mode**, a settings sheet, search and sort, from the 2.0 redesign.
@@ -40,9 +45,9 @@ Version 2.1 brings together the best of two other builds of this app with our ow
 
 ## What it does
 
-- **Add clothes from a photo.** Drop, paste, choose or take a picture of one piece or a whole outfit. Claude finds every garment and suggests a name, category, colors and tags.
+- **Add clothes from a photo.** Drop, paste, choose or take a picture of one piece or a whole outfit. The AI finds every garment and suggests a name, category, colors and tags.
 - **Clean cutouts.** Each piece is cut out of the real photo with background removal, so it looks like your actual item. You check the crop and the cutout before anything is saved.
-- **Style outfits.** Press **Style new outfits** and Claude builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city", or tap an idea such as "Dinner out", to steer it.
+- **Style outfits.** Press **Style new outfits** and the AI builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city", or tap an idea such as "Dinner out", to steer it.
 - **Build your own outfits.** Press **Build your own**, pick two or more pieces, and save the look. Edit any outfit's name, occasions and note later, and filter outfits by occasion.
 - **Edit and sort.** Filter by tops, jackets, bottoms, accessories and shoes. Change names, colors and tags at any time.
 - **Search, filter and sort.** Find pieces by name, tag, category or color word, tap a color dot to filter, and sort by category, newest, color or name.
@@ -59,7 +64,7 @@ Version 2.1 brings together the best of two other builds of this app with our ow
 | --- | --- |
 | ![Editor](docs/screenshots/editor.png) | ![Settings](docs/screenshots/settings.png) |
 
-**Outfits.** Claude styles looks from your closet. Filter them by occasion, open one to see its pieces, or edit its name, occasions and note.
+**Outfits.** The AI styles looks from your closet. Filter them by occasion, open one to see its pieces, or edit its name, occasions and note.
 
 | Outfits | One outfit |
 | --- | --- |
@@ -69,7 +74,7 @@ Version 2.1 brings together the best of two other builds of this app with our ow
 
 ![Build an outfit](docs/screenshots/outfit-builder.png)
 
-**Review before saving.** After Claude finds a piece and the background is removed, you check the details, then approve, reject, or keep the background.
+**Review before saving.** After the AI finds a piece and the background is removed, you check the details, then approve, reject, or keep the background.
 
 ![Import review](docs/screenshots/import-review.png)
 
@@ -79,15 +84,17 @@ Version 2.1 brings together the best of two other builds of this app with our ow
 
 ## Quick start (on your computer)
 
-You need Node 22 or newer and an Anthropic API key from [console.anthropic.com](https://console.anthropic.com/settings/keys).
+You need Node 22 or newer and an API key for Claude, ChatGPT or Gemini (see [Pick your AI](#pick-your-ai)).
 
 ```bash
 git clone https://github.com/njarrar/wardrobe-najeeb.git
 cd wardrobe-najeeb
 npm install
-cp .env.example .env     # then put your key in ANTHROPIC_API_KEY
+cp .env.example .env
 npm run dev              # http://localhost:5173
 ```
+
+Open the gear icon, pick an AI and paste its key. You can also put the key in `.env` instead (see [Settings](#settings)).
 
 To run the built app instead:
 
@@ -114,7 +121,7 @@ The server refuses to listen on your network without a token. The browser and th
 The app ships as a single container. All data (closet, photos, cutouts, outfits, the cutout model cache) lives in one folder you mount at `/data`, so it sits on your NAS and is covered by your normal backups.
 
 ```bash
-cp .env.example .env     # set ANTHROPIC_API_KEY and a long WARDROBE_TOKEN
+cp .env.example .env     # set a long WARDROBE_TOKEN (and an AI key, or add it in the app later)
 docker compose up -d --build
 # open http://<nas-ip>:4173 and enter your token
 ```
@@ -135,7 +142,7 @@ You need:
 
 - A Cloudflare account on the **Workers Paid** plan ($5 a month). Queues need it, and framing each garment image takes more CPU time than the free plan allows.
 - Cloudflare Images turned on (Images, then Transformations, in the dashboard). It removes backgrounds; 5,000 cutouts a month are free.
-- An Anthropic API key.
+- An API key for Claude, ChatGPT or Gemini.
 
 One-time setup:
 
@@ -145,18 +152,33 @@ npx wrangler r2 bucket create wardrobe
 npx wrangler d1 create wardrobe        # copy the database_id it prints into wrangler.jsonc
 npx wrangler queues create wardrobe-jobs
 npm run cf:migrate                     # creates the tables
-npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put WARDROBE_TOKEN # pick a long random string
 npm run cf:deploy
 ```
 
-Open the `workers.dev` address it prints and enter your token. To copy a closet you built on your computer:
+Open the `workers.dev` address it prints, enter your token, then pick an AI and paste its key under the gear icon. (Worker secrets such as `ANTHROPIC_API_KEY` still work if you prefer them.) To copy a closet you built on your computer:
 
 ```bash
 WARDROBE_TOKEN=your-token npm run cf:upload -- https://wardrobe.your-name.workers.dev
 ```
 
-Run `npm run cf:deploy` again after each update. To try the Worker on your computer first, put `WARDROBE_TOKEN` and `ANTHROPIC_API_KEY` in `.dev.vars`, run `npx wrangler d1 migrations apply wardrobe --local`, then `npm run cf:dev`. Local Cloudflare Images can resize but not remove backgrounds, so cutouts keep their background there.
+Run `npm run cf:migrate` and `npm run cf:deploy` again after each update (2.2 adds a `settings` table). To try the Worker on your computer first, put `WARDROBE_TOKEN` in `.dev.vars`, run `npx wrangler d1 migrations apply wardrobe --local`, then `npm run cf:dev`. Local Cloudflare Images can resize but not remove backgrounds, so cutouts keep their background there.
+
+## Pick your AI
+
+Open the gear icon, then under **AI** pick **Claude**, **ChatGPT** or **Gemini**, paste its API key and press **Save**. The pick and the key apply to every device that uses this server, including the iPhone app. You can also change the model, or leave it empty for the default.
+
+![AI settings](docs/screenshots/ai-settings.png)
+
+| AI | Get a key | Default model |
+| --- | --- | --- |
+| Claude (Anthropic) | [console.anthropic.com](https://console.anthropic.com/settings/keys) | `claude-opus-5` |
+| ChatGPT (OpenAI) | [platform.openai.com](https://platform.openai.com/api-keys) | `gpt-6.1-sol` |
+| Gemini (Google) | [aistudio.google.com](https://aistudio.google.com/apikey) | `gemini-3.8-flash` |
+
+**Why a key and not a login?** A ChatGPT Plus, Gemini or Claude plan lets you sign in to that company's own apps, but none of them lets other apps use the plan. Apps like this one need an API key, which is billed by use on its own account. A few dollars of credit goes a long way here.
+
+**Where the key is kept.** On your computer or NAS it goes in `data/settings.json`, which only the server's user can read. On Cloudflare it goes in your D1 database. The app never sends a whole key back to the browser; Settings shows only its last four characters. A key in `.env` (or a Worker secret) still works, and a key saved in the app takes its place until you remove it. Anyone with your `WARDROBE_TOKEN` can change the keys, so keep the token private.
 
 ## iPhone app
 
@@ -192,13 +214,14 @@ The import skill finds each garment, cuts it out, checks every cutout, then writ
 | Local server and API | `scripts/import-job-api.mjs`, `scripts/serve.mjs` |
 | Rules shared by the server and the Worker (item edits, outfits) | `shared/core.mjs` |
 | Cloudflare Worker (R2, D1, Queue, Images) | `worker/`, `wrangler.jsonc` |
-| Claude calls (finding clothes, styling outfits) | `shared/claude.mjs` |
+| AI calls for Claude, ChatGPT and Gemini (finding clothes, styling outfits) | `shared/ai.mjs` |
+| AI picker in Settings | `src/AiSettings.jsx` |
 | iPhone app (Capacitor) | `ios/` |
 | Docker image and Synology setup | `Dockerfile`, `docker/`, `docker-compose.yml`, `docs/synology.md` |
 | Image publishing (GHCR, amd64 + arm64) | `.github/workflows/docker.yml` |
 | Claude Code skills | `.claude/skills/` |
 
-Claude calls use `claude-opus-5` with structured JSON output. If Claude declines to read a photo, the API retries on the model Anthropic recommends (`fallbacks: "default"`).
+All three AIs answer in structured JSON against the same schema. Claude calls use `claude-opus-5`, and if Claude declines to read a photo the API retries on the model Anthropic recommends (`fallbacks: "default"`). ChatGPT calls use OpenAI Chat Completions with a strict JSON schema; Gemini calls use `generateContent` with a JSON response schema. Both go through plain `fetch`, so they run the same on Node and on Cloudflare.
 
 Your photos and closet stay in `data/` on your computer (or in your own R2 and D1 on Cloudflare). `data/` is never committed.
 
@@ -206,8 +229,13 @@ Your photos and closet stay in `data/` on your computer (or in your own R2 and D
 
 | Variable | Default |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Required |
+| `WARDROBE_AI_PROVIDER` | `claude`, `openai` or `gemini`. Used until you pick one in the app; otherwise the first AI with a key |
+| `ANTHROPIC_API_KEY` | Claude key (or add it in the app) |
+| `OPENAI_API_KEY` | ChatGPT key (or add it in the app) |
+| `GEMINI_API_KEY` | Gemini key (or add it in the app) |
 | `WARDROBE_CLAUDE_MODEL` | `claude-opus-5` |
+| `WARDROBE_OPENAI_MODEL` | `gpt-6.1-sol` |
+| `WARDROBE_GEMINI_MODEL` | `gemini-3.8-flash` |
 | `WARDROBE_CUTOUT_MODEL` | `onnx-community/BiRefNet_lite` (computer only) |
 | `WARDROBE_DATA_DIR` | `data` |
 | `WARDROBE_HOST` | `127.0.0.1` |
@@ -220,7 +248,7 @@ Your photos and closet stay in `data/` on your computer (or in your own R2 and D
 ## Tests
 
 ```bash
-npm test           # API and image tests, with a stand-in for the Claude API
+npm test           # API and image tests, with a stand-in for the Claude, OpenAI and Gemini APIs
 npm run check      # build, then test
 ```
 

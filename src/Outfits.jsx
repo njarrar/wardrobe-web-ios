@@ -3,7 +3,7 @@ import { Check, CoatHanger, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X 
 import { apiFetch, assetUrl } from "./api.js";
 import "./outfits.css";
 
-// The Outfits tab: outfits Claude styles, outfits built by hand, an occasion
+// The Outfits tab: outfits the AI styles, outfits built by hand, an occasion
 // filter, and a viewer where an outfit can be edited or deleted.
 
 const PART_ORDER = ["wholebody_up", "upperbody", "lowerbody", "shoes", "accessories_up"];
@@ -66,7 +66,7 @@ function StyleForm({ busy, onStyle, onCompose, canCompose }) {
       </label>
       <button type="submit" disabled={busy}>
         {busy ? <SpinnerGap size={15} className="import-spinner" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
-        {busy ? "Claude is styling" : "Style new outfits"}
+        {busy ? "Styling" : "Style new outfits"}
       </button>
       <div className="outfit-style-form__footer">
         <div className="outfit-prompts" aria-label="Ideas">
@@ -252,11 +252,11 @@ export function OutfitGallery({ items, onSelectGarment }) {
   const style = async ({ count, notes }) => {
     setStyling(true); setError(""); setNotice("");
     try {
-      const value = await sendJson("/api/import/outfits/generate", "POST", { count, notes }, "Claude could not style outfits.");
+      const value = await sendJson("/api/import/outfits/generate", "POST", { count, notes }, "Could not style outfits.");
       const created = value.outfits || [];
       setOutfits((current) => [...(current || []), ...created]);
-      if (!created.length) setNotice("Claude found no new combinations. Add more pieces and try again.");
-      else if (created.length < count) setNotice(`Claude found ${created.length} new ${created.length === 1 ? "outfit" : "outfits"} in your wardrobe.`);
+      if (!created.length) setNotice("No new combinations found. Add more pieces and try again.");
+      else if (created.length < count) setNotice(`Found ${created.length} new ${created.length === 1 ? "outfit" : "outfits"} in your wardrobe.`);
     } catch (requestError) { setError(requestError.message); }
     finally { setStyling(false); }
   };
@@ -307,7 +307,7 @@ export function OutfitGallery({ items, onSelectGarment }) {
       )}
       {error && <p className="status error">{error}</p>}
       {notice && <p className="status">{notice}</p>}
-      {!outfits.length && !styling && <p className="status empty">No outfits yet. Ask Claude to style some looks, or build your own.</p>}
+      {!outfits.length && !styling && <p className="status empty">No outfits yet. Press Style new outfits, or build your own.</p>}
 
       <section className="outfit-grid" aria-label="Outfits">
         {shown.map((outfit) => (

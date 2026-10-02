@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowCounterClockwise, Camera, Check, Crop, Plus, SpinnerGap, Trash, UploadSimple, WarningCircle, X } from "@phosphor-icons/react";
-import { apiFetch, assetUrl } from "./api.js";
+import { AI_CHANGED_EVENT, apiFetch, assetUrl } from "./api.js";
 import "./import-flow.css";
 
 const API = "/api/import/jobs";
@@ -128,6 +128,13 @@ export function WardrobeImportFlow({ onGarmentApproved }) {
   const cameraRef = useRef(null);
   const showCamera = canUseCamera();
 
+  // Settings can switch the AI or add its key while this screen is open.
+  useEffect(() => {
+    const reload = () => api(CONFIG_API).then(setSetup).catch((requestError) => setSetup({ ready: false, error: requestError.message }));
+    window.addEventListener(AI_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(AI_CHANGED_EVENT, reload);
+  }, []);
+
   useEffect(() => {
     api(CONFIG_API).then(setSetup).catch((requestError) => setSetup({ ready: false, error: requestError.message }));
     api(API)
@@ -229,9 +236,7 @@ export function WardrobeImportFlow({ onGarmentApproved }) {
   const setupRequired = setup?.ready === false;
   const setupMessage = !setup ? null : setup.error
     ? setup.error
-    : setup.storage === "cloudflare"
-      ? "Add your Anthropic API key to the Worker with npx wrangler secret put ANTHROPIC_API_KEY."
-      : "Add your Anthropic API key to .env as ANTHROPIC_API_KEY, then restart the app.";
+    : `Open Settings (the gear at the top), pick Claude, ChatGPT or Gemini, and paste its API key.${setup.providerName ? ` ${setup.providerName} is picked now but has no key.` : ""}`;
   const activeStatus = setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
   const readyCount = jobs.filter((job) => deriveStatus(job).tone === "ready").length;
   const selectedReviewJob = jobs.find((job) => job.id === selectedReviewId && reviewStageFor(job));

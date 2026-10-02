@@ -5,7 +5,7 @@ description: Put together complete outfits from the clothes already in this Ward
 
 # Style outfits
 
-Build outfits from `data/library.json` and save them to `data/outfits.json`. The app shows each one on the Outfits tab as a collage of its garment cutouts. The app's own "Style new outfits" button does the same through the Anthropic API; this skill does it in Claude Code with no API key.
+Build outfits from `data/library.json` and save them to `data/outfits.json`. The app shows each one on the Outfits tab as a collage of its garment cutouts. The app's own "Style new outfits" button does the same through the AI picked in Settings (Claude, ChatGPT or Gemini); this skill does it in Claude Code with no API key.
 
 ## Before you start
 

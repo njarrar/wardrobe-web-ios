@@ -1150,3 +1150,19 @@ body.viewer-open .import-tray { display: none; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* AI settings                                                         */
+/* ------------------------------------------------------------------ */
+.ai-settings { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.ai-settings h3 { margin: 0; font-size: 16px; font-weight: 620; }
+.ai-settings__lead { margin: 4px 0 12px; color: var(--muted); font-size: 13px; }
+.ai-switch { display: flex; width: 100%; }
+.ai-switch button { flex: 1; justify-content: center; }
+.ai-switch button:disabled { cursor: progress; }
+.ai-settings__form { display: grid; gap: 12px; margin-top: 14px; }
+.ai-settings__status { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: 13px; }
+.ai-settings__status.is-ok { color: var(--success); }
+.ai-settings__form .settings-actions { margin-top: 0; }
+.ai-settings__error { margin: 0; color: var(--danger); font-size: 13px; }
+.ai-settings .settings-note a { color: var(--accent); font-weight: 560; }
