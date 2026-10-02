@@ -3,7 +3,8 @@
 #
 # 1. Create the folder /volume1/docker/wardrobe (File Station) and put this
 #    project there, or point "build" at a published image instead.
-# 2. Copy .env.example to .env and fill in ANTHROPIC_API_KEY and WARDROBE_TOKEN.
+# 2. Copy .env.example to .env and set WARDROBE_TOKEN. Add your AI key there
+#    or later in the app (gear icon, AI).
 # 3. Open http://<NAS-IP>:4173 in a browser, or enter that address in the
 #    iPhone app. See docs/synology.md for HTTPS and remote access.
 

@@ -4,6 +4,8 @@
 const SERVER_KEY = "wardrobe-server-url";
 const TOKEN_KEY = "wardrobe-token";
 export const AUTH_EVENT = "wardrobe:auth-required";
+// Sent when Settings switches the AI or changes its key.
+export const AI_CHANGED_EVENT = "wardrobe:ai-changed";
 
 function read(key) {
   try { return localStorage.getItem(key) || ""; } catch { return ""; }

@@ -8,7 +8,7 @@ export default defineConfig(({ command, mode }) => {
   const host = env.WARDROBE_HOST || "127.0.0.1";
   const hasToken = Boolean(env.WARDROBE_TOKEN?.trim());
   if (command === "serve" && !isLoopbackHost(host) && !hasToken) {
-    throw new Error(`WARDROBE_HOST=${host} would expose your wardrobe and Anthropic key to your network. Set WARDROBE_TOKEN in .env first.`);
+    throw new Error(`WARDROBE_HOST=${host} would expose your wardrobe and AI keys to your network. Set WARDROBE_TOKEN in .env first.`);
   }
   return {
     optimizeDeps: {

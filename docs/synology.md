@@ -16,7 +16,8 @@ your NAS. The web app and the iPhone app both talk to the same container.
 - An Intel/AMD **or** ARM64 Synology (for example DS224+, DS423+, DS923+, DS1522+,
   DS220j/DS223j on ARM64). 2 GB RAM or more is recommended for on-device background
   removal; 1 GB models should build with `WITH_CUTOUT: "false"`.
-- An Anthropic API key (for finding clothes and styling outfits).
+- An API key for Claude, ChatGPT or Gemini (for finding clothes and styling outfits).
+  You can paste it in the app later.
 
 ## 1. Put the project on the NAS
 
@@ -27,9 +28,13 @@ your NAS. The web app and the iPhone app both talk to the same container.
 3. Copy `.env.example` to `.env` and set at least:
 
    ```bash
-   ANTHROPIC_API_KEY=sk-ant-...
    WARDROBE_TOKEN=<a long random string>   # e.g. from: openssl rand -hex 24
    ```
+
+   Add your AI key once the app is running: gear icon, **AI**, pick Claude,
+   ChatGPT or Gemini, paste the key. (Or put `ANTHROPIC_API_KEY`,
+   `OPENAI_API_KEY` or `GEMINI_API_KEY` in `.env`.) The app keeps it in
+   `data/settings.json`, so include that file in your backups.
 
    Optionally set `PUID`/`PGID` to your DSM user (SSH in and run `id`; the first
    admin account is usually `1026:100`) so you can open the files in File Station.
@@ -109,7 +114,7 @@ Cloudflare instead, see `npm run cf:upload` in the README.
 | Symptom | Fix |
 | --- | --- |
 | Container stops with "Refusing to listen … without WARDROBE_TOKEN" | Set `WARDROBE_TOKEN` in `.env`, then rebuild/restart the project. |
-| "Setup required" when adding clothes | `ANTHROPIC_API_KEY` is missing from `.env`. |
+| "Setup required" when adding clothes | The AI picked in Settings has no key. Open the gear icon, then **AI**, and paste one. |
 | `EACCES: permission denied` in the logs | Set `PUID`/`PGID` to your DSM user, or give that user read/write on `docker/wardrobe/data`. |
 | iPhone app says it cannot reach the server | Check the IP/port in a Safari tab first: `http://<NAS-IP>:4173/api/health` should show `{"ok":true,…}`. Make sure the phone is on the same Wi-Fi (or Tailscale/VPN). Allow port 4173 in Control Panel → Security → Firewall if the firewall is on. |
 | Cutouts fail or the container restarts during an import | The NAS ran out of memory. Raise `mem_limit`, or rebuild with `WITH_CUTOUT: "false"` and use **Keep background**. |

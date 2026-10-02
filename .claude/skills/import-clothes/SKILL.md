@@ -5,7 +5,7 @@ description: Find each garment in a folder of photos, cut it out of its backgrou
 
 # Import clothes
 
-Turn photos of clothes (laid flat, hanging, or worn) into clean transparent PNG cutouts and add them to `data/library.json`. You find the garments yourself by looking at the photos, so no Anthropic API key is needed for this skill.
+Turn photos of clothes (laid flat, hanging, or worn) into clean transparent PNG cutouts and add them to `data/library.json`. You find the garments yourself by looking at the photos, so no API key is needed for this skill.
 
 ## Before you start
 

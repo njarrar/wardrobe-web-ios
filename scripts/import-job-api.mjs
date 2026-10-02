@@ -14,7 +14,7 @@ import {
   stageState,
   tokensMatch,
 } from "../shared/core.mjs";
-import { CLAUDE_IMAGE_EDGE, createClaude, detectClothing, styleOutfits } from "../shared/claude.mjs";
+import { AI_IMAGE_EDGE, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, styleOutfits } from "../shared/ai.mjs";
 
 export { isLoopbackHost };
 
@@ -108,9 +108,9 @@ export async function frameTransparentGarment(bytes, canvasSize = 1024, occupanc
     .toBuffer();
 }
 
-// Claude reads images up to 1568px on the long edge; send a JPEG that size.
-async function imageForClaude(bytes) {
-  const data = await sharp(bytes).resize(CLAUDE_IMAGE_EDGE, CLAUDE_IMAGE_EDGE, { fit: "inside", withoutEnlargement: true }).flatten({ background: "#ffffff" }).jpeg({ quality: 88 }).toBuffer();
+// The AI reads images up to 1568px on the long edge; send a JPEG that size.
+async function imageForAi(bytes) {
+  const data = await sharp(bytes).resize(AI_IMAGE_EDGE, AI_IMAGE_EDGE, { fit: "inside", withoutEnlargement: true }).flatten({ background: "#ffffff" }).jpeg({ quality: 88 }).toBuffer();
   return data.toString("base64");
 }
 
@@ -138,9 +138,9 @@ export async function removeBackground(bytes, model, { cacheDir } = {}) {
   return sharp(Buffer.from(output.data), { raw: { width: output.width, height: output.height, channels: 4 } }).png().toBuffer();
 }
 
-async function atomicJson(file, value) {
+async function atomicJson(file, value, mode) {
   const tmp = `${file}.${randomUUID()}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, mode ? { mode } : undefined);
   try {
     await rename(tmp, file);
   } catch (error) {
@@ -160,23 +160,28 @@ export function createWardrobeApi(options = {}) {
   let libraryAssetDir;
   let outfitsFile;
   let outfitAssetDir;
+  let settingsFile;
   let writeQueue = Promise.resolve();
-  let claude = null;
   const running = new Map();
   const setting = (name, fallback = "") => options.env?.[name] || process.env[name] || fallback;
-  const claudeModel = () => setting("WARDROBE_CLAUDE_MODEL");
   const cutout = options.removeBackground || ((bytes) => removeBackground(bytes, setting("WARDROBE_CUTOUT_MODEL", DEFAULT_CUTOUT_MODEL), { cacheDir: setting("WARDROBE_MODEL_CACHE") || undefined }));
 
-  function claudeClient() {
-    const apiKey = setting("ANTHROPIC_API_KEY").trim();
-    if (!apiKey) throw Object.assign(new Error("Setup required: add ANTHROPIC_API_KEY to .env, then restart the app."), { status: 503 });
-    if (!claude) claude = createClaude({ apiKey, baseURL: setting("ANTHROPIC_BASE_URL") || undefined });
-    return claude;
+  // The AI picked in Settings and the keys pasted there live in
+  // data/settings.json (readable by the server's user only). Keys in .env or
+  // the container environment still work when nothing is saved.
+  async function loadAiSettings() {
+    try { return JSON.parse(await readFile(settingsFile, "utf8")).ai || {}; }
+    catch (error) { if (error.code === "ENOENT") return {}; throw error; }
+  }
+
+  async function currentAi() {
+    return resolveAi(await loadAiSettings(), setting);
   }
 
   async function setupStatus() {
-    const hasApiKey = Boolean(setting("ANTHROPIC_API_KEY").trim());
-    return { ready: hasApiKey, hasApiKey, storage: "local" };
+    const ai = publicAiSettings(await loadAiSettings(), setting);
+    const selected = ai.providers.find((entry) => entry.id === ai.provider);
+    return { ready: ai.ready, hasApiKey: ai.ready, provider: ai.provider, providerName: selected.name, storage: "local" };
   }
 
   async function loadJob(id) {
@@ -333,6 +338,25 @@ export function createWardrobeApi(options = {}) {
       if (url.pathname === "/api/import/config" && req.method === "GET") {
         return json(res, 200, await setupStatus());
       }
+      if (url.pathname === "/api/import/settings/ai" && req.method === "GET") {
+        return json(res, 200, publicAiSettings(await loadAiSettings(), setting));
+      }
+      // Asking for JSON makes a browser check with the server first, so a web
+      // page on another site cannot change the keys behind your back.
+      if (url.pathname === "/api/import/settings/ai" && req.method === "PUT") {
+        if (!String(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) {
+          throw Object.assign(new Error("Send settings as application/json"), { status: 415 });
+        }
+        const input = await body(req, 16 * 1024);
+        const saved = await serially(async () => {
+          const next = applyAiSettingsEdit(await loadAiSettings(), input);
+          let file = {};
+          try { file = JSON.parse(await readFile(settingsFile, "utf8")); } catch (error) { if (error.code !== "ENOENT") throw error; }
+          await atomicJson(settingsFile, { ...file, ai: next }, 0o600);
+          return next;
+        });
+        return json(res, 200, publicAiSettings(saved, setting));
+      }
       if (url.pathname === "/api/import/outfits" && req.method === "GET") {
         return json(res, 200, (await loadOutfitRecords()).map(outfitForClient));
       }
@@ -350,9 +374,9 @@ export function createWardrobeApi(options = {}) {
         if (!items.some((item) => item.part === "upperbody") || !items.some((item) => item.part === "lowerbody")) {
           throw Object.assign(new Error("Add at least one top and one bottom before styling outfits."), { status: 409 });
         }
-        const client = claudeClient();
+        const ai = await currentAi();
         const existing = await loadOutfitRecords();
-        const created = await styleOutfits(client, { model: claudeModel(), items, outfits: existing, count, notes });
+        const created = await styleOutfits(ai, { items, outfits: existing, count, notes });
         await updateOutfits((outfits) => ({ outfits: [...outfits, ...created] }));
         return json(res, 201, { outfits: created.map(outfitForClient) });
       }
@@ -433,10 +457,10 @@ export function createWardrobeApi(options = {}) {
         return res.end(await readFile(file));
       }
       if (url.pathname === API_ROOT && req.method === "POST") {
-        const client = claudeClient();
+        const ai = requireAi(await currentAi());
         const image = decodeImage(await body(req));
         const normalizedImage = await normalizeImage(image.data);
-        const detected = await detectClothing(client, { model: claudeModel(), imageBase64: await imageForClaude(normalizedImage), mediaType: "image/jpeg" });
+        const detected = await detectClothing(ai, { imageBase64: await imageForAi(normalizedImage), mediaType: "image/jpeg" });
         const jobs = [];
         for (const metadata of detected) {
           const id = randomUUID();
@@ -528,6 +552,7 @@ export function createWardrobeApi(options = {}) {
     libraryAssetDir = path.join(dataDir, "imported");
     outfitsFile = path.join(dataDir, "outfits.json");
     outfitAssetDir = path.join(dataDir, "outfit-images");
+    settingsFile = path.join(dataDir, "settings.json");
     await mkdir(jobsDir, { recursive: true });
     await mkdir(libraryAssetDir, { recursive: true });
     const ids = await readdir(jobsDir).catch(() => []);
