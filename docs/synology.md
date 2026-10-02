@@ -49,7 +49,7 @@ your NAS. The web app and the iPhone app both talk to the same container.
 
 Prefer not to build on the NAS? Publish the image with the included GitHub
 workflow (`.github/workflows/docker.yml`), then in `docker-compose.yml` replace the
-`build:` block with `image: ghcr.io/<you>/wardrobe:latest`.
+`build:` block with `image: ghcr.io/<you>/<repo>:latest` (for example `ghcr.io/njarrar/wardrobe-najeeb:latest`).
 
 Command line equivalent (over SSH):
 

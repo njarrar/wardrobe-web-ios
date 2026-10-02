@@ -27,8 +27,8 @@ Or with the GitHub CLI: `gh repo create wardrobe-web-ios --private --source . --
 ## After pushing
 
 - **Never commit `.env`** (it holds your API key and token). `.gitignore` already excludes it, along with `data/`, `node_modules/` and `dist/`.
-- The **Docker image** workflow (`.github/workflows/docker.yml`) runs on every push to `main` and publishes `ghcr.io/<your-user>/wardrobe:latest`.
+- The **Docker image** workflow (`.github/workflows/docker.yml`) runs on every push to `main` and publishes `ghcr.io/<your-user>/<repo-name>:latest`, named after the repository.
   - Check it under the repo's **Actions** tab.
-  - If the repo is private, the image is private too. Either make the package public (your profile → Packages → wardrobe → Package settings), or log in on the NAS with a personal access token (`read:packages`).
-- To use the published image on the NAS, edit `docker-compose.yml`: comment out the `build:` block and uncomment `image: ghcr.io/<your-user>/wardrobe:latest`.
+  - If the repo is private, the image is private too. Either make the package public (your profile → Packages → <repo-name> → Package settings), or log in on the NAS with a personal access token (`read:packages`).
+- To use the published image on the NAS, edit `docker-compose.yml`: comment out the `build:` block and uncomment `image: ghcr.io/<your-user>/<repo-name>:latest`.
 - If your GitHub username isn't `njarrar`, update the clone URL in `README.md` and the image name in `docker-compose.yml`.

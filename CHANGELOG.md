@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+- The Docker image workflow failed with `denied: permission_denied` because every copy of this repo pushed to the same `ghcr.io/<owner>/wardrobe` package, which belongs to only one of them. The image is now named after the repository, for example `ghcr.io/njarrar/wardrobe-najeeb`.
+
 ## 2.2.0 (Pick your AI)
 
 ### AI
