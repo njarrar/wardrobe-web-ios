@@ -15,7 +15,7 @@ services:
       args:
         WITH_CUTOUT: "true"   # "false" = smaller image, no on-device background removal
     # Or use a prebuilt image (see .github/workflows/docker.yml):
-    # image: ghcr.io/njarrar/wardrobe:latest
+    # image: ghcr.io/njarrar/wardrobe-web-ios:latest
     container_name: wardrobe
     restart: unless-stopped
     ports:
