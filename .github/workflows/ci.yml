@@ -19,3 +19,34 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+        env:
+          SCREENSHOT_DIR: screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phone-screenshots
+          path: screenshots
+          if-no-files-found: ignore
+
+  # Builds the iOS app for the simulator, without signing, so a broken
+  # Xcode project shows up on the pull request instead of at release time.
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: npm ci
+      - run: npx vite build && npx cap sync ios
+      - run: >
+          xcodebuild -project ios/App/App.xcodeproj -scheme App
+          -configuration Release -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO build

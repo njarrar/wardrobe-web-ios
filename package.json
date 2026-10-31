@@ -11,13 +11,16 @@
     "start": "node scripts/serve.mjs",
     "preview": "vite preview",
     "test": "node --test test/*.test.mjs",
-    "check": "npm run build && npm test",
-    "ios:sync": "vite build && cap sync ios",
+    "check": "npm run build && npm test && node scripts/sync-version.mjs --check",
+    "ios:sync": "node scripts/sync-version.mjs && vite build && cap sync ios",
     "ios": "npm run ios:sync && cap open ios",
     "cf:dev": "vite build && wrangler dev",
     "cf:deploy": "vite build && wrangler deploy",
     "cf:migrate": "wrangler d1 migrations apply wardrobe --remote",
-    "cf:upload": "node scripts/upload-to-cloudflare.mjs"
+    "cf:upload": "node scripts/upload-to-cloudflare.mjs",
+    "test:ui": "node --test test/ui/*.test.mjs",
+    "version:sync": "node scripts/sync-version.mjs",
+    "version": "node scripts/sync-version.mjs && git add ios"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
@@ -31,14 +34,18 @@
     "ipx": "^3.1.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "sharp": "^0.34.5",
-    "vite": "6.4.3"
+    "sharp": "^0.35.5",
+    "vite": "6.4.5"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
-    "wrangler": "^4.142.0"
+    "wrangler": "^4.142.0",
+    "playwright": "1.63.0"
   },
   "optionalDependencies": {
     "@huggingface/transformers": "^4.3.0"
+  },
+  "overrides": {
+    "sharp": "$sharp"
   }
 }

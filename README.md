@@ -184,7 +184,7 @@ Open the gear icon, then under **AI** pick **Claude**, **ChatGPT** or **Gemini**
 
 The `ios/` folder holds a Capacitor app that shows the same closet. Point it at your NAS container (e.g. `http://192.168.1.20:4173` at home, or your HTTPS reverse-proxy / Tailscale address anywhere), your Cloudflare Worker, or the server on your computer (set `WARDROBE_HOST` and `WARDROBE_TOKEN` first, see above).
 
-You need a Mac with Xcode 16 or newer:
+You need a Mac with Xcode 26 or newer (the App Store needs the iOS 26 SDK):
 
 ```bash
 npm install
@@ -249,7 +249,9 @@ Your photos and closet stay in `data/` on your computer (or in your own R2 and D
 
 ```bash
 npm test           # API and image tests, with a stand-in for the Claude, OpenAI and Gemini APIs
-npm run check      # build, then test
+npm run check      # build, test, and check the iOS app has the same version
+npm run test:ui    # open the built app on a phone-sized screen (needs Playwright's Chromium)
+npm version 2.3.0  # bump the version everywhere, including the iOS app
 ```
 
 ## Changelog
