@@ -68,12 +68,34 @@ export function apiUrl(path) {
   return `${serverUrl()}${path}`;
 }
 
-// Image tags cannot send headers, so API images carry the token in the URL.
+// Image tags cannot send headers, so image links carry a short-lived image
+// key from the server instead of the token. Servers older than 2.3 have no
+// image keys and still take the token in the link.
+let images = { params: "", expires: 0 };
+
+export async function ensureImageKey() {
+  const token = accessToken();
+  if (!token) { images = { params: "", expires: 0 }; return; }
+  // Renew once less than two hours are left, so open screens never hold a
+  // key that is about to run out.
+  if (images.expires - 2 * 60 * 60 > Date.now() / 1000) return;
+  try {
+    const response = await apiFetch("/api/import/image-key", { cache: "no-store" });
+    if (response.status === 404) {
+      images = { params: `token=${encodeURIComponent(token)}`, expires: Infinity };
+      return;
+    }
+    const value = await response.json();
+    images = value.key
+      ? { params: `k=${value.key}&e=${value.expires}`, expires: value.expires }
+      : { params: "", expires: Infinity };
+  } catch { /* images will ask again on the next load */ }
+}
+
 export function assetUrl(path) {
   if (!path || typeof path !== "string" || !path.startsWith("/api/")) return path;
-  const token = accessToken();
   const url = apiUrl(path);
-  return token ? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}` : url;
+  return images.params ? `${url}${url.includes("?") ? "&" : "?"}${images.params}` : url;
 }
 
 export async function apiFetch(path, options = {}) {

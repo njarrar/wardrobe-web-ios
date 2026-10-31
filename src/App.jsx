@@ -6,7 +6,7 @@ import { OutfitGallery } from "./Outfits.jsx";
 import { ConnectScreen } from "./ConnectScreen.jsx";
 import { SettingsSheet } from "./SettingsSheet.jsx";
 import { AiConsentPrompt } from "./AiConsentPrompt.jsx";
-import { AUTH_EVENT, apiFetch, isNativeApp, needsServerUrl } from "./api.js";
+import { AUTH_EVENT, apiFetch, ensureImageKey, isNativeApp, needsServerUrl } from "./api.js";
 
 const LEGACY_EDITS_KEY = "open-wardrobe-edits-v1";
 const LEGACY_DELETED_KEY = "open-wardrobe-deleted-v1";
@@ -645,7 +645,13 @@ function Wardrobe({ onConnectionFailed }) {
   }, [sort]);
 
   useEffect(() => {
-    apiFetch("/api/import/wardrobe", { cache: "no-store" })
+    const timer = setInterval(ensureImageKey, 30 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    ensureImageKey()
+      .then(() => apiFetch("/api/import/wardrobe", { cache: "no-store" }))
       .then((response) => {
         if (!response.ok) throw new Error("Could not load the wardrobe.");
         return response.json();

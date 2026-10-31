@@ -176,3 +176,36 @@ export function normalizeBoundingBox(value = {}) {
 export function stageState() {
   return { status: "pending", decision: null, attempts: 0, assetUrl: null, error: null, updatedAt: null };
 }
+
+// Image tags cannot send an Authorization header, so image links carry a
+// short-lived key instead of the access token itself. The key is an HMAC of
+// its expiry time made with the token, so it opens images only, only until
+// it expires, and a leaked link never reveals the token.
+export const IMAGE_KEY_SECONDS = 12 * 60 * 60;
+const IMAGE_PATH = /^\/api\/import\/(?:library|assets|outfits)\/[^?#]+\.(?:png|jpe?g|webp)$/i;
+
+export function isImagePath(pathname = "") {
+  return IMAGE_PATH.test(pathname);
+}
+
+export async function imageKey(token, expires) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`wardrobe-images:${expires}`));
+  return [...new Uint8Array(signature)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function newImageKey(token, now = Date.now()) {
+  const expires = Math.floor(now / 1000) + IMAGE_KEY_SECONDS;
+  return { key: await imageKey(token, expires), expires };
+}
+
+// True when a GET for an image carries a key that is valid right now.
+export async function imageKeyMatches(token, url, now = Date.now()) {
+  if (!token || !isImagePath(url.pathname)) return false;
+  const expires = Number(url.searchParams.get("e"));
+  const given = url.searchParams.get("k");
+  if (!Number.isInteger(expires) || !given || expires < Math.floor(now / 1000)) return false;
+  if (expires > Math.floor(now / 1000) + IMAGE_KEY_SECONDS + 60) return false;
+  return tokensMatch(await imageKey(token, expires), given);
+}
