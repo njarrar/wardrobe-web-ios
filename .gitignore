@@ -11,3 +11,5 @@ data/
 
 # Store screenshots are made on demand (npm run store:screenshots)
 store/screenshots/
+# Store setup notes are kept private, outside the repo
+store/*.md

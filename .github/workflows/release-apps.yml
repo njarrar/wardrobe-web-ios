@@ -3,7 +3,7 @@
 # or by hand from the Actions tab ("Run workflow").
 #
 # Secrets it needs (Settings > Secrets and variables > Actions), see
-# store/README.md for where each one comes from:
+# the private store notes for where each one comes from:
 #   APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8
 #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
 #   ANDROID_KEY_PASSWORD, PLAY_SERVICE_ACCOUNT_JSON
@@ -58,7 +58,7 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
-            if [ -z "${!name}" ]; then echo "::error::Add the $name secret first (see store/README.md)"; exit 1; fi
+            if [ -z "${!name}" ]; then echo "::error::Add the $name secret first (see the store setup notes)"; exit 1; fi
           done
       - run: npm ci
       - run: node scripts/sync-version.mjs
@@ -127,7 +127,7 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON; do
-            if [ -z "${!name}" ]; then echo "::error::Add the $name secret first (see store/README.md)"; exit 1; fi
+            if [ -z "${!name}" ]; then echo "::error::Add the $name secret first (see the store setup notes)"; exit 1; fi
           done
       - run: npm ci
       - run: node scripts/sync-version.mjs
