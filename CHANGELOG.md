@@ -21,7 +21,7 @@
 
 ### Releases
 - `Release apps` workflow: a GitHub release builds both apps and uploads them to TestFlight and the Google Play internal track.
-- Store text, review notes, privacy answers and setup steps in `store/`, privacy policy in `docs/privacy.md`.
+- Privacy policy in `docs/privacy.md`.
 - `npm run store:screenshots` makes iPhone, iPad and Android screenshots from a drawn sample closet or your own server. `npm run store:graphics` makes the Play icon and feature graphic.
 
 ### Tests
