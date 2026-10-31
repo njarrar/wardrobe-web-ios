@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Wardrobe</string>
+    <string name="title_activity_main">Wardrobe</string>
+    <string name="package_name">com.njarrar.wardrobe</string>
+    <string name="custom_url_scheme">com.njarrar.wardrobe</string>
+</resources>

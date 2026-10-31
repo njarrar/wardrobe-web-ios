@@ -27,6 +27,7 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 **[Synology NAS](#run-it-on-your-synology-nas-docker)** ·
 **[Cloudflare](#run-it-on-cloudflare)** ·
 **[iPhone app](#iphone-app)** ·
+**[Android app](#android-app)** ·
 **[Settings](#settings)**
 
 ## What's new in 2.2
@@ -195,6 +196,19 @@ In Xcode, pick your team under Signing & Capabilities, choose your iPhone, and p
 
 On any phone, the add button offers **Take photo** next to **Choose images**. Photos are turned upright and shrunk to 2048 px before upload.
 
+## Android app
+
+The `android/` folder holds the same Capacitor app for Android. It connects to your server the same way as the iPhone app, including plain `http://` addresses on home Wi-Fi.
+
+You need Android Studio (or the Android SDK and Java 21):
+
+```bash
+npm install
+npm run android    # builds the web app, copies it into android/, opens Android Studio
+```
+
+Pick a phone or emulator and press Run. To change the icon, edit the shirt in `scripts/make-android-icons.mjs` and run `node scripts/make-android-icons.mjs`.
+
 ## Claude Code skills
 
 Two skills in `.claude/skills` let [Claude Code](https://claude.com/claude-code) work on your closet without an API key, because Claude Code looks at your photos itself:
@@ -217,6 +231,7 @@ The import skill finds each garment, cuts it out, checks every cutout, then writ
 | AI calls for Claude, ChatGPT and Gemini (finding clothes, styling outfits) | `shared/ai.mjs` |
 | AI picker in Settings | `src/AiSettings.jsx` |
 | iPhone app (Capacitor) | `ios/` |
+| Android app (Capacitor) | `android/` |
 | Docker image and Synology setup | `Dockerfile`, `docker/`, `docker-compose.yml`, `docs/synology.md` |
 | Image publishing (GHCR, amd64 + arm64) | `.github/workflows/docker.yml` |
 | Claude Code skills | `.claude/skills/` |

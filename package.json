@@ -14,16 +14,19 @@
     "check": "npm run build && npm test && node scripts/sync-version.mjs --check",
     "ios:sync": "node scripts/sync-version.mjs && vite build && cap sync ios",
     "ios": "npm run ios:sync && cap open ios",
+    "android:sync": "node scripts/sync-version.mjs && vite build && cap sync android",
+    "android": "npm run android:sync && cap open android",
     "cf:dev": "vite build && wrangler dev",
     "cf:deploy": "vite build && wrangler deploy",
     "cf:migrate": "wrangler d1 migrations apply wardrobe --remote",
     "cf:upload": "node scripts/upload-to-cloudflare.mjs",
     "test:ui": "node --test test/ui/*.test.mjs",
     "version:sync": "node scripts/sync-version.mjs",
-    "version": "node scripts/sync-version.mjs && git add ios"
+    "version": "node scripts/sync-version.mjs && git add ios android"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "@capacitor/android": "^8.5.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
     "@fontsource-variable/instrument-sans": "^5.2.8",
@@ -39,8 +42,8 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
-    "wrangler": "^4.142.0",
-    "playwright": "1.63.0"
+    "playwright": "1.63.0",
+    "wrangler": "^4.142.0"
   },
   "optionalDependencies": {
     "@huggingface/transformers": "^4.3.0"
