@@ -209,6 +209,10 @@ npm run android    # builds the web app, copies it into android/, opens Android 
 
 Pick a phone or emulator and press Run. To change the icon, edit the shirt in `scripts/make-android-icons.mjs` and run `node scripts/make-android-icons.mjs`.
 
+## Releasing to the app stores
+
+Publish a GitHub release and the **Release apps** workflow builds both phone apps and uploads them to TestFlight and the Google Play internal test track. One-time setup (accounts, keys, GitHub secrets), store text, privacy answers and screenshots are all in [store/README.md](store/README.md). The privacy policy is [docs/privacy.md](docs/privacy.md).
+
 ## Claude Code skills
 
 Two skills in `.claude/skills` let [Claude Code](https://claude.com/claude-code) work on your closet without an API key, because Claude Code looks at your photos itself:

@@ -326,7 +326,7 @@ function ColorControl({ label, field, value, palette, onChange, sampling, setSam
       </label>
       <div className="suggestion-heading">
         <span>Image suggestions</span>
-        <small>Click to apply</small>
+        <small>Tap one to use it</small>
       </div>
       <div className="palette" aria-label={`${label} suggestions from image`}>
         {palette.map((color) => (

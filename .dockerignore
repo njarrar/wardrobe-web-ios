@@ -14,3 +14,5 @@ docs
 *.log
 Dockerfile
 docker-compose*.yml
+android
+store

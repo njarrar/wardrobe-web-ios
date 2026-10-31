@@ -22,7 +22,9 @@
     "cf:upload": "node scripts/upload-to-cloudflare.mjs",
     "test:ui": "node --test test/ui/*.test.mjs",
     "version:sync": "node scripts/sync-version.mjs",
-    "version": "node scripts/sync-version.mjs && git add ios android"
+    "version": "node scripts/sync-version.mjs && git add ios android",
+    "store:screenshots": "vite build && node scripts/store-screenshots.mjs",
+    "store:graphics": "node scripts/store-graphics.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
