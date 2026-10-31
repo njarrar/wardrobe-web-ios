@@ -38,7 +38,7 @@ export function SettingsSheet({ onClose, pieces }) {
     ...current,
     config: { ...current.config, ready: ai.ready, provider: ai.provider, providerName: ai.providers.find((entry) => entry.id === ai.provider)?.name },
   }));
-  const storage = config.storage === "cloudflare" ? "Cloudflare (R2 + D1)" : "Server disk (e.g. your NAS volume)";
+  const storage = config.storage === "cloudflare" ? "Cloudflare" : "Your server";
   const version = status.server?.version;
 
   return (
@@ -48,7 +48,7 @@ export function SettingsSheet({ onClose, pieces }) {
         <header className="settings-sheet__header">
           <div>
             <p className="eyebrow">Settings</p>
-            <h2 id="settings-title">Your wardrobe server</h2>
+            <h2 id="settings-title">Your wardrobe</h2>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close settings"><X size={20} aria-hidden="true" /></button>
         </header>
@@ -69,9 +69,9 @@ export function SettingsSheet({ onClose, pieces }) {
 
         <dl className="settings-list">
           <div><dt>Pieces</dt><dd>{pieces}</dd></div>
-          <div><dt>Photos stored on</dt><dd>{status.state === "ok" ? storage : "—"}</dd></div>
-          <div><dt>AI styling</dt><dd>{status.state !== "ok" ? "—" : config.ready ? `Ready (${config.providerName || "Claude"})` : `Add a ${config.providerName || "Claude"} key below`}</dd></div>
-          <div><dt>Protected by token</dt><dd>{typeof status.server?.protected !== "boolean" ? "—" : status.server.protected ? "Yes" : "No, this computer only"}</dd></div>
+          <div><dt>Photos stored on</dt><dd>{status.state === "ok" ? storage : "-"}</dd></div>
+          <div><dt>AI styling</dt><dd>{status.state !== "ok" ? "-" : config.ready ? `Ready (${config.providerName || "Claude"})` : `Add a ${config.providerName || "Claude"} key below`}</dd></div>
+          <div><dt>Protected by token</dt><dd>{typeof status.server?.protected !== "boolean" ? "-" : status.server.protected ? "Yes" : "No, this computer only"}</dd></div>
           {version && <div><dt>Server version</dt><dd>{version}</dd></div>}
         </dl>
 
@@ -92,8 +92,8 @@ export function SettingsSheet({ onClose, pieces }) {
 
         <p className="settings-note">
           {native
-            ? "Tip: at home, connect straight to your NAS (http://NAS-IP:4173). Away from home, use an HTTPS address from DSM's reverse proxy with a Synology DDNS name, or Tailscale."
-            : "Everything you add is saved on this server. Open the same address from any browser, or connect the iPhone app to it."}
+            ? "At home, use your server's address on Wi-Fi (for example http://192.168.1.20:4173). Away from home, use an HTTPS address, such as a Synology DDNS name or Tailscale."
+            : "Everything you add is saved on this server. Open the same address in any browser, or connect the phone app to it."}
         </p>
       </section>
     </div>

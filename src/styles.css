@@ -1166,3 +1166,93 @@ body.viewer-open .import-tray { display: none; }
 .ai-settings__form .settings-actions { margin-top: 0; }
 .ai-settings__error { margin: 0; color: var(--danger); font-size: 13px; }
 .ai-settings .settings-note a { color: var(--accent); font-weight: 560; }
+
+/* ------------------------------------------------------------------ */
+/* Store build: first-run help, AI consent, phone tab bar              */
+/* ------------------------------------------------------------------ */
+.connect-needs {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 13.5px;
+}
+.connect-needs strong { font-size: 13.5px; font-weight: 600; }
+.connect-needs ol { display: grid; gap: 4px; margin: 0; padding-left: 20px; color: var(--ink-soft); }
+.connect-needs a { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-weight: 560; text-decoration: none; }
+
+.consent-overlay { z-index: 120; }
+.consent-sheet { display: grid; gap: 12px; }
+.consent-sheet__icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.consent-sheet h2 { margin: 0; font-size: 21px; font-weight: 640; letter-spacing: -0.02em; }
+.consent-sheet__body { display: grid; gap: 8px; color: var(--ink-soft); font-size: 14px; line-height: 1.5; }
+.consent-sheet__body p { margin: 0; }
+.consent-sheet__body a { color: var(--accent); }
+.consent-sheet__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.consent-sheet__actions button { min-width: 110px; justify-content: center; }
+
+.outfit-style-form__hint { margin: 0; color: var(--muted); font-size: 13px; }
+
+/* The picked view reads clearly in light and dark, like the type chips. */
+.view-switch button.active {
+  background: var(--ink);
+  color: var(--on-ink);
+  box-shadow: var(--shadow-sm);
+}
+.view-switch button.active:hover { color: var(--on-ink); }
+
+/* Phones: Closet and Outfits move to a tab bar at the bottom, and the
+   header scrolls away with the page so the clothes get the screen. */
+@media (max-width: 620px) {
+  :root { --tabbar-h: 58px; }
+
+  /* A blur on the header would pin the tab bar to the header instead of
+     the screen, and the header no longer floats over content here. */
+  .topbar { position: relative; -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg); }
+  .gallery-pane { padding-bottom: calc(var(--tabbar-h) + 96px + env(safe-area-inset-bottom)); }
+
+  .view-switch {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    order: 0;
+    width: auto;
+    padding: 6px 12px env(safe-area-inset-bottom);
+    gap: 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    background: var(--bg);
+  }
+  .view-switch button,
+  .view-switch button.active {
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-height: calc(var(--tabbar-h) - 12px);
+    padding: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    box-shadow: none;
+    font-size: 11px;
+    font-weight: 560;
+  }
+  .view-switch button svg { width: 24px; height: 24px; }
+  .view-switch button.active,
+  .view-switch button.active:hover { color: var(--ink); }
+
+  .import-tray { bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom)); }
+  .import-popover { z-index: 80; }
+}

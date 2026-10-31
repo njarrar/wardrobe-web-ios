@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, CoatHanger, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
 import { apiFetch, assetUrl } from "./api.js";
+import { askAiConsent, useAiSetup } from "./ai-setup.js";
 import "./outfits.css";
 
 // The Outfits tab: outfits the AI styles, outfits built by hand, an occasion
@@ -49,7 +50,7 @@ function Collage({ pieces }) {
   );
 }
 
-function StyleForm({ busy, onStyle, onCompose, canCompose }) {
+function StyleForm({ busy, ready, onStyle, onCompose, canCompose }) {
   const [count, setCount] = useState(4);
   const [notes, setNotes] = useState("");
   return (
@@ -64,10 +65,11 @@ function StyleForm({ busy, onStyle, onCompose, canCompose }) {
         <span>Anything in mind? <em>optional</em></span>
         <input id="outfit-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Weekend in the city, cool weather" maxLength={500} disabled={busy} />
       </label>
-      <button type="submit" disabled={busy}>
+      <button type="submit" disabled={busy || !ready} aria-describedby={ready ? undefined : "outfit-needs-key"}>
         {busy ? <SpinnerGap size={15} className="import-spinner" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
         {busy ? "Styling" : "Style new outfits"}
       </button>
+      {!ready && <p className="outfit-style-form__hint" id="outfit-needs-key">To style outfits, add an AI key in Settings (the gear at the top). You can still build your own.</p>}
       <div className="outfit-style-form__footer">
         <div className="outfit-prompts" aria-label="Ideas">
           {QUICK_PROMPTS.map((prompt) => (
@@ -199,6 +201,7 @@ function OutfitBuilder({ items, onClose, onCreated }) {
 }
 
 export function OutfitGallery({ items, onSelectGarment }) {
+  const setup = useAiSetup();
   const [outfits, setOutfits] = useState(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
@@ -250,6 +253,7 @@ export function OutfitGallery({ items, onSelectGarment }) {
   }, [occasion, occasions]);
 
   const style = async ({ count, notes }) => {
+    if (!(await askAiConsent(setup))) return;
     setStyling(true); setError(""); setNotice("");
     try {
       const value = await sendJson("/api/import/outfits/generate", "POST", { count, notes }, "Could not style outfits.");
@@ -292,7 +296,7 @@ export function OutfitGallery({ items, onSelectGarment }) {
 
   return (
     <>
-      <StyleForm busy={styling} onStyle={style} canCompose={items.length >= 2} onCompose={() => setBuilding(true)} />
+      <StyleForm busy={styling} ready={Boolean(setup?.ready)} onStyle={style} canCompose={items.length >= 2} onCompose={() => setBuilding(true)} />
       {occasions.length > 0 && (
         <nav className="category-nav outfit-occasions" aria-label="Filter outfits by occasion">
           <button type="button" className={occasion === "all" ? "active" : ""} aria-pressed={occasion === "all"} onClick={() => setOccasion("all")}>
@@ -307,7 +311,7 @@ export function OutfitGallery({ items, onSelectGarment }) {
       )}
       {error && <p className="status error">{error}</p>}
       {notice && <p className="status">{notice}</p>}
-      {!outfits.length && !styling && <p className="status empty">No outfits yet. Press Style new outfits, or build your own.</p>}
+      {!outfits.length && !styling && <p className="status empty">{setup?.ready ? "No outfits yet. Press Style new outfits, or build your own." : "No outfits yet. Build your own to start."}</p>}
 
       <section className="outfit-grid" aria-label="Outfits">
         {shown.map((outfit) => (

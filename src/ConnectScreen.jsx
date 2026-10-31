@@ -1,12 +1,21 @@
 import { useState } from "react";
-import { CheckCircle, CoatHanger, Globe, HardDrives, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
+import { ArrowSquareOut, CheckCircle, CoatHanger, Globe, HardDrives, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
 import { accessToken, isNativeApp, normalizeServerUrl, saveConnection, serverUrl, testConnection } from "./api.js";
 
 const MESSAGES = {
-  setup: "Connect to the server that stores your closet — your Synology NAS at home, or a web deployment.",
-  token: "This wardrobe is protected. Enter the WARDROBE_TOKEN you set on the server.",
+  setup: "Your closet, kept on your own server.",
+  token: "This wardrobe is protected. Enter the access token you set on the server.",
   unreachable: "Could not reach your wardrobe. Check the address, and that the server is running.",
 };
+
+const SETUP_GUIDE = "https://github.com/njarrar/wardrobe-web-ios#run-it-on-your-synology-nas-docker";
+
+// What a new person needs before this screen can do anything.
+const NEEDS = [
+  "A Wardrobe server on your NAS, a computer, or Cloudflare",
+  "Its address",
+  "Its access token (WARDROBE_TOKEN)",
+];
 
 const FAILURES = {
   unreachable: "No answer from that address. On home Wi-Fi use the NAS IP and port (for example 192.168.1.20:4173). Away from home, use your HTTPS address.",
@@ -53,6 +62,14 @@ export function ConnectScreen({ reason }) {
           </div>
         </div>
 
+        {native && reason !== "token" && (
+          <div className="connect-needs">
+            <strong>What you need</strong>
+            <ol>{NEEDS.map((need) => <li key={need}>{need}</li>)}</ol>
+            <a href={SETUP_GUIDE} target="_blank" rel="noreferrer">How to set up a server <ArrowSquareOut size={14} aria-hidden="true" /></a>
+          </div>
+        )}
+
         {native && (
           <label className="field">
             <span>Server address</span>
@@ -90,7 +107,7 @@ export function ConnectScreen({ reason }) {
             autoComplete="current-password"
             value={token}
             onChange={(event) => setToken(event.target.value)}
-            placeholder="WARDROBE_TOKEN"
+            placeholder="Your access token"
             required={native || reason === "token"}
           />
         </label>
