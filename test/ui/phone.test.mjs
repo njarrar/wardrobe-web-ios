@@ -59,6 +59,18 @@ async function snap(page, name) {
   if (shots) await page.screenshot({ path: path.join(shots, `${name}.png`) });
 }
 
+async function startServer(dataDir, env = {}) {
+  const port = await freePort();
+  const base = `http://127.0.0.1:${port}`;
+  const child = spawn(process.execPath, ["scripts/serve.mjs"], {
+    cwd: root,
+    env: { ...process.env, PORT: String(port), WARDROBE_HOST: "127.0.0.1", WARDROBE_TOKEN: "", WARDROBE_DATA_DIR: dataDir, ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "", GEMINI_API_KEY: "", WARDROBE_AI_PROVIDER: "", ...env },
+    stdio: "ignore",
+  });
+  await waitForServer(base, child);
+  return { base, child };
+}
+
 describe("phone screens", () => {
   let dataDir;
   let server;
@@ -69,14 +81,7 @@ describe("phone screens", () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), "wardrobe-ui-"));
     await seed(dataDir);
     if (shots) await mkdir(shots, { recursive: true });
-    const port = await freePort();
-    base = `http://127.0.0.1:${port}`;
-    server = spawn(process.execPath, ["scripts/serve.mjs"], {
-      cwd: root,
-      env: { ...process.env, PORT: String(port), WARDROBE_HOST: "127.0.0.1", WARDROBE_TOKEN: "", WARDROBE_DATA_DIR: dataDir, ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "", GEMINI_API_KEY: "" },
-      stdio: "ignore",
-    });
-    await waitForServer(base, server);
+    ({ base, child: server } = await startServer(dataDir));
     browser = await chromium.launch();
   });
 
@@ -119,6 +124,28 @@ describe("phone screens", () => {
       await context.close();
     });
   }
+
+  test("asks before any photo goes to the AI", async () => {
+    const withKey = await startServer(dataDir, { ANTHROPIC_API_KEY: "test-key", ANTHROPIC_BASE_URL: "http://127.0.0.1:9" });
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    const generated = [];
+    page.on("request", (request) => { if (request.url().includes("/outfits/generate")) generated.push(request.url()); });
+    try {
+      await page.goto(withKey.base);
+      await page.getByRole("tab", { name: /Outfits/ }).click();
+      await page.getByRole("button", { name: "Style new outfits" }).click();
+      const dialog = page.getByRole("alertdialog", { name: "Send your photos to Claude?" });
+      await dialog.waitFor();
+      await snap(page, "light-6-ai-consent");
+      await dialog.getByRole("button", { name: "Not now" }).click();
+      await dialog.waitFor({ state: "detached" });
+      assert.deepEqual(generated, []);
+    } finally {
+      await context.close();
+      withKey.child.kill();
+    }
+  });
 
   test("the phone app asks for a server first", async () => {
     const context = await browser.newContext({ ...devices["iPhone 13"] });

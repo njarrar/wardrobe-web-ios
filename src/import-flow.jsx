@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowCounterClockwise, Camera, Check, Crop, Plus, SpinnerGap, Trash, UploadSimple, WarningCircle, X } from "@phosphor-icons/react";
-import { AI_CHANGED_EVENT, apiFetch, assetUrl } from "./api.js";
+import { apiFetch, assetUrl } from "./api.js";
+import { askAiConsent, useAiSetup } from "./ai-setup.js";
 import "./import-flow.css";
 
 const API = "/api/import/jobs";
-const CONFIG_API = "/api/import/config";
 const PARTS = [
   ["upperbody", "Tops"],
   ["wholebody_up", "Jackets"],
@@ -124,19 +124,11 @@ export function WardrobeImportFlow({ onGarmentApproved }) {
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(null);
-  const [setup, setSetup] = useState(null);
+  const setup = useAiSetup();
   const cameraRef = useRef(null);
   const showCamera = canUseCamera();
 
-  // Settings can switch the AI or add its key while this screen is open.
   useEffect(() => {
-    const reload = () => api(CONFIG_API).then(setSetup).catch((requestError) => setSetup({ ready: false, error: requestError.message }));
-    window.addEventListener(AI_CHANGED_EVENT, reload);
-    return () => window.removeEventListener(AI_CHANGED_EVENT, reload);
-  }, []);
-
-  useEffect(() => {
-    api(CONFIG_API).then(setSetup).catch((requestError) => setSetup({ ready: false, error: requestError.message }));
     api(API)
       .then((storedJobs) => {
         const visibleJobs = storedJobs.filter((job) => job.status !== "complete" && job.stages?.crop?.status !== "rejected" && job.stages?.garment?.status !== "rejected");
@@ -164,7 +156,8 @@ export function WardrobeImportFlow({ onGarmentApproved }) {
     if (!setup?.ready) { setOpen(true); return; }
     const images = [...files].filter((file) => file.type.startsWith("image/"));
     if (!images.length) return;
-    setDragging(false); setError(""); setNotice(null);
+    setDragging(false);
+    if (!(await askAiConsent(setup))) return; setError(""); setNotice(null);
     for (const file of images) {
       try {
         const imageDataUrl = await prepareImage(file);
@@ -236,8 +229,10 @@ export function WardrobeImportFlow({ onGarmentApproved }) {
   const setupRequired = setup?.ready === false;
   const setupMessage = !setup ? null : setup.error
     ? setup.error
-    : `Open Settings (the gear at the top), pick Claude, ChatGPT or Gemini, and paste its API key.${setup.providerName ? ` ${setup.providerName} is picked now but has no key.` : ""}`;
-  const activeStatus = setupRequired ? { tone: "error", text: "Setup required" } : active ? deriveStatus(active) : notice;
+    : `Wardrobe uses an AI to find each piece in your photos. Open Settings (the gear at the top), pick Claude, ChatGPT or Gemini, and paste its API key.${setup.providerName ? ` ${setup.providerName} is picked now but has no key.` : ""}`;
+  // With no AI key the button still says "Add clothes"; tapping it explains
+  // what to set up instead of covering the closet with a warning.
+  const activeStatus = active ? deriveStatus(active) : notice;
   const readyCount = jobs.filter((job) => deriveStatus(job).tone === "ready").length;
   const selectedReviewJob = jobs.find((job) => job.id === selectedReviewId && reviewStageFor(job));
   const reviewJob = selectedReviewJob || jobs.find((job) => reviewStageFor(job)) || active;
@@ -257,7 +252,7 @@ export function WardrobeImportFlow({ onGarmentApproved }) {
       <div className="import-popover-backdrop" data-open={open} onMouseDown={(event) => event.target === event.currentTarget && setOpen(false)}>
         <section className="import-popover" role="dialog" aria-modal="true" aria-labelledby="import-title">
           <header className="import-popover__header"><div><p className="import-popover__eyebrow">Wardrobe import</p><h2 className="import-popover__title" id="import-title">{readyCount ? `${readyCount} ready for review` : activeStatus?.tone === "error" ? "Import needs attention" : jobs.length ? "Preparing new pieces" : notice?.text || "Add to your wardrobe"}</h2></div><button className="import-icon-button" type="button" onClick={() => setOpen(false)} aria-label="Close import progress"><X size={20} /></button></header>
-          {!jobs.length ? setupRequired ? <div className="import-drop-target import-setup-warning"><WarningCircle size={30} /><h2>Setup required</h2><p>{setupMessage}</p></div> : <div className="import-drop-target"><UploadSimple size={28} /><h2>{notice ? "Try another image" : "Choose or paste an image"}</h2><p>{notice?.detail || "We’ll isolate each clothing item, suggest its details, and hold everything for your approval."}</p><div className="import-actions"><button className="import-button import-button--primary" disabled={!setup?.ready} onClick={() => { setNotice(null); inputRef.current?.click(); }}>Choose images</button>{showCamera && <button className="import-button" disabled={!setup?.ready} onClick={() => { setNotice(null); cameraRef.current?.click(); }}><Camera size={14} /> Take photo</button>}</div></div> : (
+          {!jobs.length ? setupRequired ? <div className="import-drop-target import-setup-warning"><WarningCircle size={30} /><h2>Add an AI key first</h2><p>{setupMessage}</p></div> : <div className="import-drop-target"><UploadSimple size={28} /><h2>{notice ? "Try another image" : "Choose or paste an image"}</h2><p>{notice?.detail || "We’ll isolate each clothing item, suggest its details, and hold everything for your approval."}</p><div className="import-actions"><button className="import-button import-button--primary" disabled={!setup?.ready} onClick={() => { setNotice(null); inputRef.current?.click(); }}>Choose images</button>{showCamera && <button className="import-button" disabled={!setup?.ready} onClick={() => { setNotice(null); cameraRef.current?.click(); }}><Camera size={14} /> Take photo</button>}</div></div> : (
             <>
               <div className={`import-progress${activeStatus?.tone !== "processing" ? " is-reviewing" : progress < 100 ? " is-indeterminate" : ""}`}><div className="import-progress__meta"><span>{activeStatus?.text}</span><span>{jobs.length} {jobs.length === 1 ? "item" : "items"}</span></div>{activeStatus?.tone === "processing" && <div className="import-progress__track"><div className="import-progress__bar" style={{ "--import-progress": `${progress}%` }} /></div>}</div>
               {reviewJob && reviewStage ? <ReviewEditor job={reviewJob} stage={reviewStage} draft={drafts[reviewJob.id] || defaultDraft(reviewJob)} setDraft={(draft) => setDrafts((current) => ({ ...current, [reviewJob.id]: draft }))} busy={busyId === reviewJob.id} onAction={(action) => perform(reviewJob, reviewStage, action)} /> : null}

@@ -5,6 +5,7 @@ import { OptimizedImage } from "./OptimizedImage.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
 import { ConnectScreen } from "./ConnectScreen.jsx";
 import { SettingsSheet } from "./SettingsSheet.jsx";
+import { AiConsentPrompt } from "./AiConsentPrompt.jsx";
 import { AUTH_EVENT, apiFetch, isNativeApp, needsServerUrl } from "./api.js";
 
 const LEGACY_EDITS_KEY = "open-wardrobe-edits-v1";
@@ -514,7 +515,7 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
     if (!sampling || !samplingCanvasRef.current) return;
     const color = sampleImageColor(event.currentTarget, samplingCanvasRef.current, event);
     if (!color) {
-      setSampleStatus("That spot is transparent—try directly on the garment.");
+      setSampleStatus("That spot is see-through. Tap right on the garment.");
       return;
     }
     const targetField = sampling === "secondary" ? "secondaryColor" : "color";
@@ -856,8 +857,8 @@ function Wardrobe({ onConnectionFailed }) {
           <div className="empty-state">
             <span className="empty-state__icon" aria-hidden="true"><CoatHanger size={34} weight="light" /></span>
             <h2>Your closet is empty</h2>
-            <p>Drop, paste, or snap a photo of a piece — or a whole outfit — and it will be cut out and added here.</p>
-            <p className="empty-state__hint"><Plus size={14} aria-hidden="true" /> Use the add button in the corner to start.</p>
+            <p>Add a photo of one piece or a whole outfit. Each piece is cut out and added here.</p>
+            <p className="empty-state__hint"><Plus size={14} aria-hidden="true" /> Tap Add clothes to start.</p>
           </div>
         )}
 
@@ -887,6 +888,7 @@ function Wardrobe({ onConnectionFailed }) {
       {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} />}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} />}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} />
+      <AiConsentPrompt />
     </div>
   );
 }
