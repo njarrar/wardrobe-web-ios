@@ -12,6 +12,8 @@ import {
   normalizeMetadata,
   publicJob,
   stageState,
+  imageKeyMatches,
+  newImageKey,
   tokensMatch,
 } from "../shared/core.mjs";
 import { AI_IMAGE_EDGE, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, styleOutfits } from "../shared/ai.mjs";
@@ -240,12 +242,15 @@ export function createWardrobeApi(options = {}) {
     return { ...outfit, image: fileName ? `${OUTFIT_ASSET_ROOT}/${fileName}` : null };
   }
 
-  function authorize(req, url) {
+  // The token comes in the Authorization header; image links use a
+  // short-lived image key instead (see imageKeyMatches in shared/core.mjs).
+  async function authorize(req, url) {
     const token = setting("WARDROBE_TOKEN").trim();
     if (!token) return isLoopbackHost(req.headers.host);
     const header = req.headers.authorization || "";
     const bearer = header.startsWith("Bearer ") ? header.slice(7) : null;
-    return tokensMatch(token, bearer) || tokensMatch(token, url.searchParams.get("token"));
+    if (tokensMatch(token, bearer)) return true;
+    return req.method === "GET" && imageKeyMatches(token, url);
   }
 
   function applyCors(req, res) {
@@ -330,8 +335,13 @@ export function createWardrobeApi(options = {}) {
       res.statusCode = 204;
       return res.end();
     }
-    if (!authorize(req, url)) return json(res, 401, { error: "Wardrobe access token required" });
+    if (!(await authorize(req, url))) return json(res, 401, { error: "Wardrobe access token required" });
     try {
+      if (url.pathname === "/api/import/image-key" && req.method === "GET") {
+        const token = setting("WARDROBE_TOKEN").trim();
+        res.setHeader("Cache-Control", "no-store");
+        return json(res, 200, token ? await newImageKey(token) : { key: null });
+      }
       if (url.pathname === "/api/import/wardrobe" && req.method === "GET") {
         return json(res, 200, await loadImported());
       }

@@ -10,6 +10,8 @@ import {
   normalizeMetadata,
   publicJob,
   stageState,
+  imageKeyMatches,
+  newImageKey,
   tokensMatch,
 } from "../shared/core.mjs";
 import { AI_IMAGE_EDGE, AiError, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, styleOutfits } from "../shared/ai.mjs";
@@ -248,10 +250,13 @@ async function serveObject(env, key, cacheControl) {
   });
 }
 
-function authorized(request, url, env) {
+// The token comes in the Authorization header; image links use a
+// short-lived image key instead (see imageKeyMatches in shared/core.mjs).
+async function authorized(request, url, env) {
   const header = request.headers.get("authorization") || "";
   const bearer = header.startsWith("Bearer ") ? header.slice(7) : null;
-  return tokensMatch(env.WARDROBE_TOKEN, bearer) || tokensMatch(env.WARDROBE_TOKEN, url.searchParams.get("token"));
+  if (tokensMatch(env.WARDROBE_TOKEN, bearer)) return true;
+  return request.method === "GET" && imageKeyMatches(env.WARDROBE_TOKEN, url);
 }
 
 async function handleApi(request, env) {
@@ -262,7 +267,8 @@ async function handleApi(request, env) {
   // Open liveness check for the connect screen. The Worker always needs a token.
   if (pathname === "/api/health" && method === "GET") return json(200, { ok: true, app: "wardrobe", version: "cloudflare", protected: true });
   if (!env.WARDROBE_TOKEN) return json(503, { error: "Set the WARDROBE_TOKEN secret on this Worker first." });
-  if (!authorized(request, url, env)) return json(401, { error: "Wardrobe access token required" });
+  if (!(await authorized(request, url, env))) return json(401, { error: "Wardrobe access token required" });
+  if (pathname === "/api/import/image-key" && method === "GET") return json(200, await newImageKey(env.WARDROBE_TOKEN));
 
   if (pathname === "/api/import/wardrobe" && method === "GET") return json(200, await listItems(env));
   if (pathname === "/api/import/config" && method === "GET") return json(200, await setupStatus(env));

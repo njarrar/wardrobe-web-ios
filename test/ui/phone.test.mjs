@@ -147,6 +147,29 @@ describe("phone screens", () => {
     }
   });
 
+  test("images load with a token, and the link never holds it", async () => {
+    const guarded = await startServer(dataDir, { WARDROBE_TOKEN: "s3cret-token" });
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    const imageUrls = [];
+    page.on("request", (request) => { if (request.resourceType() === "image") imageUrls.push(request.url()); });
+    await page.addInitScript((server) => {
+      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios" };
+      localStorage.setItem("wardrobe-server-url", server);
+      localStorage.setItem("wardrobe-token", "s3cret-token");
+    }, guarded.base);
+    try {
+      await page.goto(guarded.base);
+      await page.getByText("White oxford shirt").waitFor();
+      await page.waitForFunction(() => [...document.images].filter((image) => image.src.includes("/api/import/library/")).every((image) => image.complete && image.naturalWidth > 0));
+      assert.ok(imageUrls.some((url) => url.includes("/api/import/library/")));
+      assert.ok(imageUrls.every((url) => !url.includes("s3cret-token")));
+    } finally {
+      await context.close();
+      guarded.child.kill();
+    }
+  });
+
   test("the phone app asks for a server first", async () => {
     const context = await browser.newContext({ ...devices["iPhone 13"] });
     const page = await context.newPage();

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import { createWardrobeApi, isLoopbackHost } from "../scripts/import-job-api.mjs";
+import { imageKey } from "../shared/core.mjs";
 import { startMockAi } from "./mock-ai.mjs";
 
 async function startServer(env, options = {}) {
@@ -150,9 +151,24 @@ describe("wardrobe api with a token", () => {
     assert.equal((await fetch(`${ctx.base}/api/import/wardrobe`, { headers: { Authorization: "Bearer nope" } })).status, 401);
   });
 
-  test("accepts the token as a header or query parameter", async () => {
+  test("accepts the token as a header, never in the link", async () => {
     assert.equal((await fetch(`${ctx.base}/api/import/wardrobe`, { headers: { Authorization: "Bearer s3cret" } })).status, 200);
-    assert.equal((await fetch(`${ctx.base}/api/import/wardrobe?token=s3cret`)).status, 200);
+    assert.equal((await fetch(`${ctx.base}/api/import/wardrobe?token=s3cret`)).status, 401);
+  });
+
+  test("image keys open images only, and only until they expire", async () => {
+    await mkdir(path.join(ctx.dataDir, "imported"), { recursive: true });
+    await writeFile(path.join(ctx.dataDir, "imported", "a-garment.png"), Buffer.from("png"));
+    const response = await fetch(`${ctx.base}/api/import/image-key`, { headers: { Authorization: "Bearer s3cret" } });
+    assert.equal(response.status, 200);
+    const { key, expires } = await response.json();
+    assert.match(key, /^[0-9a-f]{64}$/);
+    assert.ok(!key.includes("s3cret"));
+    assert.equal((await fetch(`${ctx.base}/api/import/library/a-garment.png?k=${key}&e=${expires}`)).status, 200);
+    assert.equal((await fetch(`${ctx.base}/api/import/library/a-garment.png?k=${key}&e=${expires + 1}`)).status, 401);
+    assert.equal((await fetch(`${ctx.base}/api/import/wardrobe?k=${key}&e=${expires}`)).status, 401);
+    const old = Math.floor(Date.now() / 1000) - 10;
+    assert.equal((await fetch(`${ctx.base}/api/import/library/a-garment.png?k=${await imageKey("s3cret", old)}&e=${old}`)).status, 401);
   });
 
   test("health needs no token and says the server is protected", async () => {
