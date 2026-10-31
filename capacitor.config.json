@@ -5,5 +5,14 @@
   "ios": {
     "contentInset": "never",
     "backgroundColor": "#f5f3ee"
+  },
+  "android": {
+    "backgroundColor": "#f5f3ee",
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "SystemBars": {
+      "initialViewportFitValueHint": "cover"
+    }
   }
 }

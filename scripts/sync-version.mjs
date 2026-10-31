@@ -23,6 +23,13 @@ const projects = [
       ...(build ? [[/CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${build};`]] : []),
     ],
   },
+  {
+    file: "android/app/build.gradle",
+    rules: [
+      [/versionName "[^"]*"/g, `versionName "${version}"`],
+      ...(build ? [[/versionCode \d+/g, `versionCode ${build}`]] : []),
+    ],
+  },
 ];
 
 let stale = [];
