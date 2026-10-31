@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased
+## 2.3.0 (Ready for the app stores)
+
+### Phone apps
+- New Android app in `android/` (Capacitor, target SDK 36), with the same icon as iOS. It can reach a NAS by IP over plain http on home Wi-Fi.
+- iOS: requires `arm64` instead of `armv7`, declares standard encryption only, adds a privacy manifest and a shared scheme. iPhone and iPad.
+- The app version now follows `package.json`. `npm version` updates the iOS and Android projects too, and `npm run check` fails if they drift.
+
+### Screens
+- Phones: Closet and Outfits move to a bottom tab bar, and the header scrolls with the page.
+- First run in the phone app says what you need and links to the setup guide.
+- Before the first photo or outfit request goes to an AI, the app asks for permission and names the company and its privacy policy.
+- With no AI key, the add button still says Add clothes and explains the key when tapped. Style new outfits waits for a key.
+- The chosen view is clear in dark mode. Plainer wording, no long dashes.
+
+### Security
+- Image links carry a 12-hour image key instead of the access token. The server and the Worker no longer take the token in a link.
+- New `GET /api/import/image-key`.
+- Vite 6.4.5 and sharp 0.35.5 for known security issues.
+
+### Releases
+- `Release apps` workflow: a GitHub release builds both apps and uploads them to TestFlight and the Google Play internal track.
+- Store text, review notes, privacy answers and setup steps in `store/`, privacy policy in `docs/privacy.md`.
+- `npm run store:screenshots` makes iPhone, iPad and Android screenshots from a drawn sample closet or your own server. `npm run store:graphics` makes the Play icon and feature graphic.
+
+### Tests
+- `npm run test:ui` opens the built app at phone size in light and dark mode. CI runs it, and builds the iOS app (simulator) and the Android app on every pull request.
 
 ### Fixes
 - The Docker image workflow failed with `denied: permission_denied` because every copy of this repo pushed to the same `ghcr.io/<owner>/wardrobe` package, which belongs to only one of them. The image is now named after the repository, for example `ghcr.io/njarrar/wardrobe-najeeb`.

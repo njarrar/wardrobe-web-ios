@@ -2,9 +2,9 @@
 
 # Wardrobe
 
-Your closet on the web and on your iPhone. Snap a photo, and the AI you pick (Claude, ChatGPT or Gemini) finds each piece, cuts it out, and styles outfits from what you own.
+Your closet on the web, on iPhone and iPad, and on Android. Snap a photo, and the AI you pick (Claude, ChatGPT or Gemini) finds each piece, cuts it out, and styles outfits from what you own.
 
-[![Version 2.2.0](https://img.shields.io/badge/version-2.2.0-191919?style=flat-square)](CHANGELOG.md)
+[![Version 2.3.0](https://img.shields.io/badge/version-2.3.0-191919?style=flat-square)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-191919?style=flat-square)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-22%2B-191919?style=flat-square)](package.json)
 [![AI: Claude, ChatGPT or Gemini](https://img.shields.io/badge/AI-Claude%20%7C%20ChatGPT%20%7C%20Gemini-191919?style=flat-square)](#pick-your-ai)
@@ -28,9 +28,21 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 **[Cloudflare](#run-it-on-cloudflare)** ·
 **[iPhone app](#iphone-app)** ·
 **[Android app](#android-app)** ·
+**[App stores](#releasing-to-the-app-stores)** ·
 **[Settings](#settings)**
 
-## What's new in 2.2
+## What's new in 2.3
+
+Version 2.3 gets the phone apps ready for the App Store and Google Play. See the [changelog](CHANGELOG.md) for every change.
+
+- **Android app.** The same app now runs on Android phones, next to the iPhone and iPad app. See [Android app](#android-app).
+- **Easier on a phone.** Closet and Outfits sit in a tab bar at the bottom, and the header scrolls away so your clothes get the screen.
+- **Clear first run.** The phone app says what you need (a server, its address and its token) and links to the setup guide.
+- **You say yes before any photo goes to an AI.** The app asks once for each AI and names the company behind it.
+- **Safer image links.** Your access token no longer appears in image links or server logs.
+- **One-button releases.** Publishing a GitHub release builds both phone apps and sends them to TestFlight and Google Play. See [Releasing to the app stores](#releasing-to-the-app-stores).
+
+## What was new in 2.2
 
 - **Pick your AI.** Choose Claude, ChatGPT or Gemini in Settings and paste its API key there. No more editing `.env` and restarting. See [Pick your AI](#pick-your-ai).
 
@@ -53,7 +65,7 @@ Version 2.1 brings together the best of two other builds of this app with our ow
 - **Edit and sort.** Filter by tops, jackets, bottoms, accessories and shoes. Change names, colors and tags at any time.
 - **Search, filter and sort.** Find pieces by name, tag, category or color word, tap a color dot to filter, and sort by category, newest, color or name.
 - **Light and dark.** A clean, modern look that follows your system theme, on desktop and phone.
-- **Self-host it.** Run it as a container on your Synology NAS (or any Docker host) so all photos and data stay at home, or on Cloudflare. The web app, phone browsers and the iPhone app share one closet.
+- **Self-host it.** Run it as a container on your Synology NAS (or any Docker host) so all photos and data stay at home, or on Cloudflare. The web app, phone browsers and the iPhone, iPad and Android apps share one closet.
 
 ## Screenshots
 

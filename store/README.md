@@ -79,7 +79,9 @@ token in the review notes (`store/app-store.md`, `store/google-play.md`).
      15 minutes). Install it with the TestFlight app, then in App Store
      Connect add it to the version and press **Add for Review**.
    - Android: the build is on the internal test track. Install it from the
-     testing link, then **promote** it to closed testing or production.
+     testing link, then **promote** it to closed testing. Production opens
+     only after the 14-day closed test with 12 testers (see
+     `store/google-play.md`).
 
 To build without a release (for example to try a fix), open **Actions >
 Release apps > Run workflow** and pick the platforms. While the Play app has
@@ -96,6 +98,6 @@ Build numbers come from the workflow run number, so they always go up.
   (`node scripts/store-graphics.mjs` makes them).
 - Screenshots: `npm run build`, then
   `node scripts/store-screenshots.mjs` draws a sample closet and saves
-  iPhone and Android screenshots to `store/screenshots/`. To use your real
+  iPhone, iPad and Android screenshots to `store/screenshots/`. To use your real
   closet instead, run it with `WARDROBE_URL=https://your-server
   WARDROBE_TOKEN=... node scripts/store-screenshots.mjs`.

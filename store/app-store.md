@@ -10,6 +10,7 @@ Paste these into App Store Connect. Limits are in brackets.
 - **Age rating**: 4+ (answer No to every question)
 - **Privacy policy URL**: https://github.com/njarrar/wardrobe-web-ios/blob/main/docs/privacy.md
 - **Support URL**: https://github.com/njarrar/wardrobe-web-ios/issues
+- **Contact email for review**: njarrar+closetplay@gmail.com
 
 ## Version text
 
@@ -82,9 +83,12 @@ notes above.
 
 ## Screenshots
 
-Required: 6.9-inch iPhone, 1320 x 2868. Make them with
-`node scripts/store-screenshots.mjs` (see store/README.md).
-If you keep iPad support, 13-inch iPad screenshots are also required.
+The app runs on iPhone and iPad, so both sets are required:
+
+- 6.9-inch iPhone, 1320 x 2868: `store/screenshots/iphone-*.png`
+- 13-inch iPad, 2064 x 2752: `store/screenshots/ipad-*.png`
+
+Make them with `npm run store:screenshots` (see store/README.md).
 
 ## Export compliance
 

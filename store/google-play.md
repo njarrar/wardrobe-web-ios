@@ -10,7 +10,7 @@ Paste these into Play Console. Limits are in brackets.
 - **Feature graphic**: 1024 x 500 PNG, `store/graphics/play-feature-1024x500.png`
 - **Phone screenshots**: 2 to 8, from `node scripts/store-screenshots.mjs`
 - **Category**: Lifestyle
-- **Email**: CONTACT_EMAIL
+- **Email**: njarrar+closetplay@gmail.com
 - **Website**: https://github.com/njarrar/wardrobe-web-ios
 - **Privacy policy**: https://github.com/njarrar/wardrobe-web-ios/blob/main/docs/privacy.md
 
@@ -49,7 +49,13 @@ sends to a service of their own choosing, on their own action, is not
 
 ## Testing before production
 
-If your developer account is a personal account made after 13 November 2023,
+Your developer account is a personal account made after 13 November 2023, so
 Google needs a **closed test with at least 12 testers who stay opted in for
-14 days in a row** before you can apply for production. Start it as soon as
-the first build is in Play Console.
+14 days in a row** before you can apply for production. This is the slowest
+step, so start it as soon as the first build is in Play Console:
+
+1. **Testing > Closed testing > Create track**, add the first build.
+2. Add at least 12 testers by email (a Google Group is easiest) and send them
+   the opt-in link. They must install the app and stay opted in.
+3. After 14 days, **Dashboard > Apply for production** and answer Google's
+   questions about the test.

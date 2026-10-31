@@ -1,7 +1,7 @@
 // Store screenshots from the real app. Run `npm run build` first.
 //   node scripts/store-screenshots.mjs
-// draws a sample closet and saves iPhone (1320 x 2868) and Android
-// (1080 x 1920) screenshots to store/screenshots/. To use your own closet:
+// draws a sample closet and saves iPhone (1320 x 2868), 13-inch iPad
+// (2064 x 2752) and Android (1080 x 1920) screenshots to store/screenshots/. To use your own closet:
 //   WARDROBE_URL=https://your-server WARDROBE_TOKEN=... node scripts/store-screenshots.mjs
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -18,6 +18,7 @@ const outDir = path.join(root, "store/screenshots");
 const DEVICES = {
   iphone: { viewport: { width: 440, height: 956 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
   android: { viewport: { width: 432, height: 768 }, deviceScaleFactor: 2.5, isMobile: true, hasTouch: true },
+  ipad: { viewport: { width: 1032, height: 1376 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 
 async function freePort() {
