@@ -108,3 +108,6 @@ if (listing.android) {
 }
 
 await write(path.join(out, "version.txt"), version);
+// fastlane deliver asks to run its setup wizard (and fails in CI) unless it
+// finds a Deliverfile. This one only names the app; the workflow passes the rest.
+if (listing.ios) await write(path.join(out, "Deliverfile"), 'app_identifier("com.njarrar.wardrobe")');
