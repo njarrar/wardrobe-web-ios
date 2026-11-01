@@ -1,5 +1,7 @@
 # Fills in the App Store and Google Play listings: name, text, review notes,
-# screenshots and the Play graphics. Run it by hand from the Actions tab
+# age rating, screenshots and the Play graphics. With "submit" ticked it also
+# attaches the newest iPhone build and sends it to App Review (released as
+# soon as Apple approves it). Run it by hand from the Actions tab
 # ("Run workflow") whenever the listing or the screenshots change.
 #
 # The listing text lives in the STORE_LISTING_JSON secret, not in this repo
@@ -22,6 +24,10 @@ on:
         default: both
       dry_run:
         description: Only check the listing and make the screenshots, upload nothing
+        type: boolean
+        default: false
+      submit:
+        description: App Store only. Pick the newest processed build and send it for review (App Privacy and the price must already be set)
         type: boolean
         default: false
 
@@ -71,6 +77,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          SUBMIT: ${{ inputs.submit && 'true' || 'false' }}
         run: |
           for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
             if [ -z "${!name}" ]; then echo "::error::Add the $name secret first"; exit 1; fi
@@ -86,7 +93,10 @@ jobs:
             --screenshots_path fastlane/ios/screenshots \
             --overwrite_screenshots true \
             --skip_binary_upload true \
-            --submit_for_review false \
+            --app_rating_config_path fastlane/ios/age-rating.json \
+            --submit_for_review "$SUBMIT" \
+            --automatic_release true \
+            --submission_information '{"add_id_info_uses_idfa": false, "export_compliance_uses_encryption": false, "content_rights_contains_third_party_content": false}' \
             --run_precheck_before_submit false \
             --force true
           rm -f "$key"

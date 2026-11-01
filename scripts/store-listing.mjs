@@ -14,7 +14,7 @@
 //   "ios": {
 //     "name", "subtitle", "promotional_text", "description", "keywords",
 //     "release_notes", "privacy_url", "support_url", "marketing_url",
-//     "copyright", "primary_category", "secondary_category",
+//     "copyright", "primary_category", "secondary_category", "age_rating" (optional),
 //     "review": { "first_name", "last_name", "phone_number", "email_address",
 //                 "demo_user", "demo_password", "notes" }
 //   },
@@ -111,3 +111,20 @@ await write(path.join(out, "version.txt"), version);
 // fastlane deliver asks to run its setup wizard (and fails in CI) unless it
 // finds a Deliverfile. This one only names the app; the workflow passes the rest.
 if (listing.ios) await write(path.join(out, "Deliverfile"), 'app_identifier("com.njarrar.wardrobe")');
+
+// Apple's age rating questions. Wardrobe has none of these, so every answer
+// is "none" or "no". A listing can override any of them under ios.age_rating.
+const AGE_RATING = {
+  alcoholTobaccoOrDrugUseOrReferences: "NONE", contests: "NONE", gamblingSimulated: "NONE",
+  gunsOrOtherWeapons: "NONE", horrorOrFearThemes: "NONE", matureOrSuggestiveThemes: "NONE",
+  medicalOrTreatmentInformation: "NONE", profanityOrCrudeHumor: "NONE",
+  sexualContentGraphicAndNudity: "NONE", sexualContentOrNudity: "NONE",
+  violenceCartoonOrFantasy: "NONE", violenceRealistic: "NONE",
+  violenceRealisticProlongedGraphicOrSadistic: "NONE",
+  advertising: false, ageAssurance: false, gambling: false, healthOrWellnessTopics: false,
+  lootBox: false, messagingAndChat: false, parentalControls: false, socialMedia: false,
+  unrestrictedWebAccess: false, userGeneratedContent: false,
+};
+if (listing.ios) {
+  await write(path.join(out, "ios", "age-rating.json"), JSON.stringify({ ...AGE_RATING, ...listing.ios.age_rating }, null, 2));
+}
