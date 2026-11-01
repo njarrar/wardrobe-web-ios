@@ -223,7 +223,7 @@ Pick a phone or emulator and press Run. To change the icon, edit the shirt in `s
 
 ## Releasing to the app stores
 
-Publish a GitHub release and the **Release apps** workflow builds both phone apps and uploads them to TestFlight and the Google Play internal test track. The workflow needs signing keys stored as GitHub secrets; it names any that are missing. The privacy policy is [docs/privacy.md](docs/privacy.md).
+Publish a GitHub release and the **Release apps** workflow builds both phone apps and uploads them to TestFlight and the Google Play internal test track. The workflow needs signing keys stored as GitHub secrets; it names any that are missing. The **Store listing** workflow (run it by hand) fills in both store listings, with fresh screenshots, from a listing kept in the `STORE_LISTING_JSON` secret. The privacy policy is [docs/privacy.md](docs/privacy.md).
 
 ## Claude Code skills
 

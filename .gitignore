@@ -13,3 +13,5 @@ data/
 store/screenshots/
 # Store setup notes are kept private, outside the repo
 store/*.md
+# Store listing files made by scripts/store-listing.mjs
+fastlane/

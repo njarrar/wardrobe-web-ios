@@ -24,7 +24,8 @@
     "version:sync": "node scripts/sync-version.mjs",
     "version": "node scripts/sync-version.mjs && git add ios android",
     "store:screenshots": "vite build && node scripts/store-screenshots.mjs",
-    "store:graphics": "node scripts/store-graphics.mjs"
+    "store:graphics": "node scripts/store-graphics.mjs",
+    "store:listing": "node scripts/store-listing.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
