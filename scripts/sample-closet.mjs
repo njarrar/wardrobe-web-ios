@@ -88,14 +88,14 @@ export async function writeSampleCloset(dataDir) {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">${SHAPES[shape](color)}</svg>`;
     await sharp(Buffer.from(svg)).png().toFile(path.join(imported, file));
     records.push({
-      id: `sample-${id}`, name, part, color, secondaryColor: null, palette: [color], tags,
+      id: `import-sample-${id}`, name, part, color, secondaryColor: null, palette: [color], tags,
       image: `/api/import/library/${file}`, thumbnail: `/api/import/library/${file}`,
       addedAt: new Date(Date.UTC(2026, 9, 1 + index)).toISOString(),
     });
   }
   await writeFile(path.join(dataDir, "library.json"), JSON.stringify(records, null, 2));
   const outfits = OUTFITS.map(([id, name, occasion, reason, ids], index) => ({
-    id, name, occasion, reason, garmentIds: ids.map((piece) => `sample-${piece}`), image: null,
+    id, name, occasion, reason, garmentIds: ids.map((piece) => `import-sample-${piece}`), image: null,
     createdAt: new Date(Date.UTC(2026, 9, 20 - index)).toISOString(),
   }));
   await writeFile(path.join(dataDir, "outfits.json"), JSON.stringify({ version: 1, outfits }, null, 2));

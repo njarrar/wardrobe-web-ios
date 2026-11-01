@@ -1,0 +1,107 @@
+# Fills in the App Store and Google Play listings: name, text, review notes,
+# screenshots and the Play graphics. Run it by hand from the Actions tab
+# ("Run workflow") whenever the listing or the screenshots change.
+#
+# The listing text lives in the STORE_LISTING_JSON secret, not in this repo
+# (shape: the comment at the top of scripts/store-listing.mjs). It also needs
+# the same store secrets as the Release apps workflow:
+#   App Store: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8
+#   Google Play: PLAY_SERVICE_ACCOUNT_JSON (with "Manage store presence")
+#
+# The apps must already exist in App Store Connect and Play Console, and Play
+# only takes listing changes once the app has its first build.
+name: Store listing
+
+on:
+  workflow_dispatch:
+    inputs:
+      stores:
+        description: Which listings to update
+        type: choice
+        options: [both, app-store, google-play]
+        default: both
+      dry_run:
+        description: Only check the listing and make the screenshots, upload nothing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-listing
+  cancel-in-progress: false
+
+jobs:
+  listing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Make the screenshots
+        run: npm run store:screenshots
+      - name: Check the listing and lay it out for fastlane
+        env:
+          STORE_LISTING_JSON: ${{ secrets.STORE_LISTING_JSON }}
+        run: |
+          if [ -z "$STORE_LISTING_JSON" ]; then echo "::error::Add the STORE_LISTING_JSON secret first"; exit 1; fi
+          node scripts/store-listing.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-screenshots
+          path: store/screenshots/
+          retention-days: 14
+      - uses: ruby/setup-ruby@v1
+        if: ${{ !inputs.dry_run }}
+        with:
+          ruby-version: "3.3"
+      - name: Install fastlane
+        if: ${{ !inputs.dry_run }}
+        run: gem install fastlane --no-document
+
+      - name: Update the App Store listing
+        if: ${{ !inputs.dry_run && inputs.stores != 'google-play' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            if [ -z "${!name}" ]; then echo "::error::Add the $name secret first"; exit 1; fi
+          done
+          key="$RUNNER_TEMP/asc-key.json"
+          node -e 'const e = process.env; process.stdout.write(JSON.stringify({ key_id: e.ASC_KEY_ID, issuer_id: e.ASC_ISSUER_ID, key: e.ASC_KEY_P8, in_house: false }))' > "$key"
+          fastlane deliver \
+            --api_key_path "$key" \
+            --app_identifier com.njarrar.wardrobe \
+            --platform ios \
+            --app_version "$(cat fastlane/version.txt)" \
+            --metadata_path fastlane/ios/metadata \
+            --screenshots_path fastlane/ios/screenshots \
+            --overwrite_screenshots true \
+            --skip_binary_upload true \
+            --submit_for_review false \
+            --run_precheck_before_submit false \
+            --force true
+          rm -f "$key"
+
+      - name: Update the Google Play listing
+        if: ${{ !inputs.dry_run && inputs.stores != 'app-store' }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then echo "::error::Add the PLAY_SERVICE_ACCOUNT_JSON secret first"; exit 1; fi
+          fastlane supply \
+            --package_name com.njarrar.wardrobe \
+            --json_key_data "$PLAY_SERVICE_ACCOUNT_JSON" \
+            --metadata_path fastlane/android \
+            --skip_upload_apk true \
+            --skip_upload_aab true \
+            --skip_upload_changelogs true \
+            --sync_image_upload true
