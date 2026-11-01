@@ -96,8 +96,13 @@ async function api(route, method, body) {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: body && JSON.stringify(body),
     });
-    // A new secret can take a few seconds to reach every Cloudflare location.
-    if (response.status === 401 && attempt < 10) { await new Promise((r) => setTimeout(r, 3000)); continue; }
+    // A new secret can take up to a minute to reach every Cloudflare location.
+    // Until then the Worker answers 503 (no token yet) or 401 (old token).
+    if ((response.status === 401 || response.status === 503) && attempt < 30) {
+      if (attempt === 0) console.log("Waiting for the new token to reach Cloudflare...");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      continue;
+    }
     const value = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`${route}: ${value.error || response.status}`);
     return value;
