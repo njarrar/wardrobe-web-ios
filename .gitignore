@@ -15,3 +15,5 @@ store/screenshots/
 store/*.md
 # Store listing files made by scripts/store-listing.mjs
 fastlane/
+# Made by scripts/demo-server.mjs
+wrangler.demo.jsonc
