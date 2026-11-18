@@ -110,3 +110,20 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 .import-reading--failed { color: var(--danger); }
 .import-reading--failed p { color: inherit; }
 .import-reading--failed .import-actions { margin-top: 12px; justify-content: flex-start; }
+
+/* The read side of a piece's page. */
+.piece-read { display: grid; gap: 18px; margin-top: 14px; }
+.piece-read h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.piece-read__colors { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.piece-read__colors span { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); }
+.piece-read__colors em { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink-soft); font-size: 12.5px; font-style: normal; }
+.piece-read__note p { margin: 0 0 4px; font-size: 15px; line-height: 1.45; }
+.piece-read__row { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.piece-read__row::-webkit-scrollbar { display: none; }
+.piece-read__row button { flex: none; width: 84px; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: start; cursor: pointer; }
+.piece-read__row span { display: grid; place-items: center; height: 84px; border-radius: 16px; background: var(--paper); }
+.piece-read__row img { width: 80%; height: 80%; object-fit: contain; }
+.piece-read__row small { display: block; margin-top: 4px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.piece-read__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin: 0; }
+.piece-read__facts dt { font-size: 12px; color: var(--muted); }
+.piece-read__facts dd { margin: 1px 0 0; font-size: 15px; text-transform: capitalize; }

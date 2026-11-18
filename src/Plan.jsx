@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AirplaneTilt, CalendarBlank, CaretLeft, CaretRight, Plus, Trash, X } from "@phosphor-icons/react";
+import { AirplaneTilt, CalendarBlank, CaretLeft, CaretRight, Check, Plus, Trash, X } from "@phosphor-icons/react";
 import { apiFetch, assetUrl } from "./api.js";
 import { sendJson } from "./wear.js";
 import { CLOSET_CHANGED_EVENT } from "./local/mode.js";
 import {
-  COLOR_RULES, DEFAULT_PLAN_SETTINGS, addDays, dayString, outfitHarmony, packingList, parseDay, planDays, planRepeats,
+  COLOR_RULES, DEFAULT_PLAN_SETTINGS, OCCASIONS, OCCASION_IDS, addDays, dayString, occasionFit, outfitHarmony, packingList, parseDay, planDays, planRepeats, wornByDay,
 } from "../shared/style.mjs";
 import "./plan.css";
 import { formatDay, isRtl, locale, t, tn } from "./i18n.js";
@@ -61,8 +61,15 @@ function Pieces({ outfit, itemsById, size = "small" }) {
   );
 }
 
-function DaySheet({ day, plan, outfits, itemsById, onPick, onClear, onClose }) {
+function DaySheet({ day, plan, outfits, itemsById, worn, past, onPick, onClear, onOccasion, onClose }) {
   const current = outfits.find((outfit) => outfit.id === plan.days[day]);
+  const occasion = plan.occasions?.[day] || "";
+  const wornOutfits = (worn?.outfitIds || []).map((id) => outfits.find((outfit) => outfit.id === id)).filter(Boolean);
+  const loosePieces = (worn?.pieceIds || []).filter((id) => !wornOutfits.some((outfit) => outfit.garmentIds.includes(id))).map((id) => itemsById.get(id)).filter(Boolean);
+  // Outfits that suit the day's occasion come first.
+  const ranked = occasion
+    ? outfits.map((outfit, index) => ({ outfit, index, fit: occasionFit(outfit, outfit.garmentIds.map((id) => itemsById.get(id)), occasion) })).sort((a, b) => b.fit - a.fit || a.index - b.index)
+    : outfits.map((outfit) => ({ outfit, fit: 0 }));
   const recent = new Set(Object.entries(plan.days)
     .filter(([other]) => other !== day && Math.abs((parseDay(other) - parseDay(day)) / 86400000) < plan.settings.restDays)
     .map(([, id]) => id));
@@ -77,16 +84,38 @@ function DaySheet({ day, plan, outfits, itemsById, onPick, onClear, onClose }) {
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label={t("Close day")}><X size={20} aria-hidden="true" /></button>
         </header>
-        {current ? (
+        {(wornOutfits.length > 0 || loosePieces.length > 0) && (
+          <div className="plan-sheet__worn">
+            <h3 className="plan-sheet__title"><Check size={14} weight="bold" aria-hidden="true" /> {t("You wore")}</h3>
+            {wornOutfits.map((outfit) => (
+              <div className="plan-sheet__current" key={outfit.id}><Pieces outfit={outfit} itemsById={itemsById} size="large" /><strong>{outfit.name}</strong></div>
+            ))}
+            {loosePieces.length > 0 && (
+              <div className="plan-sheet__current">
+                <Pieces outfit={{ garmentIds: loosePieces.map((piece) => piece.id) }} itemsById={itemsById} size="large" />
+                <strong>{loosePieces.map((piece) => piece.name).join(", ")}</strong>
+              </div>
+            )}
+          </div>
+        )}
+        {past && !wornOutfits.length && !loosePieces.length && !current && <p className="status">{t("Nothing was logged for this day.")}</p>}
+        {!past && (
+          <div className="plan-occasions" role="group" aria-label={t("What is the day for?")}>
+            {OCCASION_IDS.map((id) => (
+              <button key={id} type="button" className={occasion === id ? "active" : ""} aria-pressed={occasion === id} onClick={() => onOccasion(occasion === id ? "" : id)}>{t(OCCASIONS[id].label)}</button>
+            ))}
+          </div>
+        )}
+        {past ? null : current ? (
           <div className="plan-sheet__current">
             <Pieces outfit={current} itemsById={itemsById} size="large" />
             <strong>{current.name}</strong>
             <button type="button" className="secondary-button" onClick={onClear}><Trash size={14} aria-hidden="true" /> {t("Clear this day")}</button>
           </div>
         ) : <p className="status">{t("Nothing planned yet. Pick an outfit below.")}</p>}
-        <h3 className="plan-sheet__title">{t("Pick an outfit")}</h3>
-        <div className="plan-sheet__list">
-          {outfits.map((outfit) => {
+        {!past && <h3 className="plan-sheet__title">{t("Pick an outfit")}</h3>}
+        {!past && <div className="plan-sheet__list">
+          {ranked.map(({ outfit, fit }) => {
             const harmony = outfitHarmony(outfit, itemsById);
             return (
               <button type="button" key={outfit.id} className={outfit.id === current?.id ? "active" : ""} onClick={() => onPick(outfit.id)}>
@@ -94,12 +123,13 @@ function DaySheet({ day, plan, outfits, itemsById, onPick, onClear, onClose }) {
                 <span className="plan-sheet__name">{outfit.name}</span>
                 <span className="plan-sheet__meta">
                   {t(COLOR_RULES[harmony.rule]?.label || "")}
+                  {occasion && fit >= 0.6 && <> · {t("suits {occasion}", { occasion: t(OCCASIONS[occasion].label) })}</>}
                   {recent.has(outfit.id) && <em> · {t("worn nearby")}</em>}
                 </span>
               </button>
             );
           })}
-        </div>
+        </div>}
       </section>
     </div>
   );
@@ -176,6 +206,7 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const outfitsById = useMemo(() => new Map((outfits || []).map((outfit) => [outfit.id, outfit])), [outfits]);
   const usable = useMemo(() => (outfits || []).filter((outfit) => (outfit.garmentIds || []).filter((id) => itemsById.has(id)).length >= 2), [outfits, itemsById]);
+  const worn = useMemo(() => wornByDay(outfits || [], items), [outfits, items]);
 
   useEffect(() => { try { localStorage.setItem("wardrobe-plan-mode", mode); } catch { /* storage unavailable */ } }, [mode]);
   if (!plan || !outfits) return <p className="status">{t("Loading your plan")}</p>;
@@ -190,7 +221,7 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
   const fill = (from, count, replace) => {
     if (!usable.length) { setNotice(t("Save or style a few outfits first, then plan.")); return; }
     const keep = replace ? Object.fromEntries(Object.entries(plan.days).filter(([day]) => day < from)) : plan.days;
-    const days = planDays({ outfits: usable, items, start: from, length: count, settings, keep, forecast });
+    const days = planDays({ outfits: usable, items, start: from, length: count, settings, keep, forecast, occasions: plan.occasions || {} });
     // Days before `from` stay in the history so the rest rule still sees them.
     savePlan({ ...plan, days: { ...plan.days, ...days } });
     const short = usable.length < settings.restDays;
@@ -207,6 +238,7 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
   const toggleWorkDay = (day) => setSettings({ workDays: settings.workDays.includes(day) ? settings.workDays.filter((entry) => entry !== day) : [...settings.workDays, day].sort() });
   const pickDay = (day, id) => { savePlan({ ...plan, days: { ...plan.days, [day]: id } }); setOpenDay(null); };
   const clearDay = (day) => { const days = { ...plan.days }; delete days[day]; savePlan({ ...plan, days }); setOpenDay(null); };
+  const setOccasion = (day, id) => { const occasions = { ...(plan.occasions || {}) }; if (id) occasions[day] = id; else delete occasions[day]; savePlan({ ...plan, occasions }); };
   const addTrip = (trip) => { savePlan({ ...plan, trips: [...(plan.trips || []), trip] }); setAddingTrip(false); };
   const removeTrip = (id) => savePlan({ ...plan, trips: (plan.trips || []).filter((trip) => trip.id !== id) });
   const planTrip = (trip) => fill(trip.from < today ? today : trip.from, Math.round((parseDay(trip.to) - parseDay(trip.from < today ? today : trip.from)) / 86400000) + 1, false);
@@ -275,12 +307,19 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
       <div className={`plan-grid plan-grid--${mode}`}>
         {cells.map((day, index) => {
           if (!day) return <span key={`blank-${index}`} className="plan-day is-blank" aria-hidden="true" />;
-          const outfit = outfitsById.get(plan.days[day]);
-          const classes = ["plan-day", "glass-card", day === today && "is-today", day < today && "is-past", repeats.has(day) && "is-repeat", tripDays.has(day) && "is-trip"].filter(Boolean).join(" ");
+          // A past day shows what was worn, not what was planned.
+          const wornDay = day <= today ? worn[day] : null;
+          const wornOutfit = wornDay?.outfitIds.map((id) => outfitsById.get(id)).find(Boolean);
+          const wornPieces = wornDay && !wornOutfit && wornDay.pieceIds.some((id) => itemsById.has(id)) ? { garmentIds: wornDay.pieceIds, name: t("Pieces worn") } : null;
+          const wasWorn = Boolean(wornOutfit || wornPieces);
+          const outfit = wornOutfit || wornPieces || (day >= today ? outfitsById.get(plan.days[day]) : null);
+          const occasion = day >= today ? plan.occasions?.[day] : "";
+          const classes = ["plan-day", "glass-card", day === today && "is-today", day < today && "is-past", wasWorn && "is-worn", !wasWorn && repeats.has(day) && "is-repeat", tripDays.has(day) && "is-trip"].filter(Boolean).join(" ");
           return (
-            <button type="button" key={day} className={classes} onClick={() => setOpenDay(day)} aria-label={`${dayLabel(day)}: ${outfit ? outfit.name : t("nothing planned")}`}>
-              <span className="plan-day__date">{mode === "week" ? dayLabel(day) : Number(day.slice(8))}</span>
-              {outfit ? <Pieces outfit={outfit} itemsById={itemsById} size={mode === "week" ? "large" : "small"} /> : <span className="plan-day__empty">+</span>}
+            <button type="button" key={day} className={classes} onClick={() => setOpenDay(day)} aria-label={`${dayLabel(day)}: ${wasWorn ? t("worn") + ", " + outfit.name : outfit ? outfit.name : day < today ? t("nothing logged") : t("nothing planned")}${occasion ? ", " + t(OCCASIONS[occasion].label) : ""}`}>
+              <span className="plan-day__date">{mode === "week" ? dayLabel(day) : Number(day.slice(8))}{wasWorn && <Check size={11} weight="bold" className="plan-day__check" aria-hidden="true" />}</span>
+              {outfit ? <Pieces outfit={outfit} itemsById={itemsById} size={mode === "week" ? "large" : "small"} /> : <span className="plan-day__empty">{day < today ? "" : "+"}</span>}
+              {occasion && <span className="plan-day__occasion">{mode === "week" ? t(OCCASIONS[occasion].label) : t(OCCASIONS[occasion].label).slice(0, 1)}</span>}
               {mode === "week" && outfit && <span className="plan-day__name">{outfit.name}</span>}
             </button>
           );
@@ -306,6 +345,9 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
           plan={{ ...plan, settings }}
           outfits={usable}
           itemsById={itemsById}
+          worn={openDay <= today ? worn[openDay] : null}
+          past={openDay < today}
+          onOccasion={(id) => setOccasion(openDay, id)}
           onPick={(id) => pickDay(openDay, id)}
           onClear={() => clearDay(openDay)}
           onClose={() => setOpenDay(null)}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowsClockwise, Camera, Check, ClockCounterClockwise, Heart, Lock, LockOpen, ThumbsDown } from "@phosphor-icons/react";
 import { assetUrl } from "./api.js";
-import { addDays, dayString } from "../shared/style.mjs";
+import { addDays, dayString, OCCASIONS } from "../shared/style.mjs";
 import { canMakeOutfit, makeOutfit, outfitKey, outfitTitle } from "../shared/make-outfit.mjs";
 import { patchOutfit, sendJson, wearOutfit, wornOn } from "./wear.js";
 import { formatDay, t } from "./i18n.js";
@@ -58,13 +58,14 @@ export function HomeView({ items, outfits, setOutfits, plan, weather, onWorn, on
   const [error, setError] = useState("");
   useEffect(() => { write(HOME_KEY, { day: today, ...state }); }, [today, state]);
 
+  const occasion = plan?.occasions?.[today] || "";
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const saved = outfits || [];
   const wornOutfit = saved.find((outfit) => wornOn(outfit, today) && (outfit.garmentIds || []).some((id) => itemsById.has(id)));
   const planned = !state.seed && !state.locked.length ? saved.find((outfit) => outfit.id === plan?.days?.[today] && (outfit.garmentIds || []).every((id) => itemsById.has(id))) : null;
   const made = useMemo(
-    () => (wornOutfit || planned ? null : makeOutfit({ items, today, weather: weather?.today, locked: state.locked, rejected, seed: state.seed })),
-    [wornOutfit, planned, items, today, weather?.today, state, rejected],
+    () => (wornOutfit || planned ? null : makeOutfit({ items, today, weather: weather?.today, locked: state.locked, rejected, seed: state.seed, dress: OCCASIONS[occasion]?.dress || "" })),
+    [wornOutfit, planned, items, today, weather?.today, state, rejected, occasion],
   );
 
   const fixed = wornOutfit || planned;
@@ -111,7 +112,7 @@ export function HomeView({ items, outfits, setOutfits, plan, weather, onWorn, on
           <p className="home__date">{formatDay(today, { weekday: "long", day: "numeric", month: "long" })}</p>
           <h2>{wornOutfit ? t("You wore this today") : planned ? t("Planned for today") : t("Wear this today")}</h2>
         </div>
-        {temperature && <p className="home__weather">{temperature}</p>}
+        {(temperature || occasion) && <p className="home__weather">{[occasion && t(OCCASIONS[occasion].label), temperature].filter(Boolean).join(" · ")}</p>}
       </header>
 
       {!pieces.length ? (

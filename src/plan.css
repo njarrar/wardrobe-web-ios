@@ -80,3 +80,17 @@
 .packing-list span { flex: 1; }
 .packing-list input:checked ~ span { text-decoration: line-through; color: var(--muted); }
 .packing-list small { color: var(--muted); }
+
+/* Worn days and the day's occasion. */
+.plan-day.is-past.is-worn { opacity: 1; }
+.plan-day__check { margin-inline-start: 3px; color: var(--accent); vertical-align: -1px; }
+.plan-day__occasion { font-size: 10px; font-weight: 600; color: var(--muted); line-height: 1; }
+.plan-grid--week .plan-day__occasion { padding: 3px 8px; border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--ink-soft); font-size: 12px; }
+.plan-occasions { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.plan-occasions button {
+  min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-pill);
+  background: transparent; color: var(--ink-soft); font: inherit; font-size: 13.5px; cursor: pointer;
+}
+.plan-occasions button.active { border-color: var(--ink); background: var(--ink); color: var(--on-ink, var(--bg)); }
+.plan-sheet__worn { margin-bottom: 10px; }
+.plan-sheet__worn .plan-sheet__title svg { color: var(--accent); vertical-align: -1px; }

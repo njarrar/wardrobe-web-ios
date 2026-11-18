@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.2.0 (piece page, worn days, occasions)
+
+- **A piece opens to read.** Its page now shows the picture, wear counts, colors and facts first. The fields sit behind an Edit button, so a stray tap changes nothing.
+- **How to wear it.** Each piece has a short note: which colors sit well next to it, and whether to keep the rest plain. The phone writes it, with no AI.
+- **Goes well with.** A row of pieces from your own closet that pair best with this one. Tap one to open it.
+- **Pattern.** A new field: solid, striped, checked, dotted, floral, printed or textured. The AI fills it for new photos, and you can set it by hand. Two patterned pieces are not paired.
+- **Plan shows what you wore.** Past days show the outfit or pieces you logged, with a check mark, not the old plan.
+- **A day can have an occasion.** Tap a day and pick Work, Casual, Dinner or Formal. The plan picks an outfit that suits it, the day's list puts fitting outfits first, and Home dresses for today's occasion.
+- Fixed: a "dress shirt" was taken for a dress by the outfit maker.
+
 ## 3.1.0 (Home, and outfits with no AI)
 
 - **Home tab.** The app opens on one outfit for today, laid out flat, with a short line that says why: the colors, the weather, a piece that has waited a while. A strip under it shows the next seven days, the forecast and which days have a plan.
