@@ -115,7 +115,7 @@ function ReviewEditor({ job, stage, draft, setDraft, busy, onAction }) {
   );
 }
 
-export function WardrobeImportFlow({ onGarmentApproved, onStarter }) {
+export function WardrobeImportFlow({ onGarmentApproved, onStarter, away = false }) {
   const inputRef = useRef(null);
   const [jobs, setJobs] = useState([]);
   const [drafts, setDrafts] = useState({});
@@ -246,7 +246,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onStarter }) {
       <input ref={inputRef} type="file" accept="image/*" multiple hidden disabled={!setup?.ready} onChange={(event) => { submitFiles(event.target.files); event.target.value = ""; }} />
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden disabled={!setup?.ready} onChange={(event) => { submitFiles(event.target.files); event.target.value = ""; }} />
       <div className="import-drop-overlay" data-active={dragging && !setupRequired} aria-hidden={!dragging || setupRequired}><div className="import-drop-target is-over"><UploadSimple size={34} weight="light" /><h2>{t("Drop clothing images")}</h2><p>{t("A single garment or a photo of a full outfit works. Your wardrobe stays exactly where you left it.")}</p></div></div>
-      <aside className={`import-tray${hasImportActivity ? " is-expanded" : ""}`} aria-label="Wardrobe imports">
+      <aside className={`import-tray${jobs.length || notice ? " is-expanded" : ""}${away && !jobs.length && !notice ? " is-away" : ""}`} aria-label="Wardrobe imports">
         <button className="import-tray__button" type="button" onClick={() => setupRequired || hasImportActivity || showCamera ? setOpen(true) : inputRef.current?.click()} aria-label={setupRequired ? t("Open setup instructions") : hasImportActivity ? t("Open import progress") : t("Add clothes")}>{activeStatus?.tone === "processing" ? <SpinnerGap size={19} className="import-spinner" /> : activeStatus?.tone === "error" ? <WarningCircle size={19} /> : readyCount ? <span>{readyCount}</span> : notice ? <X size={18} /> : <Plus size={19} />}</button>
         <div className="import-tray__actions">{active && <img className="import-tray__preview" src={assetUrl(active.stages?.garment?.assetUrl || active.stages?.crop?.assetUrl || active.originalAssetUrl)} alt="" />}<span className="import-tray__label">{activeStatus?.text || t("Add clothes")}</span>{!setupRequired && showCamera && <button className="import-icon-button" type="button" onClick={() => cameraRef.current?.click()} aria-label={t("Take a photo")}><Camera size={17} /></button>}{!setupRequired && <button className="import-icon-button" type="button" onClick={() => inputRef.current?.click()} aria-label={t("Choose images")}><UploadSimple size={17} /></button>}</div>
       </aside>

@@ -76,3 +76,18 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 .connect-icloud { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
 .connect-icloud strong { display: flex; align-items: center; gap: 8px; }
 .connect-icloud p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+/* Dark mode: black and navy clothes vanish on a near-black tile, so the
+   backing behind every piece picture is a mid grey. */
+@media (prefers-color-scheme: dark) {
+  :root { --tile: radial-gradient(120% 90% at 50% 20%, #55555c 0%, #3f3f45 100%); }
+  .gallery-item__media, .viewer-art, .outfit-card > .outfit-collage, div.outfit-viewer__photo,
+  .today-card__piece, .forgotten__media, .plan-pieces--large img, .packing-list img, .outfit-viewer__pieces img, .outfit-builder__items img,
+  .starter-piece img, .import-editor__preview, .import-card__image { background: var(--tile); }
+}
+
+.cloud-wait { margin: 40vh 24px 0; text-align: center; color: var(--muted); font-size: 16px; }
+
+/* The Add clothes button belongs to the closet. Other tabs hide it unless
+   an import is running. */
+.import-tray.is-away { display: none; }

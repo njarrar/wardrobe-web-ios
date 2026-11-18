@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.1 (safer iCloud)
+
+### iCloud closet
+- **Two devices no longer overwrite each other.** Each piece and outfit keeps the time it last changed. When iCloud holds two copies of the closet, the app joins them piece by piece. A removed piece stays removed.
+- **A new device waits for iCloud** to list the closet before it shows anything ("Checking iCloud"), so it never starts from an empty closet by mistake.
+- **The closet reloads** when you come back to the app and when iCloud brings changes from another device.
+- **Pictures still in iCloud** are fetched and shown, not left broken.
+- Imports in progress stay on the device and no longer sync.
+
+### Look
+- **Dark mode:** piece pictures sit on a mid grey tile, so black and navy clothes show.
+- **Add clothes** is a round button on the Closet tab and is hidden on Outfits and Plan unless an import is running.
+
 ## 3.0.0 (iCloud closet)
 
 ### No server needed

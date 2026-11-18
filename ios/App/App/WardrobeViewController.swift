@@ -89,6 +89,8 @@ public class CloudStorePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "settle", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "download", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getSecret", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setSecret", returnType: CAPPluginReturnPromise)
     ]
@@ -97,7 +99,13 @@ public class CloudStorePlugin: CAPPlugin, CAPBridgedPlugin {
     static let keychainService = "com.njarrar.wardrobe.closet"
     private let work = DispatchQueue(label: "wardrobe.cloudstore")
     private var rootURL: URL?
+    private var localURL: URL?
     private var usesICloud = false
+    // Watches the iCloud folder: tells us when the first file list is in,
+    // and when another device changes something.
+    private var query: NSMetadataQuery?
+    private var listed = false
+    private var waiting: [() -> Void] = []
 
     private func root() -> URL {
         if let rootURL { return rootURL }
@@ -114,13 +122,54 @@ public class CloudStorePlugin: CAPPlugin, CAPBridgedPlugin {
         return url
     }
 
+    // Imports in progress stay on this device. They are short lived and
+    // would only cause clashes in iCloud.
+    private func localRoot() -> URL {
+        if let localURL { return localURL }
+        let files = FileManager.default
+        let url = files.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Closet", isDirectory: true)
+        try? files.createDirectory(at: url, withIntermediateDirectories: true)
+        localURL = url
+        return url
+    }
+
+    // Runs `done` once iCloud has listed the folder, or after 20 seconds.
+    private func whenListed(_ done: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            if self.listed { done(); return }
+            self.waiting.append(done)
+            if self.query != nil { return }
+            let query = NSMetadataQuery()
+            query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
+            query.predicate = NSPredicate(format: "%K LIKE '*'", NSMetadataItemFSNameKey)
+            NotificationCenter.default.addObserver(self, selector: #selector(self.listingDone), name: .NSMetadataQueryDidFinishGathering, object: query)
+            NotificationCenter.default.addObserver(self, selector: #selector(self.listingChanged), name: .NSMetadataQueryDidUpdate, object: query)
+            self.query = query
+            query.start()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { self.listingDone() }
+        }
+    }
+
+    @objc private func listingDone() {
+        if listed { return }
+        listed = true
+        let pending = waiting
+        waiting = []
+        pending.forEach { $0() }
+    }
+
+    @objc private func listingChanged() {
+        notifyListeners("changed", data: [:])
+    }
+
     private func fileURL(_ call: CAPPluginCall) -> URL? {
         guard let path = call.getString("path"), !path.isEmpty, !path.hasPrefix("/"),
               !path.split(separator: "/").contains(where: { $0 == ".." || $0 == "." }) else {
             call.reject("Bad path")
             return nil
         }
-        return root().appendingPathComponent(path)
+        let base = (path == "jobs.json" || path.hasPrefix("jobs/")) ? localRoot() : root()
+        return base.appendingPathComponent(path)
     }
 
     // Asks iCloud for every file that is only in the cloud so far, so
@@ -139,8 +188,13 @@ public class CloudStorePlugin: CAPPlugin, CAPBridgedPlugin {
         if files.fileExists(atPath: url.path) { return true }
         guard usesICloud else { return false }
         let placeholder = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).icloud")
-        guard files.fileExists(atPath: placeholder.path) else { return false }
-        try? files.startDownloadingUbiquitousItem(at: url)
+        if !files.fileExists(atPath: placeholder.path) {
+            // No sign of the file here. Ask iCloud anyway: it refuses when
+            // the file does not exist there either.
+            do { try files.startDownloadingUbiquitousItem(at: url) } catch { return false }
+        } else {
+            try? files.startDownloadingUbiquitousItem(at: url)
+        }
         for _ in 0..<150 {
             if files.fileExists(atPath: url.path) { return true }
             Thread.sleep(forTimeInterval: 0.1)
@@ -151,8 +205,14 @@ public class CloudStorePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func info(_ call: CAPPluginCall) {
         work.async {
             let url = self.root()
-            call.resolve(["root": url.path, "icloud": self.usesICloud])
-            self.downloadAll()
+            _ = self.localRoot()
+            guard self.usesICloud else { call.resolve(["root": url.path, "icloud": false]); return }
+            self.whenListed {
+                self.work.async {
+                    call.resolve(["root": url.path, "icloud": true])
+                    self.downloadAll()
+                }
+            }
         }
     }
 
@@ -165,8 +225,39 @@ public class CloudStorePlugin: CAPPlugin, CAPBridgedPlugin {
             NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &failure) { readURL in
                 result = try? Data(contentsOf: readURL)
             }
-            if let result { call.resolve(["data": result.base64EncodedString()]) }
-            else { call.reject("Could not read \(url.lastPathComponent)") }
+            guard let result else { call.reject("Could not read \(url.lastPathComponent)"); return }
+            // Other copies of this file that iCloud kept after two devices
+            // saved at about the same time. The app joins them.
+            var conflicts: [String] = []
+            if self.usesICloud, call.getBool("conflicts") == true, let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) {
+                for version in versions {
+                    if let data = try? Data(contentsOf: version.url) { conflicts.append(data.base64EncodedString()) }
+                }
+            }
+            call.resolve(["data": result.base64EncodedString(), "conflicts": conflicts])
+        }
+    }
+
+    // Tells iCloud the copies of a file have been joined.
+    @objc func settle(_ call: CAPPluginCall) {
+        work.async {
+            guard let url = self.fileURL(call) else { return }
+            if self.usesICloud, let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) {
+                for version in versions { version.isResolved = true }
+                try? NSFileVersion.removeOtherVersionsOfItem(at: url)
+            }
+            call.resolve()
+        }
+    }
+
+    // Brings one file down from iCloud, for a picture that is not on this
+    // device yet. Runs off the main work queue so reads do not wait on it.
+    @objc func download(_ call: CAPPluginCall) {
+        work.async {
+            guard let url = self.fileURL(call) else { return }
+            DispatchQueue.global(qos: .utility).async {
+                call.resolve(["ready": self.waitForDownload(url)])
+            }
         }
     }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AirplaneTilt, CalendarBlank, CaretLeft, CaretRight, Plus, Trash, X } from "@phosphor-icons/react";
 import { apiFetch, assetUrl } from "./api.js";
 import { sendJson } from "./wear.js";
+import { CLOSET_CHANGED_EVENT } from "./local/mode.js";
 import {
   COLOR_RULES, DEFAULT_PLAN_SETTINGS, addDays, dayString, outfitHarmony, packingList, parseDay, planDays, planRepeats,
 } from "../shared/style.mjs";
@@ -24,12 +25,22 @@ function weekStart(day) { return addDays(day, -parseDay(day).getDay()); }
 function usePlan() {
   const [plan, setPlan] = useState(null);
   const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    const again = () => setReload((count) => count + 1);
+    window.addEventListener(CLOSET_CHANGED_EVENT, again);
+    return () => window.removeEventListener(CLOSET_CHANGED_EVENT, again);
+  }, []);
   useEffect(() => {
     apiFetch("/api/import/plan", { cache: "no-store" })
       .then((response) => { if (!response.ok) throw new Error(t("Could not load your plan.")); return response.json(); })
       .then(setPlan)
-      .catch((requestError) => { setError(requestError.message); setPlan({ days: {}, settings: DEFAULT_PLAN_SETTINGS, trips: [] }); });
-  }, []);
+      .catch((requestError) => {
+        // A reload that fails keeps the plan on screen.
+        if (reload) return;
+        setError(requestError.message); setPlan({ days: {}, settings: DEFAULT_PLAN_SETTINGS, trips: [] });
+      });
+  }, [reload]);
   const save = useCallback(async (next) => {
     setPlan(next);
     try { setPlan(await sendJson("/api/import/plan", "PUT", next, t("Could not save your plan."))); setError(""); }

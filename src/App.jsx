@@ -7,6 +7,7 @@ import { ConnectScreen } from "./ConnectScreen.jsx";
 import { SettingsSheet } from "./SettingsSheet.jsx";
 import { AiConsentPrompt } from "./AiConsentPrompt.jsx";
 import { AUTH_EVENT, apiFetch, ensureImageKey, isNativeApp, needsServerUrl } from "./api.js";
+import { CLOSET_CHANGED_EVENT } from "./local/mode.js";
 import { ForgottenRow, TodayCard } from "./Today.jsx";
 import { PlanView, usePlan } from "./Plan.jsx";
 import { StarterPicker } from "./StarterPicker.jsx";
@@ -751,6 +752,14 @@ function Wardrobe({ onConnectionFailed }) {
     return () => clearInterval(timer);
   }, []);
 
+  // Counts up when the closet may have changed elsewhere, to load it again.
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    const again = () => setReload((count) => count + 1);
+    window.addEventListener(CLOSET_CHANGED_EVENT, again);
+    return () => window.removeEventListener(CLOSET_CHANGED_EVENT, again);
+  }, []);
+
   useEffect(() => {
     ensureImageKey()
       .then(() => apiFetch("/api/import/wardrobe", { cache: "no-store" }))
@@ -769,11 +778,13 @@ function Wardrobe({ onConnectionFailed }) {
         setItems(migrated);
       })
       .catch((requestError) => {
+        // A reload that fails keeps what is on screen.
+        if (reload) return;
         if (isNativeApp() && requestError instanceof TypeError) onConnectionFailed();
         else setError(requestError.message);
       })
       .finally(() => setLoading(false));
-  }, [onConnectionFailed]);
+  }, [onConnectionFailed, reload]);
 
   useEffect(() => {
     ensureImageKey()
@@ -783,8 +794,8 @@ function Wardrobe({ onConnectionFailed }) {
         return response.json();
       })
       .then(setOutfits)
-      .catch((requestError) => setOutfitsError(requestError.message));
-  }, []);
+      .catch((requestError) => { if (!reload) setOutfitsError(requestError.message); });
+  }, [reload]);
 
   const mergeItems = useCallback((saved) => {
     const byId = new Map(saved.filter(Boolean).map((item) => [item.id, item]));
@@ -1080,7 +1091,7 @@ function Wardrobe({ onConnectionFailed }) {
 
       {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} onWear={wearItem} onPicture={(saved) => setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry))} />}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} weather={weather} onStarter={() => { setSettingsOpen(false); setStarterOpen(true); }} />}
-      <WardrobeImportFlow onGarmentApproved={addImportedItem} onStarter={() => setStarterOpen(true)} />
+      <WardrobeImportFlow onGarmentApproved={addImportedItem} onStarter={() => setStarterOpen(true)} away={view !== "closet"} />
       {starterOpen && <StarterPicker onClose={() => setStarterOpen(false)} onAdded={addImportedItem} />}
       <AiConsentPrompt />
     </div>
