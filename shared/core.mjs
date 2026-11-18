@@ -4,14 +4,40 @@ import { editWornDates } from "./style.mjs";
 
 export const PARTS = new Set(["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"]);
 export const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+export const SEASONS = ["spring", "summer", "fall", "winter"];
+export const FORMALITY = ["casual", "smart", "formal"];
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
-export const ANALYZE_PROMPT = "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe, at most 8. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody (tops), wholebody_up (jackets and outer layers), lowerbody (bottoms), accessories_up (accessories), shoes. Suggest a concise specific name, the primary color as a six-digit hex such as #1f2a44, a genuinely distinct secondary hex color or null, and 1-4 useful lowercase detail tags. Return an empty list when there is no clothing.";
+export const ANALYZE_PROMPT = "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe, at most 8. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody (tops), wholebody_up (jackets and outer layers), lowerbody (bottoms), accessories_up (accessories), shoes. Suggest a concise specific name, the primary color as a six-digit hex such as #1f2a44, a genuinely distinct secondary hex color or null, 1-4 useful lowercase detail tags, a short lowercase kind (such as tee, shirt, sweater, hoodie, jeans, chinos, skirt, dress, coat, sneakers, boots, scarf, bag), the seasons it suits, a warmth from 1 (very light) to 5 (very warm), and how dressy it is (casual, smart or formal). Return an empty list when there is no clothing.";
 
 // Structured outputs (Claude, ChatGPT and Gemini) accept a subset of JSON Schema, so ranges and
 // patterns are checked afterwards by normalizeMetadata instead.
 const BOX_SCHEMA = { type: "object", additionalProperties: false, properties: { x: { type: "integer" }, y: { type: "integer" }, width: { type: "integer" }, height: { type: "integer" } }, required: ["x", "y", "width", "height"] };
-export const ANALYZE_SCHEMA = { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, part: { type: "string", enum: [...PARTS] }, color: { type: "string" }, secondaryColor: { anyOf: [{ type: "string" }, { type: "null" }] }, tags: { type: "array", items: { type: "string" } }, boundingBox: BOX_SCHEMA }, required: ["name", "part", "color", "secondaryColor", "tags", "boundingBox"] } } }, required: ["items"] };
+export const ANALYZE_SCHEMA = { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, part: { type: "string", enum: [...PARTS] }, color: { type: "string" }, secondaryColor: { anyOf: [{ type: "string" }, { type: "null" }] }, tags: { type: "array", items: { type: "string" } }, kind: { type: "string" }, seasons: { type: "array", items: { type: "string", enum: SEASONS } }, warmth: { type: "integer" }, formality: { type: "string", enum: FORMALITY }, boundingBox: BOX_SCHEMA }, required: ["name", "part", "color", "secondaryColor", "tags", "kind", "seasons", "warmth", "formality", "boundingBox"] } } }, required: ["items"] };
+
+// Sorting pieces already in the closet uses their names, colors and tags only.
+export const SORT_SCHEMA = { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false, properties: { id: { type: "string" }, kind: { type: "string" }, seasons: { type: "array", items: { type: "string", enum: SEASONS } }, warmth: { type: "integer" }, formality: { type: "string", enum: FORMALITY } }, required: ["id", "kind", "seasons", "warmth", "formality"] } } }, required: ["items"] };
+
+export function buildSortPrompt(items) {
+  const closet = items.map((item) => ({ id: item.id, name: item.name, category: item.part, color: item.color, tags: item.tags }));
+  return `Sort each piece of this wardrobe. For every id give a short lowercase kind (such as tee, shirt, sweater, hoodie, jeans, chinos, skirt, dress, coat, sneakers, boots, scarf, bag), the seasons it suits (spring, summer, fall, winter), a warmth from 1 (very light) to 5 (very warm), and how dressy it is (casual, smart or formal). Use only the ids given.
+
+<closet-to-sort>
+${JSON.stringify(closet)}
+</closet-to-sort>`;
+}
+
+// The sorting fields a piece can carry, cleaned. Missing or odd values are left out.
+export function sortFields(value = {}) {
+  const input = value && typeof value === "object" ? value : {};
+  const fields = {};
+  if (typeof input.kind === "string" && input.kind.trim()) fields.kind = input.kind.trim().toLowerCase().slice(0, 30);
+  if (Array.isArray(input.seasons)) fields.seasons = SEASONS.filter((season) => input.seasons.includes(season));
+  const warmth = Math.round(Number(input.warmth));
+  if (Number.isFinite(warmth) && warmth >= 1 && warmth <= 5) fields.warmth = warmth;
+  if (FORMALITY.includes(input.formality)) fields.formality = input.formality;
+  return fields;
+}
 
 export const STYLE_SCHEMA = { type: "object", additionalProperties: false, properties: { outfits: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, occasion: { type: "array", items: { type: "string" } }, garmentIds: { type: "array", items: { type: "string" } }, reason: { type: "string" } }, required: ["name", "occasion", "garmentIds", "reason"] } } }, required: ["outfits"] };
 
@@ -157,6 +183,7 @@ export function normalizeMetadata(value = {}) {
     color,
     secondaryColor,
     tags: Array.isArray(metadata.tags) ? metadata.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim().toLowerCase().slice(0, 40)).filter(Boolean).slice(0, 12) : [],
+    ...sortFields(metadata),
     boundingBox: normalizeBoundingBox(metadata.boundingBox),
   };
 }
@@ -191,6 +218,13 @@ export function normalizeItemEdit(record, value = {}) {
     }
   }
   if (input.wear !== undefined || input.unwear !== undefined) next.wornDates = editWornDates(record.wornDates, input);
+  for (const key of ["kind", "seasons", "warmth", "formality"]) {
+    if (!(key in input)) continue;
+    if (input[key] === null || input[key] === "") { delete next[key]; continue; }
+    const clean = sortFields({ [key]: input[key] });
+    if (!(key in clean)) throw Object.assign(new Error(`${key} is not valid`), { status: 400 });
+    next[key] = clean[key];
+  }
   next.palette = [...new Set([next.color, next.secondaryColor, ...(Array.isArray(record.palette) ? record.palette : [])].filter(Boolean))].slice(0, 5);
   return next;
 }

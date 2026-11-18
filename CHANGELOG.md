@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.5.0 (Plan and sort)
+
+### Plan
+- **New Plan tab** with week and month views.
+- **Plan the whole month in one tap.** Every empty day gets a saved outfit. No outfit comes back inside 7 days (you can pick 3 to 21), the same top never shows two days running, work days lean on work outfits, and pieces that have sat for a while get a turn. Tap any day to swap or clear it.
+- **Plan rules:** your work days, the rest time, and whether to mix in forgotten pieces.
+- **Trips.** Add a trip with dates, plan its days, and get a packing list with a tick box for each piece.
+- The Today card shows the planned outfit when there is one.
+- The plan is planned on the device. It costs no AI call.
+
+### Auto sort
+- New photos come back with a kind (tee, sweater, boots), the seasons they suit, warmth from 1 to 5 and a dress level.
+- **Sort N pieces for me** fills these in for older pieces from their names, colors and tags. No photos are sent.
+- **Smart groups** under the color dots: Winter, Summer, Spring and fall, Work, Casual and Neutrals.
+- Edit kind, warmth, dress level and seasons on each piece. Search finds them too.
+
+### Look
+- **Glass look.** See-through bars and cards over a soft color wash, a floating tab bar on phones, and a light spring when you press. The garment grid stays solid so scrolling stays smooth. Reduce Transparency and Reduce Motion turn the effects off.
+
+### API
+- `GET` and `PUT /api/import/plan` (`data/plan.json` on a computer or NAS, the `settings` table on Cloudflare, so no migration).
+- `POST /api/import/wardrobe/sort` (send `{ "all": true }` to sort every piece again).
+- Items can carry `kind`, `seasons`, `warmth` and `formality`.
+
 ## 2.4.0 (Wear and color)
 
 ### Closet

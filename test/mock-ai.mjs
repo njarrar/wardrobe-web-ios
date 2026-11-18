@@ -6,9 +6,13 @@ import http from "node:http";
 function answerFor({ hasImage, text }) {
   if (hasImage) {
     return { items: [
-      { name: "Navy tee", part: "upperbody", color: "#1F2A44", secondaryColor: null, tags: ["Cotton"], boundingBox: { x: 100, y: 50, width: 800, height: 450 } },
+      { name: "Navy tee", part: "upperbody", color: "#1F2A44", secondaryColor: null, tags: ["Cotton"], kind: "Tee", seasons: ["summer", "spring", "monsoon"], warmth: 2, formality: "casual", boundingBox: { x: 100, y: 50, width: 800, height: 450 } },
       { name: "Blue jeans", part: "lowerbody", color: "#3b5b8c", secondaryColor: "not a color", tags: ["denim"], boundingBox: { x: 150, y: 500, width: 700, height: 480 } },
     ] };
+  }
+  const toSort = text.match(/<closet-to-sort>\s*([\s\S]*?)\s*<\/closet-to-sort>/);
+  if (toSort) {
+    return { items: [...JSON.parse(toSort[1]).map((item) => ({ id: item.id, kind: "tee", seasons: ["fall", "winter"], warmth: item.id.length % 2 ? 9 : 4, formality: "smart" })), { id: "import-missing", kind: "x", seasons: [], warmth: 1, formality: "casual" }] };
   }
   const closet = JSON.parse(text.match(/<wardrobe>\s*([\s\S]*?)\s*<\/wardrobe>/)?.[1] || "[]");
   const top = closet.find((item) => item.category === "upperbody");

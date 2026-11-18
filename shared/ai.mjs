@@ -3,7 +3,7 @@
 // API key; keys can also come from the server environment. Nothing here may
 // import Node modules.
 import Anthropic from "@anthropic-ai/sdk";
-import { ANALYZE_PROMPT, ANALYZE_SCHEMA, STYLE_SCHEMA, buildStylePrompt, normalizeMetadata, normalizeStyledOutfits } from "./core.mjs";
+import { ANALYZE_PROMPT, ANALYZE_SCHEMA, SORT_SCHEMA, STYLE_SCHEMA, buildSortPrompt, buildStylePrompt, normalizeMetadata, normalizeStyledOutfits, sortFields } from "./core.mjs";
 import { colorHarmony } from "./style.mjs";
 
 export const AI_PROVIDERS = {
@@ -271,4 +271,19 @@ export async function styleOutfits(ai, { items, outfits = [], count = 4, notes =
     .sort((a, b) => (rule ? Number(fitsRule(b.harmony.rule, rule)) - Number(fitsRule(a.harmony.rule, rule)) : 0) || b.harmony.score - a.harmony.score)
     .slice(0, count)
     .map(({ outfit }) => outfit);
+}
+
+// Fills in kind, seasons, warmth and dress level for pieces added before 2.5.
+// Only names, colors and tags are sent, never photos. Returns { id, ...fields }.
+export async function sortCloset(ai, items) {
+  const results = [];
+  for (let start = 0; start < items.length; start += 60) {
+    const batch = items.slice(start, start + 60);
+    const known = new Set(batch.map((item) => item.id));
+    const value = await askForJson(ai, { name: "sorted", schema: SORT_SCHEMA, text: buildSortPrompt(batch) });
+    for (const entry of Array.isArray(value?.items) ? value.items : []) {
+      if (known.has(entry?.id)) results.push({ id: entry.id, ...sortFields(entry) });
+    }
+  }
+  return results;
 }

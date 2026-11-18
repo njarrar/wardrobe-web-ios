@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsDownUp, Check, ClockCounterClockwise, CoatHanger, GearSix, MagnifyingGlass, Plus, Sparkle, Trash, X } from "@phosphor-icons/react";
+import { ArrowsDownUp, CalendarBlank, Check, ClockCounterClockwise, CoatHanger, GearSix, MagicWand, MagnifyingGlass, Plus, Sparkle, SpinnerGap, Trash, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
@@ -8,8 +8,10 @@ import { SettingsSheet } from "./SettingsSheet.jsx";
 import { AiConsentPrompt } from "./AiConsentPrompt.jsx";
 import { AUTH_EVENT, apiFetch, ensureImageKey, isNativeApp, needsServerUrl } from "./api.js";
 import { ForgottenRow, TodayCard } from "./Today.jsx";
-import { wearPiece, wornOn } from "./wear.js";
-import { costPerWear, dayString, formatMoney, idleLabel, lastWorn, wearCount } from "../shared/style.mjs";
+import { PlanView, usePlan } from "./Plan.jsx";
+import { askAiConsent, useAiSetup } from "./ai-setup.js";
+import { sendJson, wearPiece, wornOn } from "./wear.js";
+import { costPerWear, dayString, formatMoney, idleLabel, isNeutral, itemWarmth, lastWorn, wearCount } from "../shared/style.mjs";
 
 const LEGACY_EDITS_KEY = "open-wardrobe-edits-v1";
 const LEGACY_DELETED_KEY = "open-wardrobe-deleted-v1";
@@ -208,6 +210,19 @@ function itemFamilies(item) {
   return [...new Set([item.color, item.secondaryColor].map(colorFamily).filter(Boolean))];
 }
 
+// Smart groups built from what the AI (or you) said about each piece.
+const GROUPS = [
+  { id: "winter", label: "Winter", test: (item) => item.seasons?.includes("winter") || (!item.seasons && itemWarmth(item) >= 4) },
+  { id: "summer", label: "Summer", test: (item) => item.seasons?.includes("summer") || (!item.seasons && itemWarmth(item) <= 2) },
+  { id: "spring-fall", label: "Spring and fall", test: (item) => item.seasons?.includes("spring") || item.seasons?.includes("fall") },
+  { id: "work", label: "Work", test: (item) => item.formality === "smart" || item.formality === "formal" },
+  { id: "casual", label: "Casual", test: (item) => item.formality === "casual" },
+  { id: "neutrals", label: "Neutrals", test: (item) => isNeutral(item.color) },
+];
+const GROUP_MAP = Object.fromEntries(GROUPS.map((group) => [group.id, group]));
+const SEASON_LABELS = { spring: "Spring", summer: "Summer", fall: "Fall", winter: "Winter" };
+const needsSorting = (item) => !item.kind || !Array.isArray(item.seasons) || !item.warmth || !item.formality;
+
 const SORTS = [
   { id: "category", label: "Category" },
   { id: "recent", label: "Recently added" },
@@ -404,6 +419,40 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
         <p className="color-help" aria-live="polite">{sampling ? `Click anywhere on the garment to sample the ${sampling} color.` : sampleStatus || "Primary colors come from the image. A secondary is suggested only when a distinct color has meaningful coverage."}</p>
       </fieldset>
 
+      <div className="sort-fields">
+        <label className="field">
+          <span>Kind</span>
+          <input value={draft.kind || ""} onChange={(event) => setDraft((current) => ({ ...current, kind: event.target.value }))} placeholder="sweater" maxLength={30} />
+        </label>
+        <label className="field">
+          <span>Warmth</span>
+          <select value={draft.warmth || ""} onChange={(event) => setDraft((current) => ({ ...current, warmth: event.target.value ? Number(event.target.value) : "" }))}>
+            <option value="">Not set</option>
+            {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} {["very light", "light", "medium", "warm", "very warm"][value - 1]}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Dress level</span>
+          <select value={draft.formality || ""} onChange={(event) => setDraft((current) => ({ ...current, formality: event.target.value }))}>
+            <option value="">Not set</option>
+            <option value="casual">Casual</option>
+            <option value="smart">Smart</option>
+            <option value="formal">Formal</option>
+          </select>
+        </label>
+      </div>
+      <fieldset className="season-field">
+        <legend>Seasons</legend>
+        {Object.entries(SEASON_LABELS).map(([id, label]) => {
+          const on = (draft.seasons || []).includes(id);
+          return (
+            <button key={id} type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setDraft((current) => ({ ...current, seasons: on ? (current.seasons || []).filter((season) => season !== id) : [...(current.seasons || []), id] }))}>
+              {label}
+            </button>
+          );
+        })}
+      </fieldset>
+
       <label className="field">
         <span>Price paid <em className="field-optional">optional, for cost per wear</em></span>
         <input
@@ -445,7 +494,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
   const [sampling, setSampling] = useState(null);
   const [sampleStatus, setSampleStatus] = useState("");
   const [palette, setPalette] = useState(item.palette || []);
-  const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "" });
+  const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", seasons: [...(item.seasons || [])] });
   const [shaking, setShaking] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const type = TYPE_MAP[item.part]?.singular || "Wardrobe item";
@@ -464,6 +513,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
       secondaryColor: draft.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(draft.tags),
       price: draft.price === "" || draft.price === null ? null : Number(draft.price),
+      kind: draft.kind.trim().toLowerCase(), warmth: draft.warmth || null, formality: draft.formality || null, seasons: [...draft.seasons].sort(),
     }) !== JSON.stringify({
       name: (item.name || "").trim(),
       part: item.part,
@@ -471,6 +521,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
       secondaryColor: item.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(item.tags || []),
       price: item.price ?? null,
+      kind: item.kind || "", warmth: item.warmth || null, formality: item.formality || null, seasons: [...(item.seasons || [])].sort(),
     });
   }, [draft, item]);
 
@@ -515,11 +566,11 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
     setSampling(null);
     setSampleStatus("");
     setPalette(item.palette || []);
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "" });
+    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", seasons: [...(item.seasons || [])] });
   }, [item]);
 
   const cancelEditing = () => {
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "" });
+    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", seasons: [...(item.seasons || [])] });
     setSampling(null);
     setSampleStatus("");
     onClose();
@@ -528,7 +579,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
   const saveEditing = async () => {
     setSampling(null);
     try {
-      await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean), price: draft.price === "" ? null : Number(draft.price) });
+      await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean), price: draft.price === "" ? null : Number(draft.price), kind: draft.kind.trim().toLowerCase() || null, warmth: draft.warmth || null, formality: draft.formality || null, seasons: draft.seasons });
       setSampleStatus("Changes saved.");
     } catch (error) {
       setSampleStatus(error.message);
@@ -679,6 +730,10 @@ function Wardrobe({ onConnectionFailed }) {
   const [outfits, setOutfits] = useState(null);
   const [outfitsError, setOutfitsError] = useState("");
   const [openOutfitId, setOpenOutfitId] = useState(null);
+  const [group, setGroup] = useState(null);
+  const [sorting, setSorting] = useState(false);
+  const { plan, save: savePlan, error: planError } = usePlan();
+  const setup = useAiSetup();
 
   useEffect(() => {
     try { localStorage.setItem("wardrobe-sort", sort); } catch { /* storage unavailable */ }
@@ -740,7 +795,18 @@ function Wardrobe({ onConnectionFailed }) {
   };
 
   const openOutfit = (id) => { setOpenOutfitId(id); setView("outfits"); setSelectedId(null); };
-  const browsingAll = activeType === "all" && !query && !colorFilter;
+  const browsingAll = activeType === "all" && !query && !colorFilter && !group;
+  const showingPlan = view === "plan";
+  const groupsInCloset = useMemo(() => GROUPS.filter((entry) => items.some(entry.test)), [items]);
+  const unsorted = useMemo(() => items.filter(needsSorting).length, [items]);
+
+  const sortCloset = async () => {
+    if (!(await askAiConsent(setup))) return;
+    setSorting(true); setError("");
+    try { mergeItems((await sendJson("/api/import/wardrobe/sort", "POST", {}, "Could not sort your closet.")).items || []); }
+    catch (requestError) { setError(requestError.message); }
+    finally { setSorting(false); }
+  };
 
   const selectedItem = items.find((item) => item.id === selectedId) || null;
   const showingOutfits = view === "outfits";
@@ -756,8 +822,9 @@ function Wardrobe({ onConnectionFailed }) {
     const filtered = items.filter((item) => {
       if (activeType !== "all" && item.part !== activeType) return false;
       if (colorFilter && !itemFamilies(item).includes(colorFilter)) return false;
+      if (group && !GROUP_MAP[group]?.test(item)) return false;
       if (!needle) return true;
-      const haystack = [item.name, TYPE_MAP[item.part]?.label, TYPE_MAP[item.part]?.singular, ...itemFamilies(item), ...(item.tags || [])]
+      const haystack = [item.name, item.kind, item.formality, ...(item.seasons || []), TYPE_MAP[item.part]?.label, TYPE_MAP[item.part]?.singular, ...itemFamilies(item), ...(item.tags || [])]
         .filter(Boolean).join(" ").toLowerCase();
       return needle.split(/\s+/).every((word) => haystack.includes(word));
     });
@@ -772,7 +839,7 @@ function Wardrobe({ onConnectionFailed }) {
       const typeDifference = (TYPE_ORDER[a.part] ?? 99) - (TYPE_ORDER[b.part] ?? 99);
       return typeDifference || a.id.localeCompare(b.id);
     });
-  }, [activeType, colorFilter, items, query, sort]);
+  }, [activeType, colorFilter, group, items, query, sort]);
 
   const familiesInCloset = useMemo(() => {
     const present = new Set(items.flatMap(itemFamilies));
@@ -797,6 +864,10 @@ function Wardrobe({ onConnectionFailed }) {
       secondaryColor: updatedItem.secondaryColor || null,
       tags: updatedItem.tags,
       price: updatedItem.price ?? null,
+      kind: updatedItem.kind ?? null,
+      warmth: updatedItem.warmth ?? null,
+      formality: updatedItem.formality ?? null,
+      seasons: Array.isArray(updatedItem.seasons) && updatedItem.seasons.length ? updatedItem.seasons : null,
     });
     setItems((current) => current.map((item) => item.id === saved.id ? saved : item));
   };
@@ -832,7 +903,7 @@ function Wardrobe({ onConnectionFailed }) {
             </div>
 
             <div className="view-switch" role="tablist" aria-label="Choose a view">
-              {[{ id: "closet", label: "Closet", Icon: CoatHanger }, { id: "outfits", label: "Outfits", Icon: Sparkle }].map(({ id, label, Icon }) => (
+              {[{ id: "closet", label: "Closet", Icon: CoatHanger }, { id: "outfits", label: "Outfits", Icon: Sparkle }, { id: "plan", label: "Plan", Icon: CalendarBlank }].map(({ id, label, Icon }) => (
                 <button
                   key={id}
                   type="button"
@@ -852,7 +923,7 @@ function Wardrobe({ onConnectionFailed }) {
             </button>
           </div>
 
-          {!showingOutfits && (
+          {!showingOutfits && !showingPlan && (
             <>
               <div className="toolbar">
                 <label className="search">
@@ -916,6 +987,22 @@ function Wardrobe({ onConnectionFailed }) {
                   )}
                 </div>
               )}
+
+              {(groupsInCloset.length > 0 || (unsorted > 0 && setup?.ready)) && (
+                <div className="group-filter" role="group" aria-label="Smart groups">
+                  {groupsInCloset.map((entry) => (
+                    <button key={entry.id} type="button" className={group === entry.id ? "active" : ""} aria-pressed={group === entry.id} onClick={() => setGroup((current) => (current === entry.id ? null : entry.id))}>
+                      {entry.label} <span className="chip-count">{items.filter(entry.test).length}</span>
+                    </button>
+                  ))}
+                  {unsorted > 0 && setup?.ready && (
+                    <button type="button" className="group-filter__sort" onClick={sortCloset} disabled={sorting}>
+                      {sorting ? <SpinnerGap size={14} className="import-spinner" aria-hidden="true" /> : <MagicWand size={14} aria-hidden="true" />}
+                      {sorting ? "Sorting" : `Sort ${unsorted} ${unsorted === 1 ? "piece" : "pieces"} for me`}
+                    </button>
+                  )}
+                </div>
+              )}
             </>
           )}
         </header>
@@ -934,20 +1021,24 @@ function Wardrobe({ onConnectionFailed }) {
           />
         )}
 
-        {!showingOutfits && !loading && !error && browsingAll && !!items.length && (
+        {showingPlan && (
+          <PlanView items={items} outfits={outfits} plan={plan} savePlan={savePlan} planError={planError || outfitsError} onGoToOutfits={() => setView("outfits")} />
+        )}
+
+        {!showingOutfits && !showingPlan && !loading && !error && browsingAll && !!items.length && (
           <div className="closet-highlights">
-            {!!outfits?.length && <TodayCard items={items} outfits={outfits} onWorn={onWorn} onOpenOutfit={openOutfit} />}
+            {!!outfits?.length && <TodayCard items={items} outfits={outfits} plan={plan} onWorn={onWorn} onOpenOutfit={openOutfit} />}
             <ForgottenRow items={items} onOpen={setSelectedId} />
           </div>
         )}
 
-        {!showingOutfits && !error && loading && (
+        {!showingOutfits && !showingPlan && !error && loading && (
           <section className="gallery-grid" aria-hidden="true">
             {Array.from({ length: 10 }, (_, index) => <span className="gallery-skeleton" key={index} />)}
           </section>
         )}
 
-        {!showingOutfits && !error && !loading && !items.length && (
+        {!showingOutfits && !showingPlan && !error && !loading && !items.length && (
           <div className="empty-state">
             <span className="empty-state__icon" aria-hidden="true"><CoatHanger size={34} weight="light" /></span>
             <h2>Your closet is empty</h2>
@@ -956,15 +1047,15 @@ function Wardrobe({ onConnectionFailed }) {
           </div>
         )}
 
-        {!showingOutfits && !!items.length && !visibleItems.length && (
+        {!showingOutfits && !showingPlan && !!items.length && !visibleItems.length && (
           <div className="empty-state compact">
-            <h2>{query || colorFilter ? "No matches" : `No ${TYPE_MAP[activeType]?.label.toLowerCase() || "pieces"} yet`}</h2>
-            <p>{query || colorFilter ? `Nothing in ${TYPE_MAP[activeType]?.label.toLowerCase() || "your closet"} matches these filters.` : "Add a photo and it will show up here."}</p>
-            <button className="secondary-button" type="button" onClick={() => { setQuery(""); setColorFilter(null); chooseType("all"); }}>Clear filters</button>
+            <h2>{query || colorFilter || group ? "No matches" : `No ${TYPE_MAP[activeType]?.label.toLowerCase() || "pieces"} yet`}</h2>
+            <p>{query || colorFilter || group ? `Nothing in ${TYPE_MAP[activeType]?.label.toLowerCase() || "your closet"} matches these filters.` : "Add a photo and it will show up here."}</p>
+            <button className="secondary-button" type="button" onClick={() => { setQuery(""); setColorFilter(null); setGroup(null); chooseType("all"); }}>Clear filters</button>
           </div>
         )}
 
-        {!showingOutfits && !!visibleItems.length && (
+        {!showingOutfits && !showingPlan && !!visibleItems.length && (
           <section className="gallery-grid" aria-label={`${TYPE_MAP[activeType]?.label || "All"} wardrobe items`}>
             {visibleItems.map((item, index) => (
               <GalleryItem

@@ -5,6 +5,7 @@ import sharp from "sharp";
 import {
   MAX_STYLE_COUNT,
   styleOptions,
+  sortFields,
   isLoopbackHost,
   normalizeBoundingBox,
   applyOutfitEdit,
@@ -17,7 +18,8 @@ import {
   newImageKey,
   tokensMatch,
 } from "../shared/core.mjs";
-import { AI_IMAGE_EDGE, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, styleOutfits } from "../shared/ai.mjs";
+import { normalizePlan } from "../shared/style.mjs";
+import { AI_IMAGE_EDGE, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, sortCloset, styleOutfits } from "../shared/ai.mjs";
 
 export { isLoopbackHost };
 
@@ -164,6 +166,7 @@ export function createWardrobeApi(options = {}) {
   let outfitsFile;
   let outfitAssetDir;
   let settingsFile;
+  let planFile;
   let writeQueue = Promise.resolve();
   const running = new Map();
   const setting = (name, fallback = "") => options.env?.[name] || process.env[name] || fallback;
@@ -278,6 +281,7 @@ export function createWardrobeApi(options = {}) {
         secondaryColor: metadata.secondaryColor || null,
         palette: [metadata.color, metadata.secondaryColor].filter(Boolean),
         tags: Array.isArray(metadata.tags) ? metadata.tags : [],
+    ...sortFields(metadata),
         image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
         thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
         importJobId: job.id,
@@ -367,6 +371,34 @@ export function createWardrobeApi(options = {}) {
           return next;
         });
         return json(res, 200, publicAiSettings(saved, setting));
+      }
+      if (url.pathname === "/api/import/plan" && req.method === "GET") {
+        try { return json(res, 200, normalizePlan(JSON.parse(await readFile(planFile, "utf8")))); }
+        catch (error) { if (error.code !== "ENOENT") throw error; return json(res, 200, normalizePlan({})); }
+      }
+      if (url.pathname === "/api/import/plan" && req.method === "PUT") {
+        const plan = normalizePlan(await body(req, 256 * 1024));
+        await serially(() => atomicJson(planFile, plan));
+        return json(res, 200, plan);
+      }
+      // Fills in kind, seasons, warmth and dress level from names and tags (no photos).
+      if (url.pathname === "/api/import/wardrobe/sort" && req.method === "POST") {
+        const input = await body(req, 16 * 1024);
+        const ai = await currentAi();
+        const all = await loadImported();
+        const todo = input.all ? all : all.filter((item) => !item.kind || !Array.isArray(item.seasons) || !item.warmth || !item.formality);
+        if (!todo.length) return json(res, 200, { items: [] });
+        const sorted = new Map((await sortCloset(ai, todo)).map((entry) => [entry.id, entry]));
+        const items = await updateLibrary((records) => {
+          const next = records.map((record) => {
+            const fields = sorted.get(record.id);
+            if (!fields) return record;
+            const { id, ...rest } = fields;
+            return { ...record, ...rest };
+          });
+          return { records: next, value: next.filter((record) => sorted.has(record.id)) };
+        });
+        return json(res, 200, { items });
       }
       if (url.pathname === "/api/import/outfits" && req.method === "GET") {
         return json(res, 200, (await loadOutfitRecords()).map(outfitForClient));
@@ -564,6 +596,7 @@ export function createWardrobeApi(options = {}) {
     outfitsFile = path.join(dataDir, "outfits.json");
     outfitAssetDir = path.join(dataDir, "outfit-images");
     settingsFile = path.join(dataDir, "settings.json");
+    planFile = path.join(dataDir, "plan.json");
     await mkdir(jobsDir, { recursive: true });
     await mkdir(libraryAssetDir, { recursive: true });
     const ids = await readdir(jobsDir).catch(() => []);

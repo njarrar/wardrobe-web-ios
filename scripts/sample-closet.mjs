@@ -84,6 +84,17 @@ const OUTFITS = [
   ["denim-day", "Denim day", ["weekend", "casual"], "Indigo on navy, close on the wheel.", ["navy-tee", "jeans", "boots"]],
 ];
 
+// Kind, seasons, warmth and dress level, as the AI would sort them.
+const SORT = {
+  oxford: ["shirt", ["spring", "summer", "fall"], 2, "smart"], "navy-tee": ["tee", ["spring", "summer"], 1, "casual"],
+  "stripe-tee": ["tee", ["spring", "summer"], 2, "casual"], "grey-knit": ["sweater", ["fall", "winter"], 4, "smart"],
+  "olive-jacket": ["jacket", ["spring", "fall"], 3, "casual"], trench: ["coat", ["spring", "fall"], 4, "smart"],
+  jeans: ["jeans", ["spring", "fall", "winter"], 3, "casual"], chinos: ["chinos", ["spring", "summer", "fall"], 2, "smart"],
+  "black-trousers": ["trousers", ["fall", "winter", "spring"], 3, "formal"], sneakers: ["sneakers", ["spring", "summer", "fall"], 2, "casual"],
+  loafers: ["loafers", ["spring", "summer", "fall"], 2, "smart"], boots: ["boots", ["fall", "winter"], 4, "smart"],
+  tote: ["bag", ["spring", "summer", "fall", "winter"], 1, "casual"], scarf: ["scarf", ["fall", "winter"], 4, "casual"],
+};
+
 // Days ago each sample piece was worn, and what it cost, so the wear log,
 // the Not worn in a while row and cost per wear have something to show.
 const WEAR = {
@@ -108,6 +119,7 @@ export async function writeSampleCloset(dataDir) {
       addedAt: new Date(Date.UTC(2025, 0, 1 + index)).toISOString(),
       wornDates: (WEAR[id]?.[0] || []).map((ago) => addDays(today, -ago)).sort(),
       price: WEAR[id]?.[1] ?? null,
+      kind: SORT[id][0], seasons: SORT[id][1], warmth: SORT[id][2], formality: SORT[id][3],
     });
   }
   await writeFile(path.join(dataDir, "library.json"), JSON.stringify(records, null, 2));
