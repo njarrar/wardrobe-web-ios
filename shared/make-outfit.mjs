@@ -7,7 +7,7 @@ import { colorHarmony, COLOR_RULES, dayString, daysBetween, idleDays, isNeutral,
 
 const ONE_PIECE = /dress|jumpsuit|romper|abaya|thobe|kandura|dishdasha|jalabiya|kaftan/;
 const DRESSY = { casual: 0, smart: 1, formal: 2 };
-const SEASON_BY_MONTH = ["winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "autumn", "autumn", "autumn", "winter"];
+const SEASON_BY_MONTH = ["winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "fall", "fall", "fall", "winter"];
 
 // A piece worn in the last REST_DAYS days sits this one out when it can.
 export const REST_DAYS = 2;
