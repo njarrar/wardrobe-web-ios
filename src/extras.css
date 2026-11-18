@@ -105,8 +105,9 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 
 /* Shown while the AI reads a photo, before any piece exists. */
 .import-reading { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 16px; padding: 16px; border-radius: 16px; background: var(--surface-2); }
+.import-reading > div { min-width: 0; flex: 1; }
 .import-reading strong { display: block; font-weight: 600; }
-.import-reading p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; line-height: 1.4; }
+.import-reading p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; line-height: 1.4; overflow-wrap: anywhere; }
 .import-reading--failed { color: var(--danger); }
 .import-reading--failed p { color: inherit; }
 .import-reading .import-actions { margin-top: 12px; justify-content: flex-start; }

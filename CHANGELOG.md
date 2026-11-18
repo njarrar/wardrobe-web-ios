@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.2 (a used-up AI limit is said in plain words)
+
+- When your AI key has used up its plan (for example Gemini's free 20 reads a day), the app now says so in one line, with how long to wait. Before, it showed the AI's raw answer.
+- The app does not ask twice more when the plan is used up, so the answer comes at once.
+- A long message under "photos were not read" now wraps and no longer runs off the edge.
+
 ## 3.3.1 (a photo can no longer hang the import)
 
 - **Time limit.** The AI gets two minutes for one photo. After that the photo is marked "not read" with a plain reason, and the next photo starts. Before, a request that never came back left the import on "Reading photo 1 of 3" with no end.
