@@ -288,6 +288,45 @@ describe("phone screens", () => {
     }
   });
 
+  test("a photo the AI could not read waits for Try again, even after a restart", async () => {
+    // Busy for the first photo (three tries), then fine.
+    let calls = 0;
+    const ai = http.createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        calls += 1;
+        const busy = calls <= 3;
+        response.writeHead(busy ? 503 : 200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify(busy ? { error: { message: "high demand" } } : { candidates: [{ content: { parts: [{ text: JSON.stringify({ items: [] }) }] } }] }));
+      });
+    }).listen(0, "127.0.0.1");
+    await new Promise((resolve) => ai.once("listening", resolve));
+    const withKey = await startServer(dataDir, { GEMINI_API_KEY: "AIza-test-key-9876", WARDROBE_AI_PROVIDER: "gemini", WARDROBE_AI_RETRY_MS: "1", GEMINI_BASE_URL: `http://127.0.0.1:${ai.address().port}` });
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    try {
+      await page.goto(withKey.base);
+      const photo = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#34528f" } }).png().toBuffer();
+      await page.locator('input[type="file"]:not([capture])').setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: photo }, { name: "two.png", mimeType: "image/png", buffer: photo }]);
+      await page.getByRole("alertdialog").getByRole("button", { name: "Allow" }).click();
+      await page.getByText("1 photo was not read").waitFor();
+      await page.getByText("Gemini is busy right now").waitFor();
+      await snap(page, "light-8-photo-not-read");
+      assert.equal(calls, 4);
+      // The failed photo is still there after the app is opened again.
+      await page.reload();
+      await page.getByRole("button", { name: "Open import progress" }).click();
+      await page.getByText("1 photo was not read").waitFor();
+      await page.getByRole("button", { name: "Try again" }).click();
+      await page.getByText("1 photo was not read").waitFor({ state: "detached" });
+      assert.equal(calls, 5);
+    } finally {
+      await context.close();
+      withKey.child.kill();
+      ai.close();
+    }
+  });
+
   test("images load with a token, and the link never holds it", async () => {
     const guarded = await startServer(dataDir, { WARDROBE_TOKEN: "s3cret-token" });
     const context = await browser.newContext({ ...devices["iPhone 13"] });

@@ -72,6 +72,8 @@ function describe(id, stored, env) {
     keySource: appKey ? "app" : serverKey ? "server" : null,
     model: (typeof stored.models[id] === "string" && stored.models[id]) || env(info.modelEnv) || info.defaultModel,
     baseURL: env(info.baseEnv) || undefined,
+    // First wait before a busy AI is tried again (tests set it to 0).
+    retryWait: env("WARDROBE_AI_RETRY_MS") ? Number(env("WARDROBE_AI_RETRY_MS")) || 0 : undefined,
   };
 }
 
