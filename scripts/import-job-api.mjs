@@ -4,6 +4,7 @@ import path from "node:path";
 import sharp from "sharp";
 import {
   MAX_STYLE_COUNT,
+  styleOptions,
   isLoopbackHost,
   normalizeBoundingBox,
   applyOutfitEdit,
@@ -386,7 +387,7 @@ export function createWardrobeApi(options = {}) {
         }
         const ai = await currentAi();
         const existing = await loadOutfitRecords();
-        const created = await styleOutfits(ai, { items, outfits: existing, count, notes });
+        const created = await styleOutfits(ai, { items, outfits: existing, count, notes, ...styleOptions(input) });
         await updateOutfits((outfits) => ({ outfits: [...outfits, ...created] }));
         return json(res, 201, { outfits: created.map(outfitForClient) });
       }

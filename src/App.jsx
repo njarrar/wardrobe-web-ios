@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsDownUp, Check, CoatHanger, GearSix, MagnifyingGlass, Plus, Sparkle, Trash, X } from "@phosphor-icons/react";
+import { ArrowsDownUp, Check, ClockCounterClockwise, CoatHanger, GearSix, MagnifyingGlass, Plus, Sparkle, Trash, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
@@ -7,6 +7,9 @@ import { ConnectScreen } from "./ConnectScreen.jsx";
 import { SettingsSheet } from "./SettingsSheet.jsx";
 import { AiConsentPrompt } from "./AiConsentPrompt.jsx";
 import { AUTH_EVENT, apiFetch, ensureImageKey, isNativeApp, needsServerUrl } from "./api.js";
+import { ForgottenRow, TodayCard } from "./Today.jsx";
+import { wearPiece, wornOn } from "./wear.js";
+import { costPerWear, dayString, formatMoney, idleLabel, lastWorn, wearCount } from "../shared/style.mjs";
 
 const LEGACY_EDITS_KEY = "open-wardrobe-edits-v1";
 const LEGACY_DELETED_KEY = "open-wardrobe-deleted-v1";
@@ -401,6 +404,19 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
         <p className="color-help" aria-live="polite">{sampling ? `Click anywhere on the garment to sample the ${sampling} color.` : sampleStatus || "Primary colors come from the image. A secondary is suggested only when a distinct color has meaningful coverage."}</p>
       </fieldset>
 
+      <label className="field">
+        <span>Price paid <em className="field-optional">optional, for cost per wear</em></span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          value={draft.price ?? ""}
+          onChange={(event) => setDraft((current) => ({ ...current, price: event.target.value }))}
+          placeholder="0"
+        />
+      </label>
+
       <div className="field details-field">
         <span>Details</span>
         <TagEditor tags={draft.tags} onChange={(tags) => setDraft((current) => ({ ...current, tags }))} />
@@ -409,7 +425,19 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
   );
 }
 
-function ItemViewer({ item, onClose, onSave, onDelete }) {
+function WearStats({ item }) {
+  const perWear = costPerWear(item);
+  const last = lastWorn(item);
+  return (
+    <dl className="wear-stats">
+      <div><dt>Worn</dt><dd>{wearCount(item)} {wearCount(item) === 1 ? "time" : "times"}</dd></div>
+      <div><dt>Last worn</dt><dd>{last ? new Date(`${last}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "Never"}</dd></div>
+      <div><dt>Per wear</dt><dd>{perWear === null ? "-" : formatMoney(perWear)}</dd></div>
+    </dl>
+  );
+}
+
+function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
   const closeButtonRef = useRef(null);
   const imageRef = useRef(null);
   const samplingCanvasRef = useRef(null);
@@ -417,7 +445,7 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
   const [sampling, setSampling] = useState(null);
   const [sampleStatus, setSampleStatus] = useState("");
   const [palette, setPalette] = useState(item.palette || []);
-  const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+  const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "" });
   const [shaking, setShaking] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const type = TYPE_MAP[item.part]?.singular || "Wardrobe item";
@@ -435,12 +463,14 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
       color: draft.color?.toLowerCase() || null,
       secondaryColor: draft.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(draft.tags),
+      price: draft.price === "" || draft.price === null ? null : Number(draft.price),
     }) !== JSON.stringify({
       name: (item.name || "").trim(),
       part: item.part,
       color: item.color?.toLowerCase() || null,
       secondaryColor: item.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(item.tags || []),
+      price: item.price ?? null,
     });
   }, [draft, item]);
 
@@ -485,11 +515,11 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
     setSampling(null);
     setSampleStatus("");
     setPalette(item.palette || []);
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "" });
   }, [item]);
 
   const cancelEditing = () => {
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])] });
+    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "" });
     setSampling(null);
     setSampleStatus("");
     onClose();
@@ -498,7 +528,7 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
   const saveEditing = async () => {
     setSampling(null);
     try {
-      await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean) });
+      await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean), price: draft.price === "" ? null : Number(draft.price) });
       setSampleStatus("Changes saved.");
     } catch (error) {
       setSampleStatus(error.message);
@@ -583,6 +613,13 @@ function ItemViewer({ item, onClose, onSave, onDelete }) {
       )}
 
       <div className="viewer-details editing">
+        <WearStats item={item} />
+        <p className="wear-idle">{idleLabel(item)}</p>
+        <div className="wear-actions">
+          <button className={wornOn(item) ? "secondary-button" : "primary-button"} type="button" onClick={() => onWear(item.id, wornOn(item))}>
+            {wornOn(item) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> Undo, not worn today</> : <><Check size={15} weight="bold" aria-hidden="true" /> Wore today</>}
+          </button>
+        </div>
         <ItemEditor
           draft={draft}
           setDraft={setDraft}
@@ -639,6 +676,9 @@ function Wardrobe({ onConnectionFailed }) {
     try { return localStorage.getItem("wardrobe-sort") || "category"; } catch { return "category"; }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [outfits, setOutfits] = useState(null);
+  const [outfitsError, setOutfitsError] = useState("");
+  const [openOutfitId, setOpenOutfitId] = useState(null);
 
   useEffect(() => {
     try { localStorage.setItem("wardrobe-sort", sort); } catch { /* storage unavailable */ }
@@ -672,6 +712,35 @@ function Wardrobe({ onConnectionFailed }) {
       })
       .finally(() => setLoading(false));
   }, [onConnectionFailed]);
+
+  useEffect(() => {
+    ensureImageKey()
+      .then(() => apiFetch("/api/import/outfits", { cache: "no-store" }))
+      .then((response) => {
+        if (!response.ok) throw new Error("Could not load outfits.");
+        return response.json();
+      })
+      .then(setOutfits)
+      .catch((requestError) => setOutfitsError(requestError.message));
+  }, []);
+
+  const mergeItems = useCallback((saved) => {
+    const byId = new Map(saved.filter(Boolean).map((item) => [item.id, item]));
+    setItems((current) => current.map((item) => byId.get(item.id) || item));
+  }, []);
+
+  const onWorn = useCallback(({ outfit, pieces }) => {
+    setOutfits((current) => (current || []).map((entry) => (entry.id === outfit.id ? outfit : entry)));
+    mergeItems(pieces);
+  }, [mergeItems]);
+
+  const wearItem = async (id, undo) => {
+    try { mergeItems([await wearPiece(id, { day: dayString(), undo })]); }
+    catch (requestError) { setError(requestError.message); }
+  };
+
+  const openOutfit = (id) => { setOpenOutfitId(id); setView("outfits"); setSelectedId(null); };
+  const browsingAll = activeType === "all" && !query && !colorFilter;
 
   const selectedItem = items.find((item) => item.id === selectedId) || null;
   const showingOutfits = view === "outfits";
@@ -727,6 +796,7 @@ function Wardrobe({ onConnectionFailed }) {
       color: updatedItem.color,
       secondaryColor: updatedItem.secondaryColor || null,
       tags: updatedItem.tags,
+      price: updatedItem.price ?? null,
     });
     setItems((current) => current.map((item) => item.id === saved.id ? saved : item));
   };
@@ -851,7 +921,25 @@ function Wardrobe({ onConnectionFailed }) {
         </header>
 
         {error && <p className="status error">{error}</p>}
-        {showingOutfits && <OutfitGallery items={items} onSelectGarment={setSelectedId} />}
+        {showingOutfits && (
+          <OutfitGallery
+            items={items}
+            outfits={outfits}
+            setOutfits={setOutfits}
+            loadError={outfitsError}
+            onWorn={onWorn}
+            openId={openOutfitId}
+            setOpenId={setOpenOutfitId}
+            onSelectGarment={setSelectedId}
+          />
+        )}
+
+        {!showingOutfits && !loading && !error && browsingAll && !!items.length && (
+          <div className="closet-highlights">
+            {!!outfits?.length && <TodayCard items={items} outfits={outfits} onWorn={onWorn} onOpenOutfit={openOutfit} />}
+            <ForgottenRow items={items} onOpen={setSelectedId} />
+          </div>
+        )}
 
         {!showingOutfits && !error && loading && (
           <section className="gallery-grid" aria-hidden="true">
@@ -891,7 +979,7 @@ function Wardrobe({ onConnectionFailed }) {
         )}
       </main>
 
-      {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} />}
+      {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} onWear={wearItem} />}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} />}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} />
       <AiConsentPrompt />

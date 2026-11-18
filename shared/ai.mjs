@@ -4,6 +4,7 @@
 // import Node modules.
 import Anthropic from "@anthropic-ai/sdk";
 import { ANALYZE_PROMPT, ANALYZE_SCHEMA, STYLE_SCHEMA, buildStylePrompt, normalizeMetadata, normalizeStyledOutfits } from "./core.mjs";
+import { colorHarmony } from "./style.mjs";
 
 export const AI_PROVIDERS = {
   claude: {
@@ -254,7 +255,20 @@ export async function detectClothing(ai, { imageBase64, mediaType = "image/jpeg"
 }
 
 // Picks new outfits from the pieces already in the wardrobe.
-export async function styleOutfits(ai, { items, outfits = [], count = 4, notes = "" }) {
-  const result = await askForJson(ai, { name: "outfits", schema: STYLE_SCHEMA, text: buildStylePrompt({ items, outfits, count, notes }) });
-  return normalizeStyledOutfits(result, items, outfits).slice(0, count);
+// A single accent on neutrals is as calm as a tonal look.
+function fitsRule(found, wanted) {
+  return found === wanted || (wanted === "tonal" && found === "accent");
+}
+
+// Each outfit is checked on the color wheel here, so a clash never slips
+// through and the asked-for rule comes first.
+export async function styleOutfits(ai, { items, outfits = [], count = 4, notes = "", rule = "", preferIds = [] }) {
+  const result = await askForJson(ai, { name: "outfits", schema: STYLE_SCHEMA, text: buildStylePrompt({ items, outfits, count, notes, rule, preferIds }) });
+  const byId = new Map(items.map((item) => [item.id, item]));
+  return normalizeStyledOutfits(result, items, outfits)
+    .map((outfit) => ({ outfit, harmony: colorHarmony(outfit.garmentIds.map((id) => byId.get(id)?.color).filter(Boolean)) }))
+    .filter(({ harmony }) => harmony.score >= 45)
+    .sort((a, b) => (rule ? Number(fitsRule(b.harmony.rule, rule)) - Number(fitsRule(a.harmony.rule, rule)) : 0) || b.harmony.score - a.harmony.score)
+    .slice(0, count)
+    .map(({ outfit }) => outfit);
 }

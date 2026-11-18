@@ -1,0 +1,91 @@
+/* Today card, Not worn in a while, wear stats and color wheel badges. */
+
+.closet-highlights { padding: 18px var(--page-x) 0; max-width: 980px; }
+.closet-highlights > :last-child { margin-bottom: 0; }
+
+.glass-card {
+  background: var(--glass, var(--surface));
+  border: 1px solid var(--glass-edge, var(--line));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow, var(--shadow-sm));
+}
+
+.today-card {
+  margin: 4px 0 18px;
+  padding: 16px;
+}
+.today-card__eyebrow { margin: 0; color: var(--muted); font-size: 13px; }
+.today-card__title {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin: 2px 0 12px; padding: 0; border: 0; background: none; color: var(--ink);
+  font: inherit; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; text-align: left; cursor: pointer;
+}
+.today-card__pieces { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.today-card__pieces::-webkit-scrollbar { display: none; }
+.today-card__piece {
+  flex: none; width: 76px; height: 76px; display: grid; place-items: center;
+  border-radius: 16px; background: var(--paper);
+}
+.today-card__piece img { width: 80%; height: 80%; object-fit: contain; }
+.today-card__actions { display: flex; gap: 8px; margin-top: 14px; }
+.today-card__actions .primary-button,
+.today-card__actions .secondary-button { justify-content: center; }
+.today-card__actions > :first-child { flex: 1; }
+
+.harmony-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px 3px 4px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--ink-soft);
+  font-size: 12px; font-weight: 550; letter-spacing: 0;
+}
+.harmony-badge::before {
+  content: ""; width: 14px; height: 14px; border-radius: 50%;
+  background: conic-gradient(#e0533d, #e8a23a, #e8d43a, #7cc04a, #3aa6a0, #3a6ee8, #8a4ae8, #d64aa6, #e0533d);
+  -webkit-mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+  mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+}
+
+.forgotten { margin: 0 0 18px; }
+.forgotten__head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.forgotten__head h2 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+.forgotten__head button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; }
+.forgotten__list { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.forgotten__list::-webkit-scrollbar { display: none; }
+.forgotten__list.is-open { flex-wrap: wrap; overflow: visible; }
+.forgotten__item {
+  flex: none; width: 108px; display: flex; flex-direction: column; gap: 2px;
+  padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer;
+}
+.forgotten__media {
+  height: 108px; display: grid; place-items: center; margin-bottom: 4px;
+  border-radius: 18px; background: var(--glass, var(--surface)); border: 1px solid var(--glass-edge, var(--line));
+}
+.forgotten__media img { width: 78%; height: 78%; object-fit: contain; }
+.forgotten__name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.forgotten__when { font-size: 12px; color: var(--accent); }
+
+.wear-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 4px; }
+.wear-stats div { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--paper); border: 1px solid var(--line); }
+.wear-stats dt { color: var(--muted); font-size: 12px; }
+.wear-stats dd { margin: 2px 0 0; font-size: 18px; font-weight: 650; letter-spacing: -0.02em; }
+.wear-actions { display: flex; gap: 8px; margin: 10px 0 6px; }
+.wear-actions button { flex: 1; justify-content: center; }
+
+.style-rules { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.style-rules legend { width: 100%; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
+.outfit-style-form .style-rules button {
+  height: auto;
+  padding: 7px 12px; border-radius: var(--radius-pill); border: 1px solid var(--line-strong);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer;
+}
+.outfit-style-form .style-rules button:hover { opacity: 1; border-color: var(--ink-soft); }
+.outfit-style-form .style-rules button.active { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.outfit-style-form .style-forgotten { flex: 1 1 100%; display: flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 14px; font-weight: 450; }
+.outfit-style-form .style-forgotten input { width: 20px; height: 20px; padding: 0; margin: 0; accent-color: var(--ink); box-shadow: none; }
+
+.outfit-card__harmony { margin-top: 2px; }
+.outfit-viewer__harmony { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 8px; color: var(--muted); font-size: 14px; }
+.outfit-viewer__worn { color: var(--success); font-size: 14px; }
+
+.wear-idle { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.field-optional { font-style: normal; font-weight: 400; color: var(--muted); }
