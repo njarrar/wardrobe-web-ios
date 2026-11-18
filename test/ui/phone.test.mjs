@@ -252,7 +252,7 @@ describe("phone screens", () => {
     const imageUrls = [];
     page.on("request", (request) => { if (request.resourceType() === "image") imageUrls.push(request.url()); });
     await page.addInitScript((server) => {
-      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios" };
+      window.CapacitorCustomPlatform = { name: "ios" };
       localStorage.setItem("wardrobe-server-url", server);
       localStorage.setItem("wardrobe-token", "s3cret-token");
     }, guarded.base);
@@ -271,7 +271,7 @@ describe("phone screens", () => {
   test("the phone app asks for a server first", async () => {
     const context = await browser.newContext({ ...devices["iPhone 13"] });
     const page = await context.newPage();
-    await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios" }; });
+    await page.addInitScript(() => { window.CapacitorCustomPlatform = { name: "ios" }; });
     await page.goto(base);
     await page.getByLabel("Server address").waitFor();
     await snap(page, "light-5-connect");

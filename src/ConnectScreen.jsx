@@ -60,7 +60,7 @@ export function ConnectScreen({ reason }) {
           <span className="brand-mark" aria-hidden="true"><CoatHanger size={22} weight="bold" /></span>
           <div>
             <h1>{t("Wardrobe")}</h1>
-            <p>{t(MESSAGES[reason] || MESSAGES.setup)}{window.__wardrobeLocalError ? ` ${window.__wardrobeLocalError}` : ""}</p>
+            <p>{t(MESSAGES[reason] || MESSAGES.setup)}</p>
           </div>
         </div>
 
@@ -71,6 +71,7 @@ export function ConnectScreen({ reason }) {
             <button className="secondary-button" type="button" onClick={() => { setClosetMode("local"); window.location.reload(); }}>
               {t("Use iCloud")}
             </button>
+            {window.__wardrobeLocalError && <p className="status error" role="alert"><WarningCircle size={15} aria-hidden="true" /> {t("Could not open iCloud.")} {t(window.__wardrobeLocalError)}</p>}
           </div>
         )}
 
