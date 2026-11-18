@@ -3,7 +3,9 @@
 <plist version="1.0">
 <dict>
 	<!-- Wardrobe does not track people and runs no ads or analytics.
-	     Photos go only to the server the person connects to. -->
+	     Photos go only to the server the person connects to. Weather, when
+	     turned on, sends a rough location straight to Open-Meteo for one
+	     forecast and nothing is kept, so it is not collected data. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>

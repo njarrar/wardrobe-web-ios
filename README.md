@@ -31,7 +31,14 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 **[App stores](#releasing-to-the-app-stores)** ·
 **[Settings](#settings)**
 
-## What's new in 2.5
+## What's new in 2.6
+
+- **Arabic.** The whole app in Arabic, right to left. Switch in Settings.
+- **Dressed for the weather.** Turn on Weather and Today and the plan suit the forecast.
+- **Basics without a photo.** Add a white tee or navy jeans in two taps.
+- **Cleaner cutouts.** Clean cut on iPhone, and a Fix edges brush everywhere.
+
+## What was new in 2.5
 
 - **Plan a month in one tap.** The new Plan tab fills every day with an outfit, with no repeats inside a week. Add a trip and get a packing list.
 - **Sorted for you.** Pieces get a kind, seasons, warmth and dress level, and the closet groups them: Winter, Summer, Work, Neutrals and more.

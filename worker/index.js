@@ -5,6 +5,9 @@
 import {
   MAX_STYLE_COUNT,
   styleOptions,
+  checkPng,
+  garmentFileName,
+  newPieceRecord,
   sortFields,
   applyOutfitEdit,
   normalizeItemEdit,
@@ -384,12 +387,39 @@ async function handleApi(request, env) {
   const outfitAssetMatch = pathname.match(/^\/api\/import\/outfits\/([\w.-]+\.png)$/i);
   if (outfitAssetMatch && method === "GET") return serveObject(env, `outfits/${outfitAssetMatch[1]}`, "no-cache");
 
+  if (pathname === "/api/import/wardrobe" && method === "POST") {
+    const input = await readJson(request, 12 * 1024 * 1024);
+    const bytes = checkPng(decodeDataUrl(input).bytes);
+    const id = `import-${crypto.randomUUID()}`;
+    const fileName = garmentFileName(id);
+    await putPng(env, `library/${fileName}`, bytes);
+    const record = newPieceRecord(input, id, `${LIBRARY_ASSET_ROOT}/${fileName}`);
+    await upsertItem(env, record);
+    return json(201, record);
+  }
+  const imageMatch = pathname.match(/^\/api\/import\/wardrobe\/(import-[\w-]{1,80})\/image$/i);
+  if (imageMatch && method === "PUT") {
+    const id = imageMatch[1];
+    const row = await env.DB.prepare("SELECT data FROM items WHERE id = ?").bind(id).first();
+    if (!row) return json(404, { error: "Imported wardrobe item not found" });
+    const bytes = checkPng(decodeDataUrl(await readJson(request, 12 * 1024 * 1024)).bytes);
+    const fileName = garmentFileName(id);
+    await putPng(env, `library/${fileName}`, bytes);
+    const record = JSON.parse(row.data);
+    const oldName = typeof record.image === "string" ? record.image.split("/").pop() : "";
+    const next = { ...record, image: `${LIBRARY_ASSET_ROOT}/${fileName}`, thumbnail: `${LIBRARY_ASSET_ROOT}/${fileName}` };
+    await env.DB.prepare("UPDATE items SET data = ? WHERE id = ?").bind(JSON.stringify(next), id).run();
+    if (oldName.startsWith(`${id}-garment`) && oldName !== fileName) await env.BUCKET.delete(`library/${oldName}`);
+    return json(200, next);
+  }
   const itemMatch = pathname.match(/^\/api\/import\/wardrobe\/(import-[\w-]{1,80})$/i);
   if (itemMatch && method === "DELETE") {
     const id = itemMatch[1];
+    const row = await env.DB.prepare("SELECT data FROM items WHERE id = ?").bind(id).first();
     const { meta } = await env.DB.prepare("DELETE FROM items WHERE id = ?").bind(id).run();
     if (!meta.changes) return json(404, { error: "Imported wardrobe item not found" });
-    await env.BUCKET.delete([`library/${id}-garment.png`, `library/${id}-modeled.png`]);
+    const ownImage = row ? String(JSON.parse(row.data).image || "").split("/").pop() : "";
+    await env.BUCKET.delete([`library/${id}-garment.png`, `library/${id}-modeled.png`, ...(ownImage.startsWith(`${id}-garment`) ? [`library/${ownImage}`] : [])]);
     return json(200, { deleted: true, id });
   }
   if (itemMatch && (method === "PATCH" || method === "PUT")) {

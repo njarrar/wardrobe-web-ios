@@ -77,16 +77,19 @@ export function forgottenPieces(items, { today = dayString(), days = 60 } = {}) 
 }
 
 // "Today", "Yesterday", "12 days ago", "3 months ago", "Since Feb 2025".
-export function idleLabel(record, today = dayString()) {
+const fill = (text, vars) => (vars ? text.replace(/\{(\w+)\}/g, (match, key) => (key in vars ? String(vars[key]) : match)) : text);
+
+// tr and loc let the app show the label in its own language.
+export function idleLabel(record, today = dayString(), tr = fill, loc = "en-GB") {
   const last = lastWorn(record);
   const idle = idleDays(record, today);
   if (idle === null) return "";
-  if (!last) return idle < 1 ? "Added today" : "Never worn";
-  if (idle === 0) return "Worn today";
-  if (idle === 1) return "Worn yesterday";
-  if (idle < 45) return `${idle} days ago`;
-  if (idle < 300) return `${Math.round(idle / 30)} months ago`;
-  return `Since ${parseDay(last).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}`;
+  if (!last) return tr(idle < 1 ? "Added today" : "Never worn");
+  if (idle === 0) return tr("Worn today");
+  if (idle === 1) return tr("Worn yesterday");
+  if (idle < 45) return tr("{n} days ago", { n: idle });
+  if (idle < 300) return tr("{n} months ago", { n: Math.round(idle / 30) });
+  return tr("Since {date}", { date: parseDay(last).toLocaleDateString(loc, { month: "short", year: "numeric" }) });
 }
 
 export function costPerWear(item) {

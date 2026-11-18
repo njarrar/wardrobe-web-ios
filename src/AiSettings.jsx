@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowSquareOut, Key, SpinnerGap, Trash } from "@phosphor-icons/react";
 import { AI_CHANGED_EVENT, apiFetch } from "./api.js";
+import { t, tn } from "./i18n.js";
 
 const SETTINGS_API = "/api/import/settings/ai";
 
@@ -10,13 +11,13 @@ async function request(method, body) {
     ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
   });
   const value = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(value.error || "Could not reach the AI settings.");
+  if (!response.ok) throw new Error(value.error || t("Could not reach the AI settings."));
   return value;
 }
 
 function keyStatus(entry) {
-  if (!entry.hasKey) return "No key yet";
-  return entry.keySource === "app" ? `Key saved (${entry.keyHint})` : `Key set on the server (${entry.keyHint})`;
+  if (!entry.hasKey) return t("No key yet");
+  return entry.keySource === "app" ? t("Key saved ({hint})", { hint: entry.keyHint }) : t("Key set on the server ({hint})", { hint: entry.keyHint });
 }
 
 // Pick which AI reads photos and styles outfits, and give it an API key.
@@ -56,8 +57,8 @@ export function AiSettings({ onChange }) {
   if (!settings) {
     return (
       <section className="ai-settings" aria-labelledby="ai-settings-title">
-        <h3 id="ai-settings-title">AI</h3>
-        <p className="settings-note">{error || <><SpinnerGap size={14} className="import-spinner" aria-hidden="true" /> Loading…</>}</p>
+        <h3 id="ai-settings-title">{t("AI")}</h3>
+        <p className="settings-note">{error || <><SpinnerGap size={14} className="import-spinner" aria-hidden="true" /> {t("Loading…")}</>}</p>
       </section>
     );
   }
@@ -73,10 +74,10 @@ export function AiSettings({ onChange }) {
 
   return (
     <section className="ai-settings" aria-labelledby="ai-settings-title">
-      <h3 id="ai-settings-title">AI</h3>
-      <p className="ai-settings__lead">Pick the AI that finds clothes in your photos and styles outfits.</p>
+      <h3 id="ai-settings-title">{t("AI")}</h3>
+      <p className="ai-settings__lead">{t("Pick the AI that finds clothes in your photos and styles outfits.")}</p>
 
-      <div className="view-switch ai-switch" role="radiogroup" aria-label="AI provider">
+      <div className="view-switch ai-switch" role="radiogroup" aria-label={t("AI provider")}>
         {settings.providers.map((entry) => (
           <button
             key={entry.id}
@@ -97,7 +98,7 @@ export function AiSettings({ onChange }) {
           <Key size={14} aria-hidden="true" /> {selected.maker} · {keyStatus(selected)}
         </p>
         <label className="field">
-          <span>{selected.hasKey ? "Replace API key" : "API key"}</span>
+          <span>{selected.hasKey ? t("Replace API key") : t("API key")}</span>
           <input
             type="password"
             value={key}
@@ -109,7 +110,7 @@ export function AiSettings({ onChange }) {
           />
         </label>
         <label className="field">
-          <span>Model (leave empty for {selected.defaultModel})</span>
+          <span>{t("Model (leave empty for {model})", { model: selected.defaultModel })}</span>
           <input
             type="text"
             value={model}
@@ -126,7 +127,7 @@ export function AiSettings({ onChange }) {
           </button>
           {selected.keySource === "app" && (
             <button className="secondary-button danger" type="button" disabled={busy} onClick={() => save({ keys: { [selected.id]: null } })}>
-              <Trash size={16} aria-hidden="true" /> Remove key
+              <Trash size={16} aria-hidden="true" /> {t("Remove key")}
             </button>
           )}
         </div>

@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.6.0 (Arabic, weather and picture fixes)
+
+### Arabic
+- **The whole app in Arabic**, with the layout turned right to left. Pick English or العربية in Settings. A phone set to Arabic starts in Arabic.
+- Dates, weekdays and counts follow the language. Piece names you typed keep their own direction.
+
+### Weather
+- **Weather in Settings**, off by default. Use your location or type a city.
+- With it on, the Today card and the month plan pick warmer or lighter outfits from the forecast, and rainy days avoid suede and linen.
+- The forecast comes from Open-Meteo, straight from the device, with the location rounded to about 10 km. It is never sent to your server.
+
+### Adding clothes
+- **Add basics without a photo.** Pick from 19 basics (tee, oxford, jeans, chinos, blazer, coat, sneakers and more), choose a color and tap Add. They come sorted and ready for outfits and plans. Swap in a real photo later.
+- **Clean cut on iPhone.** On iOS 17 or later, the piece page can cut the piece out again with Apple's on-device Vision. Nothing leaves the phone except the finished picture.
+- **Fix edges.** A brush on the piece page to erase leftover background or bring back parts of the piece, with undo. Works on every device.
+
+### API
+- `POST /api/import/wardrobe` adds a piece with its own PNG (`imageDataUrl`) and details.
+- `PUT /api/import/wardrobe/:id/image` swaps a piece's picture. Each picture gets a new file name, so cached copies never show the old one, and the old file is removed.
+- Both take PNG only, up to 8 MB.
+
+### Phone apps
+- iOS asks for location only when you tap Use my location (`NSLocationWhenInUseUsageDescription`). Android asks for rough location only.
+- The iOS app now starts from `WardrobeViewController`, which adds the on-device cutout.
+
 ## 2.5.0 (Plan and sort)
 
 ### Plan

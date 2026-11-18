@@ -5,6 +5,9 @@ import sharp from "sharp";
 import {
   MAX_STYLE_COUNT,
   styleOptions,
+  checkPng,
+  garmentFileName,
+  newPieceRecord,
   sortFields,
   isLoopbackHost,
   normalizeBoundingBox,
@@ -281,7 +284,7 @@ export function createWardrobeApi(options = {}) {
         secondaryColor: metadata.secondaryColor || null,
         palette: [metadata.color, metadata.secondaryColor].filter(Boolean),
         tags: Array.isArray(metadata.tags) ? metadata.tags : [],
-    ...sortFields(metadata),
+        ...sortFields(metadata),
         image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
         thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
         importJobId: job.id,
@@ -455,15 +458,50 @@ export function createWardrobeApi(options = {}) {
         res.setHeader("Cache-Control", "no-cache");
         return res.end(await readFile(file));
       }
+      // A piece with its own PNG: a starter piece drawn in the app, or a phone cutout.
+      if (url.pathname === "/api/import/wardrobe" && req.method === "POST") {
+        const input = await body(req, 12 * 1024 * 1024);
+        const bytes = checkPng(decodeImage(input).data);
+        const id = `import-${randomUUID()}`;
+        const fileName = garmentFileName(id);
+        await mkdir(libraryAssetDir, { recursive: true });
+        await writeFile(path.join(libraryAssetDir, fileName), bytes);
+        const record = newPieceRecord(input, id, `${LIBRARY_ASSET_ROOT}/${fileName}`);
+        await updateLibrary((records) => ({ records: [...records, record], value: record }));
+        return json(res, 201, record);
+      }
+      const imageMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[\w-]{1,80})\/image$/i);
+      if (imageMatch && req.method === "PUT") {
+        const id = imageMatch[1];
+        const bytes = checkPng(decodeImage(await body(req, 12 * 1024 * 1024)).data);
+        const fileName = garmentFileName(id);
+        await mkdir(libraryAssetDir, { recursive: true });
+        await writeFile(path.join(libraryAssetDir, fileName), bytes);
+        let old = null;
+        const updated = await updateLibrary((records) => {
+          const index = records.findIndex((record) => record.id === id);
+          if (index === -1) return { value: null };
+          old = records[index].image;
+          const next = [...records];
+          next[index] = { ...records[index], image: `${LIBRARY_ASSET_ROOT}/${fileName}`, thumbnail: `${LIBRARY_ASSET_ROOT}/${fileName}` };
+          return { records: next, value: next[index] };
+        });
+        if (!updated) { await rm(path.join(libraryAssetDir, fileName), { force: true }); return json(res, 404, { error: "Imported wardrobe item not found" }); }
+        const oldName = typeof old === "string" ? path.basename(old) : "";
+        if (oldName.startsWith(`${id}-garment`) && oldName !== fileName) await rm(path.join(libraryAssetDir, oldName), { force: true });
+        return json(res, 200, updated);
+      }
       const wardrobeItemMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[\w-]{1,80})$/i);
       if (wardrobeItemMatch && req.method === "DELETE") {
         const id = wardrobeItemMatch[1];
         const deleted = await updateLibrary((records) => {
-          const next = records.filter((record) => record.id !== id);
-          return next.length === records.length ? { value: false } : { records: next, value: true };
+          const found = records.find((record) => record.id === id);
+          return found ? { records: records.filter((record) => record.id !== id), value: found } : { value: null };
         });
         if (!deleted) return json(res, 404, { error: "Imported wardrobe item not found" });
+        const ownImage = typeof deleted.image === "string" ? path.basename(deleted.image) : "";
         await Promise.all([
+          ownImage.startsWith(`${id}-garment`) ? rm(path.join(libraryAssetDir, ownImage), { force: true }) : null,
           rm(path.join(libraryAssetDir, `${id}-garment.png`), { force: true }),
           rm(path.join(libraryAssetDir, `${id}-modeled.png`), { force: true }),
         ]);

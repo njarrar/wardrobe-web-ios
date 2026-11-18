@@ -1,6 +1,6 @@
 # Wardrobe privacy policy
 
-Last updated: 31 October 2026
+Last updated: 18 November 2026
 
 Wardrobe is a closet app that you connect to your own Wardrobe server: a
 NAS, a computer, or a Cloudflare account that you run. This policy covers the
@@ -29,6 +29,20 @@ The apps contain no ads, no analytics and no tracking.
   The app asks for your permission before anything is sent to an AI.
 - **On your phone.** The app keeps your server address and access token on
   the device so it can reconnect. Removing the app removes them.
+- **Weather, only if you turn it on.** The app sends a rough location
+  (rounded to about 10 km), or the city you type, straight from your device
+  to [Open-Meteo](https://open-meteo.com/en/terms) to get the forecast. It is
+  not sent to your server or to us. The forecast is kept on the device for a
+  few hours. Turn Weather off in Settings to stop it.
+- **Picture fixes.** The iPhone cutout runs on the device with Apple's
+  Vision framework, and the Fix edges brush runs in the app. Only the
+  finished picture goes to your server.
+
+## Location
+
+The app asks for your location only when you tap Use my location in the
+Weather settings. It uses a rough location, never tracks you in the
+background, and you can type a city instead.
 
 ## Camera and photos
 

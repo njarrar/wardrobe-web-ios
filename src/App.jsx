@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsDownUp, CalendarBlank, Check, ClockCounterClockwise, CoatHanger, GearSix, MagicWand, MagnifyingGlass, Plus, Sparkle, SpinnerGap, Trash, X } from "@phosphor-icons/react";
+import { ArrowsDownUp, CalendarBlank, Check, ClockCounterClockwise, CoatHanger, GearSix, MagicWand, MagnifyingGlass, Plus, Sparkle, SpinnerGap, Trash, TShirt, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
@@ -9,9 +9,13 @@ import { AiConsentPrompt } from "./AiConsentPrompt.jsx";
 import { AUTH_EVENT, apiFetch, ensureImageKey, isNativeApp, needsServerUrl } from "./api.js";
 import { ForgottenRow, TodayCard } from "./Today.jsx";
 import { PlanView, usePlan } from "./Plan.jsx";
+import { StarterPicker } from "./StarterPicker.jsx";
+import { PictureTools } from "./PictureTools.jsx";
+import { useWeather } from "./weather.js";
 import { askAiConsent, useAiSetup } from "./ai-setup.js";
 import { sendJson, wearPiece, wornOn } from "./wear.js";
 import { costPerWear, dayString, formatMoney, idleLabel, isNeutral, itemWarmth, lastWorn, wearCount } from "../shared/style.mjs";
+import { formatDay, locale, t, tn } from "./i18n.js";
 
 const LEGACY_EDITS_KEY = "open-wardrobe-edits-v1";
 const LEGACY_DELETED_KEY = "open-wardrobe-deleted-v1";
@@ -231,7 +235,7 @@ const SORTS = [
 ];
 
 function GalleryItem({ item, selected, onOpen, index }) {
-  const type = TYPE_MAP[item.part]?.singular || "wardrobe item";
+  const type = t(TYPE_MAP[item.part]?.singular || t("Wardrobe item"));
   const swatches = [item.color, item.secondaryColor].filter(Boolean);
 
   return (
@@ -239,7 +243,7 @@ function GalleryItem({ item, selected, onOpen, index }) {
       className={`gallery-item${selected ? " selected" : ""}`}
       type="button"
       onClick={() => onOpen(item.id)}
-      aria-label={`View ${item.name || type}`}
+      aria-label={`${t("View")} ${item.name || type}`}
       aria-pressed={selected}
       data-testid={`wardrobe-item-${item.id}`}
       style={{ "--stagger": `${Math.min(index, 18) * 18}ms` }}
@@ -283,7 +287,7 @@ function TagEditor({ tags, onChange }) {
         {tags.map((tag) => (
           <span className="editable-tag" key={tag}>
             {tag}
-            <button type="button" onClick={() => onChange(tags.filter((existing) => existing !== tag))} aria-label={`Remove ${tag}`}>
+            <button type="button" onClick={() => onChange(tags.filter((existing) => existing !== tag))} aria-label={t("Remove {name}", { name: tag })}>
               <X size={12} weight="regular" aria-hidden="true" />
             </button>
           </span>
@@ -299,10 +303,10 @@ function TagEditor({ tags, onChange }) {
               addTag();
             }
           }}
-          placeholder="Add a detail"
-          aria-label="Add detail tag"
+          placeholder={t("Add a detail")}
+          aria-label={t("Add detail tag")}
         />
-        <button type="button" onClick={addTag} disabled={!input.trim()} aria-label="Add detail">
+        <button type="button" onClick={addTag} disabled={!input.trim()} aria-label={t("Add detail")}>
           <Plus size={15} weight="regular" aria-hidden="true" />
         </button>
       </div>
@@ -315,11 +319,11 @@ function ColorControl({ label, field, value, palette, onChange, sampling, setSam
     return (
       <div className="color-slot empty-color-slot">
         <div className="color-slot-heading">
-          <span>{label}</span>
-          <small>Optional</small>
+          <span>{t(label)}</span>
+          <small>{t("Optional")}</small>
         </div>
-        <p>No distinct secondary color detected.</p>
-        <button className="add-secondary-button" type="button" onClick={onAdd}>Add secondary color</button>
+        <p>{t("No distinct secondary color detected.")}</p>
+        <button className="add-secondary-button" type="button" onClick={onAdd}>{t("Add secondary color")}</button>
       </div>
     );
   }
@@ -327,24 +331,24 @@ function ColorControl({ label, field, value, palette, onChange, sampling, setSam
   return (
     <div className="color-slot">
       <div className="color-slot-heading">
-        <span>{label}</span>
-        {optional && <button type="button" onClick={onClear}>Remove</button>}
+        <span>{t(label)}</span>
+        {optional && <button type="button" onClick={onClear}>{t("Remove")}</button>}
       </div>
       <label className="selected-color-control">
         <input
           type="color"
           value={value || "#9a9286"}
           onChange={(event) => onChange(event.target.value)}
-          aria-label={`Choose ${label.toLowerCase()}`}
+          aria-label={label}
         />
         <span className="selected-color-copy">
-          <small>Selected</small>
-          <strong>{value || "Custom"}</strong>
+          <small>{t("Selected")}</small>
+          <strong>{value || t("Custom")}</strong>
         </span>
       </label>
       <div className="suggestion-heading">
-        <span>Image suggestions</span>
-        <small>Tap one to use it</small>
+        <span>{t("Image suggestions")}</span>
+        <small>{t("Tap one to use it")}</small>
       </div>
       <div className="palette" aria-label={`${label} suggestions from image`}>
         {palette.map((color) => (
@@ -354,7 +358,7 @@ function ColorControl({ label, field, value, palette, onChange, sampling, setSam
             className={value?.toLowerCase() === color.toLowerCase() ? "active" : ""}
             style={{ backgroundColor: color }}
             onClick={() => onChange(color)}
-            aria-label={`Use ${color} as ${label.toLowerCase()}`}
+            aria-label={`${label}: ${color}`}
             title={color}
           />
         ))}
@@ -364,7 +368,7 @@ function ColorControl({ label, field, value, palette, onChange, sampling, setSam
         type="button"
         onClick={() => setSampling((current) => current === field ? null : field)}
       >
-        {sampling === field ? "Cancel picking" : `Pick ${label.toLowerCase()} from image`}
+        {sampling === field ? t("Cancel picking") : t("Pick {label} from image", { label: label.toLowerCase() })}
       </button>
     </div>
   );
@@ -376,23 +380,23 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
   return (
     <div className="item-editor">
       <label className="field">
-        <span>Name</span>
+        <span>{t("Name")}</span>
         <input
           value={draft.name}
           onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-          placeholder={TYPE_MAP[draft.part]?.singular || "Wardrobe item"}
+          placeholder={t(TYPE_MAP[draft.part]?.singular || t("Wardrobe item"))}
         />
       </label>
 
       <label className="field">
-        <span>Category</span>
+        <span>{t("Category")}</span>
         <select value={draft.part} onChange={(event) => setDraft((current) => ({ ...current, part: event.target.value }))}>
-          {TYPES.slice(1).map((type) => <option value={type.id} key={type.id}>{type.label}</option>)}
+          {TYPES.slice(1).map((type) => <option value={type.id} key={type.id}>{t(type.label)}</option>)}
         </select>
       </label>
 
       <fieldset className="color-field">
-        <legend>Colors</legend>
+        <legend>{t("Colors")}</legend>
         <div className="colors-editor">
           <ColorControl
             label="Primary color"
@@ -416,45 +420,45 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
             onAdd={() => setDraft((current) => ({ ...current, secondaryColor: suggestedSecondary }))}
           />
         </div>
-        <p className="color-help" aria-live="polite">{sampling ? `Click anywhere on the garment to sample the ${sampling} color.` : sampleStatus || "Primary colors come from the image. A secondary is suggested only when a distinct color has meaningful coverage."}</p>
+        <p className="color-help" aria-live="polite">{sampling ? t("Click garment to sample") : sampleStatus || t("Primary colors come from the image. A secondary is suggested only when a distinct color has meaningful coverage.")}</p>
       </fieldset>
 
       <div className="sort-fields">
         <label className="field">
-          <span>Kind</span>
+          <span>{t("Kind")}</span>
           <input value={draft.kind || ""} onChange={(event) => setDraft((current) => ({ ...current, kind: event.target.value }))} placeholder="sweater" maxLength={30} />
         </label>
         <label className="field">
-          <span>Warmth</span>
+          <span>{t("Warmth")}</span>
           <select value={draft.warmth || ""} onChange={(event) => setDraft((current) => ({ ...current, warmth: event.target.value ? Number(event.target.value) : "" }))}>
-            <option value="">Not set</option>
+            <option value="">{t("Not set")}</option>
             {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} {["very light", "light", "medium", "warm", "very warm"][value - 1]}</option>)}
           </select>
         </label>
         <label className="field">
-          <span>Dress level</span>
+          <span>{t("Dress level")}</span>
           <select value={draft.formality || ""} onChange={(event) => setDraft((current) => ({ ...current, formality: event.target.value }))}>
-            <option value="">Not set</option>
-            <option value="casual">Casual</option>
-            <option value="smart">Smart</option>
-            <option value="formal">Formal</option>
+            <option value="">{t("Not set")}</option>
+            <option value="casual">{t("Casual")}</option>
+            <option value="smart">{t("Smart")}</option>
+            <option value="formal">{t("Formal")}</option>
           </select>
         </label>
       </div>
       <fieldset className="season-field">
-        <legend>Seasons</legend>
+        <legend>{t("Seasons")}</legend>
         {Object.entries(SEASON_LABELS).map(([id, label]) => {
           const on = (draft.seasons || []).includes(id);
           return (
             <button key={id} type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setDraft((current) => ({ ...current, seasons: on ? (current.seasons || []).filter((season) => season !== id) : [...(current.seasons || []), id] }))}>
-              {label}
+              {t(label)}
             </button>
           );
         })}
       </fieldset>
 
       <label className="field">
-        <span>Price paid <em className="field-optional">optional, for cost per wear</em></span>
+        <span>{t("Price paid")} <em className="field-optional">{t("optional, for cost per wear")}</em></span>
         <input
           type="number"
           inputMode="decimal"
@@ -467,7 +471,7 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
       </label>
 
       <div className="field details-field">
-        <span>Details</span>
+        <span>{t("Details")}</span>
         <TagEditor tags={draft.tags} onChange={(tags) => setDraft((current) => ({ ...current, tags }))} />
       </div>
     </div>
@@ -479,14 +483,14 @@ function WearStats({ item }) {
   const last = lastWorn(item);
   return (
     <dl className="wear-stats">
-      <div><dt>Worn</dt><dd>{wearCount(item)} {wearCount(item) === 1 ? "time" : "times"}</dd></div>
-      <div><dt>Last worn</dt><dd>{last ? new Date(`${last}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "Never"}</dd></div>
-      <div><dt>Per wear</dt><dd>{perWear === null ? "-" : formatMoney(perWear)}</dd></div>
+      <div><dt>{t("Worn")}</dt><dd>{tn(wearCount(item), "{n} time", "{n} times")}</dd></div>
+      <div><dt>{t("Last worn")}</dt><dd>{last ? new Date(`${last}T12:00:00`).toLocaleDateString(locale(), { day: "numeric", month: "short" }) : t("Never")}</dd></div>
+      <div><dt>{t("Per wear")}</dt><dd>{perWear === null ? "-" : formatMoney(perWear)}</dd></div>
     </dl>
   );
 }
 
-function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
+function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
   const closeButtonRef = useRef(null);
   const imageRef = useRef(null);
   const samplingCanvasRef = useRef(null);
@@ -497,7 +501,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
   const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", seasons: [...(item.seasons || [])] });
   const [shaking, setShaking] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
-  const type = TYPE_MAP[item.part]?.singular || "Wardrobe item";
+  const type = t(TYPE_MAP[item.part]?.singular || t("Wardrobe item"));
   const hasModeledImage = Boolean(item.modeledImage);
   const pieceRotation = useMemo(() => {
     const hash = [...item.id].reduce((total, character) => total + character.charCodeAt(0), 0);
@@ -614,23 +618,23 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
       <OptimizedImage
         ref={imageRef}
         src={item.image}
-        alt={`Selected ${type.toLowerCase()}`}
+        alt={type}
         sizes="(max-width: 520px) 40vw, 300px"
         breakpoints={[160, 240, 320, 480, 640]}
         priority
         onLoad={handleImageLoad}
         onClick={handleImageClick}
       />
-      {sampling && <span className="sample-hint">Click garment to sample</span>}
+      {sampling && <span className="sample-hint">{t("Click garment to sample")}</span>}
     </div>
   );
 
   return (
     <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
     <div className="viewer-entry">
-    <aside className={`viewer editing${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label="Selected wardrobe item">
+    <aside className={`viewer editing${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label={t("Selected wardrobe item")}>
       <span className="sheet-grabber" aria-hidden="true" />
-      <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label="Close viewer" ref={closeButtonRef}>
+      <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label={t("Close viewer")} ref={closeButtonRef}>
         <X size={24} weight="light" aria-hidden="true" />
       </button>
 
@@ -647,7 +651,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
           />
           <div className="viewer-heading modeled-heading">
             <div>
-              <h2>{draft.name || TYPE_MAP[draft.part]?.singular}</h2>
+              <h2>{draft.name || t(TYPE_MAP[draft.part]?.singular || t("Wardrobe item"))}</h2>
             </div>
           </div>
           {garmentArtwork}
@@ -656,7 +660,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
         <>
           <div className="viewer-heading">
             <div>
-              <h2>{draft.name || TYPE_MAP[draft.part]?.singular}</h2>
+              <h2>{draft.name || t(TYPE_MAP[draft.part]?.singular || t("Wardrobe item"))}</h2>
             </div>
           </div>
           {garmentArtwork}
@@ -665,12 +669,13 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
 
       <div className="viewer-details editing">
         <WearStats item={item} />
-        <p className="wear-idle">{idleLabel(item)}</p>
+        <p className="wear-idle">{idleLabel(item, undefined, t, locale())}</p>
         <div className="wear-actions">
           <button className={wornOn(item) ? "secondary-button" : "primary-button"} type="button" onClick={() => onWear(item.id, wornOn(item))}>
-            {wornOn(item) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> Undo, not worn today</> : <><Check size={15} weight="bold" aria-hidden="true" /> Wore today</>}
+            {wornOn(item) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> {t("Undo, not worn today")}</> : <><Check size={15} weight="bold" aria-hidden="true" /> {t("Wore today")}</>}
           </button>
         </div>
+        {onPicture && <PictureTools item={item} onSaved={onPicture} />}
         <ItemEditor
           draft={draft}
           setDraft={setDraft}
@@ -680,16 +685,16 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear }) {
           sampleStatus={sampleStatus}
         />
 
-        {closeBlocked && <p className="unsaved-notice" role="status">Save or cancel changes before closing.</p>}
+        {closeBlocked && <p className="unsaved-notice" role="status">{t("Save or cancel changes before closing.")}</p>}
 
         <div className="viewer-actions">
           <button className="delete-button" type="button" onClick={() => onDelete(item.id)}>
-            <Trash size={15} weight="regular" aria-hidden="true" /> Delete
+            <Trash size={15} weight="regular" aria-hidden="true" /> {t("Delete")}
           </button>
           <span className="action-spacer" />
-          <button className="secondary-button" type="button" onClick={cancelEditing}>Cancel</button>
+          <button className="secondary-button" type="button" onClick={cancelEditing}>{t("Cancel")}</button>
           <button className="primary-button" type="button" onClick={saveEditing}>
-            <Check size={15} weight="bold" aria-hidden="true" /> Save
+            <Check size={15} weight="bold" aria-hidden="true" /> {t("Save")}
           </button>
         </div>
       </div>
@@ -734,6 +739,8 @@ function Wardrobe({ onConnectionFailed }) {
   const [sorting, setSorting] = useState(false);
   const { plan, save: savePlan, error: planError } = usePlan();
   const setup = useAiSetup();
+  const weather = useWeather();
+  const [starterOpen, setStarterOpen] = useState(false);
 
   useEffect(() => {
     try { localStorage.setItem("wardrobe-sort", sort); } catch { /* storage unavailable */ }
@@ -748,7 +755,7 @@ function Wardrobe({ onConnectionFailed }) {
     ensureImageKey()
       .then(() => apiFetch("/api/import/wardrobe", { cache: "no-store" }))
       .then((response) => {
-        if (!response.ok) throw new Error("Could not load the wardrobe.");
+        if (!response.ok) throw new Error(t("Could not load the wardrobe."));
         return response.json();
       })
       .then(async (loadedItems) => {
@@ -772,7 +779,7 @@ function Wardrobe({ onConnectionFailed }) {
     ensureImageKey()
       .then(() => apiFetch("/api/import/outfits", { cache: "no-store" }))
       .then((response) => {
-        if (!response.ok) throw new Error("Could not load outfits.");
+        if (!response.ok) throw new Error(t("Could not load outfits."));
         return response.json();
       })
       .then(setOutfits)
@@ -875,7 +882,7 @@ function Wardrobe({ onConnectionFailed }) {
   const deleteItem = async (id) => {
     try {
       const response = await apiFetch(`/api/import/wardrobe/${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 404) throw new Error("Could not delete the item.");
+      if (!response.ok && response.status !== 404) throw new Error(t("Could not delete the item."));
     } catch (requestError) {
       setError(requestError.message);
       return;
@@ -897,12 +904,12 @@ function Wardrobe({ onConnectionFailed }) {
             <div className="brand">
               <span className="brand-mark" aria-hidden="true"><CoatHanger size={20} weight="bold" /></span>
               <div className="brand__text">
-                <h1>Wardrobe</h1>
-                <p className="piece-count">{items.length} {items.length === 1 ? "piece" : "pieces"}</p>
+                <h1>{t("Wardrobe")}</h1>
+                <p className="piece-count">{tn(items.length, "{n} piece", "{n} pieces")}</p>
               </div>
             </div>
 
-            <div className="view-switch" role="tablist" aria-label="Choose a view">
+            <div className="view-switch" role="tablist" aria-label={t("Choose a view")}>
               {[{ id: "closet", label: "Closet", Icon: CoatHanger }, { id: "outfits", label: "Outfits", Icon: Sparkle }, { id: "plan", label: "Plan", Icon: CalendarBlank }].map(({ id, label, Icon }) => (
                 <button
                   key={id}
@@ -913,12 +920,12 @@ function Wardrobe({ onConnectionFailed }) {
                   onClick={() => { setView(id); setSelectedId(null); }}
                 >
                   <Icon size={16} weight={view === id ? "fill" : "regular"} aria-hidden="true" />
-                  <span>{label}</span>
+                  <span>{t(label)}</span>
                 </button>
               ))}
             </div>
 
-            <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="Settings and connection">
+            <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label={t("Settings and connection")}>
               <GearSix size={20} aria-hidden="true" />
             </button>
           </div>
@@ -932,25 +939,25 @@ function Wardrobe({ onConnectionFailed }) {
                     type="search"
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search name, color, or detail"
-                    aria-label="Search your wardrobe"
+                    placeholder={t("Search name, color, or detail")}
+                    aria-label={t("Search your wardrobe")}
                   />
                   {query && (
-                    <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
+                    <button type="button" onClick={() => setQuery("")} aria-label={t("Clear search")}>
                       <X size={14} aria-hidden="true" />
                     </button>
                   )}
                 </label>
                 <label className="sort-select">
                   <ArrowsDownUp size={16} aria-hidden="true" />
-                  <span className="visually-hidden">Sort by</span>
+                  <span className="visually-hidden">{t("Sort by")}</span>
                   <select value={sort} onChange={(event) => setSort(event.target.value)}>
-                    {SORTS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                    {SORTS.map((option) => <option key={option.id} value={option.id}>{t(option.label)}</option>)}
                   </select>
                 </label>
               </div>
 
-              <nav className="category-nav" aria-label="Filter wardrobe by item type">
+              <nav className="category-nav" aria-label={t("Filter wardrobe by item type")}>
                 {TYPES.map((type) => (
                   <button
                     key={type.id}
@@ -959,46 +966,46 @@ function Wardrobe({ onConnectionFailed }) {
                     onClick={() => chooseType(type.id)}
                     aria-pressed={activeType === type.id}
                   >
-                    {type.label}
+                    {t(type.label)}
                     <span className="chip-count">{counts[type.id] || 0}</span>
                   </button>
                 ))}
               </nav>
 
               {familiesInCloset.length > 1 && (
-                <div className="color-filter" role="group" aria-label="Filter by color">
+                <div className="color-filter" role="group" aria-label={t("Filter by color")}>
                   {familiesInCloset.map((family) => (
                     <button
                       key={family.id}
                       type="button"
                       className={colorFilter === family.id ? "active" : ""}
                       aria-pressed={colorFilter === family.id}
-                      title={family.label}
+                      title={t(family.label)}
                       onClick={() => setColorFilter((current) => (current === family.id ? null : family.id))}
                     >
                       <span style={{ backgroundColor: family.swatch }} aria-hidden="true" />
-                      <span className="visually-hidden">{family.label}</span>
+                      <span className="visually-hidden">{t(family.label)}</span>
                     </button>
                   ))}
                   {colorFilter && (
                     <button type="button" className="color-filter__clear" onClick={() => setColorFilter(null)}>
-                      {COLOR_FAMILIES.find((family) => family.id === colorFilter)?.label} <X size={12} aria-hidden="true" />
+                      {t(COLOR_FAMILIES.find((family) => family.id === colorFilter)?.label || "")} <X size={12} aria-hidden="true" />
                     </button>
                   )}
                 </div>
               )}
 
               {(groupsInCloset.length > 0 || (unsorted > 0 && setup?.ready)) && (
-                <div className="group-filter" role="group" aria-label="Smart groups">
+                <div className="group-filter" role="group" aria-label={t("Smart groups")}>
                   {groupsInCloset.map((entry) => (
                     <button key={entry.id} type="button" className={group === entry.id ? "active" : ""} aria-pressed={group === entry.id} onClick={() => setGroup((current) => (current === entry.id ? null : entry.id))}>
-                      {entry.label} <span className="chip-count">{items.filter(entry.test).length}</span>
+                      {t(entry.label)} <span className="chip-count">{items.filter(entry.test).length}</span>
                     </button>
                   ))}
                   {unsorted > 0 && setup?.ready && (
                     <button type="button" className="group-filter__sort" onClick={sortCloset} disabled={sorting}>
                       {sorting ? <SpinnerGap size={14} className="import-spinner" aria-hidden="true" /> : <MagicWand size={14} aria-hidden="true" />}
-                      {sorting ? "Sorting" : `Sort ${unsorted} ${unsorted === 1 ? "piece" : "pieces"} for me`}
+                      {sorting ? t("Sorting") : tn(unsorted, "Sort {n} piece for me", "Sort {n} pieces for me")}
                     </button>
                   )}
                 </div>
@@ -1022,12 +1029,12 @@ function Wardrobe({ onConnectionFailed }) {
         )}
 
         {showingPlan && (
-          <PlanView items={items} outfits={outfits} plan={plan} savePlan={savePlan} planError={planError || outfitsError} onGoToOutfits={() => setView("outfits")} />
+          <PlanView items={items} outfits={outfits} plan={plan} savePlan={savePlan} forecast={weather.forecast} planError={planError || outfitsError} onGoToOutfits={() => setView("outfits")} />
         )}
 
         {!showingOutfits && !showingPlan && !loading && !error && browsingAll && !!items.length && (
           <div className="closet-highlights">
-            {!!outfits?.length && <TodayCard items={items} outfits={outfits} plan={plan} onWorn={onWorn} onOpenOutfit={openOutfit} />}
+            {!!outfits?.length && <TodayCard items={items} outfits={outfits} plan={plan} weather={weather.today} onWorn={onWorn} onOpenOutfit={openOutfit} />}
             <ForgottenRow items={items} onOpen={setSelectedId} />
           </div>
         )}
@@ -1041,22 +1048,23 @@ function Wardrobe({ onConnectionFailed }) {
         {!showingOutfits && !showingPlan && !error && !loading && !items.length && (
           <div className="empty-state">
             <span className="empty-state__icon" aria-hidden="true"><CoatHanger size={34} weight="light" /></span>
-            <h2>Your closet is empty</h2>
-            <p>Add a photo of one piece or a whole outfit. Each piece is cut out and added here.</p>
-            <p className="empty-state__hint"><Plus size={14} aria-hidden="true" /> Tap Add clothes to start.</p>
+            <h2>{t("Your closet is empty")}</h2>
+            <p>{t("Add a photo of one piece or a whole outfit. Each piece is cut out and added here.")}</p>
+            <p className="empty-state__hint"><Plus size={14} aria-hidden="true" /> {t("Tap Add clothes to start.")}</p>
+            <button className="secondary-button" type="button" onClick={() => setStarterOpen(true)}><TShirt size={16} aria-hidden="true" /> {t("Add basics without a photo")}</button>
           </div>
         )}
 
         {!showingOutfits && !showingPlan && !!items.length && !visibleItems.length && (
           <div className="empty-state compact">
-            <h2>{query || colorFilter || group ? "No matches" : `No ${TYPE_MAP[activeType]?.label.toLowerCase() || "pieces"} yet`}</h2>
-            <p>{query || colorFilter || group ? `Nothing in ${TYPE_MAP[activeType]?.label.toLowerCase() || "your closet"} matches these filters.` : "Add a photo and it will show up here."}</p>
-            <button className="secondary-button" type="button" onClick={() => { setQuery(""); setColorFilter(null); setGroup(null); chooseType("all"); }}>Clear filters</button>
+            <h2>{query || colorFilter || group ? t("No matches") : t("No {type} yet", { type: activeType === "all" ? t("pieces") : t(TYPE_MAP[activeType]?.label || t("All")).toLowerCase() })}</h2>
+            <p>{query || colorFilter || group ? t("Nothing in {where} matches these filters.", { where: activeType === "all" ? t("your closet") : t(TYPE_MAP[activeType]?.label || t("All")).toLowerCase() }) : t("Add a photo and it will show up here.")}</p>
+            <button className="secondary-button" type="button" onClick={() => { setQuery(""); setColorFilter(null); setGroup(null); chooseType("all"); }}>{t("Clear filters")}</button>
           </div>
         )}
 
         {!showingOutfits && !showingPlan && !!visibleItems.length && (
-          <section className="gallery-grid" aria-label={`${TYPE_MAP[activeType]?.label || "All"} wardrobe items`}>
+          <section className="gallery-grid" aria-label={t(TYPE_MAP[activeType]?.label || t("All"))}>
             {visibleItems.map((item, index) => (
               <GalleryItem
                 key={item.id}
@@ -1070,9 +1078,10 @@ function Wardrobe({ onConnectionFailed }) {
         )}
       </main>
 
-      {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} onWear={wearItem} />}
-      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} />}
-      <WardrobeImportFlow onGarmentApproved={addImportedItem} />
+      {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} onWear={wearItem} onPicture={(saved) => setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry))} />}
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} weather={weather} onStarter={() => { setSettingsOpen(false); setStarterOpen(true); }} />}
+      <WardrobeImportFlow onGarmentApproved={addImportedItem} onStarter={() => setStarterOpen(true)} />
+      {starterOpen && <StarterPicker onClose={() => setStarterOpen(false)} onAdded={addImportedItem} />}
       <AiConsentPrompt />
     </div>
   );

@@ -7,6 +7,7 @@ import { after, before, describe, test } from "node:test";
 import { createWardrobeApi, isLoopbackHost } from "../scripts/import-job-api.mjs";
 import { imageKey } from "../shared/core.mjs";
 import { startMockAi } from "./mock-ai.mjs";
+import sharp from "sharp";
 
 async function startServer(env, options = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "wardrobe-test-"));
@@ -132,6 +133,40 @@ describe("wardrobe api without a token", () => {
     assert.equal((await patch("/api/import/wardrobe/import-a", { wear: "yesterday" })).status, 400);
     const undone = await (await patch(`/api/import/outfits/${outfit.id}`, { unwear: "2026-11-18" })).json();
     assert.deepEqual(undone.wornDates, []);
+  });
+
+  test("adds a piece with its own picture, swaps the picture, then deletes it", async () => {
+    const png = await sharp({ create: { width: 40, height: 40, channels: 4, background: { r: 30, g: 60, b: 120, alpha: 1 } } }).png().toBuffer();
+    const dataUrl = (bytes) => `data:image/png;base64,${bytes.toString("base64")}`;
+    const created = await fetch(`${ctx.base}/api/import/wardrobe`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageDataUrl: dataUrl(png), name: "Navy jeans", part: "lowerbody", color: "#2c3e66", tags: ["denim"], kind: "jeans", seasons: ["fall"], warmth: 3, formality: "casual", starter: true }),
+    });
+    assert.equal(created.status, 201);
+    const record = await created.json();
+    assert.match(record.id, /^import-/);
+    assert.equal(record.kind, "jeans");
+    assert.equal(record.starter, true);
+    const firstFile = path.join(ctx.dataDir, "imported", path.basename(record.image));
+    await stat(firstFile);
+
+    const notPng = await fetch(`${ctx.base}/api/import/wardrobe/${record.id}/image`, { method: "PUT", body: JSON.stringify({ imageDataUrl: dataUrl(Buffer.from("not a png")) }) });
+    assert.equal(notPng.status, 415);
+
+    const swapped = await fetch(`${ctx.base}/api/import/wardrobe/${record.id}/image`, { method: "PUT", body: JSON.stringify({ imageDataUrl: dataUrl(png) }) });
+    assert.equal(swapped.status, 200);
+    const next = await swapped.json();
+    assert.notEqual(next.image, record.image);
+    assert.equal(next.thumbnail, next.image);
+    await assert.rejects(stat(firstFile));
+    const served = await fetch(`${ctx.base}${next.image}`);
+    assert.equal(served.status, 200);
+
+    const missing = await fetch(`${ctx.base}/api/import/wardrobe/import-nobody/image`, { method: "PUT", body: JSON.stringify({ imageDataUrl: dataUrl(png) }) });
+    assert.equal(missing.status, 404);
+
+    assert.equal((await fetch(`${ctx.base}/api/import/wardrobe/${record.id}`, { method: "DELETE" })).status, 200);
+    await assert.rejects(stat(path.join(ctx.dataDir, "imported", path.basename(next.image))));
   });
 
   test("reports health without a token", async () => {

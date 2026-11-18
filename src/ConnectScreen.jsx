@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ArrowSquareOut, CheckCircle, CoatHanger, Globe, HardDrives, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
 import { accessToken, isNativeApp, normalizeServerUrl, saveConnection, serverUrl, testConnection } from "./api.js";
+import { t, tn } from "./i18n.js";
 
 const MESSAGES = {
   setup: "Your closet, kept on your own server.",
@@ -57,22 +58,22 @@ export function ConnectScreen({ reason }) {
         <div className="connect-brand">
           <span className="brand-mark" aria-hidden="true"><CoatHanger size={22} weight="bold" /></span>
           <div>
-            <h1>Wardrobe</h1>
+            <h1>{t("Wardrobe")}</h1>
             <p>{MESSAGES[reason] || MESSAGES.setup}</p>
           </div>
         </div>
 
         {native && reason !== "token" && (
           <div className="connect-needs">
-            <strong>What you need</strong>
+            <strong>{t("What you need")}</strong>
             <ol>{NEEDS.map((need) => <li key={need}>{need}</li>)}</ol>
-            <a href={SETUP_GUIDE} target="_blank" rel="noreferrer">How to set up a server <ArrowSquareOut size={14} aria-hidden="true" /></a>
+            <a href={SETUP_GUIDE} target="_blank" rel="noreferrer">{t("How to set up a server")} <ArrowSquareOut size={14} aria-hidden="true" /></a>
           </div>
         )}
 
         {native && (
           <label className="field">
-            <span>Server address</span>
+            <span>{t("Server address")}</span>
             <input
               type="text"
               inputMode="url"
@@ -99,7 +100,7 @@ export function ConnectScreen({ reason }) {
         )}
 
         <label className="field">
-          <span>Access token</span>
+          <span>{t("Access token")}</span>
           <input
             type="password"
             autoCapitalize="off"
@@ -107,7 +108,7 @@ export function ConnectScreen({ reason }) {
             autoComplete="current-password"
             value={token}
             onChange={(event) => setToken(event.target.value)}
-            placeholder="Your access token"
+            placeholder={t("Your access token")}
             required={native || reason === "token"}
           />
         </label>
@@ -116,11 +117,11 @@ export function ConnectScreen({ reason }) {
           <p className="connect-status is-error" role="alert"><WarningCircle size={16} aria-hidden="true" /> {state.message}</p>
         )}
         {state.status === "ok" && (
-          <p className="connect-status is-ok" role="status"><CheckCircle size={16} aria-hidden="true" /> Connected. Opening your closet…</p>
+          <p className="connect-status is-ok" role="status"><CheckCircle size={16} aria-hidden="true" /> {t("Connected. Opening your closet…")}</p>
         )}
 
         <button className="primary-button connect-submit" type="submit" disabled={busy}>
-          {state.status === "testing" ? <><SpinnerGap size={16} className="import-spinner" aria-hidden="true" /> Checking connection</> : "Connect"}
+          {state.status === "testing" ? <><SpinnerGap size={16} className="import-spinner" aria-hidden="true" /> {t("Checking connection")}</> : t("Connect")}
         </button>
       </form>
     </main>

@@ -77,6 +77,8 @@
 	<string>Choose photos of clothes to add to your wardrobe.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos of clothes to add to your wardrobe.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Only if you turn on Weather: a rough location (about 10 km) gets the forecast, so Today and the plan suit the weather.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>

@@ -275,3 +275,38 @@ export async function imageKeyMatches(token, url, now = Date.now()) {
   if (expires > Math.floor(now / 1000) + IMAGE_KEY_SECONDS + 60) return false;
   return tokensMatch(await imageKey(token, expires), given);
 }
+
+// A piece added from the app with its own picture: a starter piece drawn
+// without a photo, or (in the phone app) one cut out on the device.
+export function newPieceRecord(input = {}, id, imagePath) {
+  const metadata = normalizeMetadata(input);
+  return {
+    id,
+    name: metadata.name,
+    part: metadata.part,
+    color: metadata.color,
+    secondaryColor: metadata.secondaryColor,
+    palette: [metadata.color, metadata.secondaryColor].filter(Boolean),
+    tags: metadata.tags,
+    ...sortFields(input),
+    image: imagePath,
+    thumbnail: imagePath,
+    ...(input.starter ? { starter: true } : {}),
+    addedAt: new Date().toISOString(),
+  };
+}
+
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+export const MAX_PIECE_IMAGE = 8 * 1024 * 1024;
+
+// Pictures sent from the app must be PNG, so a cutout keeps its see-through background.
+export function checkPng(bytes) {
+  if (!bytes?.length || bytes.length > MAX_PIECE_IMAGE) throw Object.assign(new Error("The picture is empty or too large"), { status: 413 });
+  if (!PNG_MAGIC.every((value, index) => bytes[index] === value)) throw Object.assign(new Error("Send the picture as a PNG"), { status: 415 });
+  return bytes;
+}
+
+// File names change with every new picture, because image links are cached for a year.
+export function garmentFileName(id) {
+  return `${id}-garment-${Date.now().toString(36)}.png`;
+}
