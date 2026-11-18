@@ -39,9 +39,9 @@ export function TodayCard({ items, outfits, plan, weather, onWorn, onOpenOutfit 
   return (
     <section className="today-card glass-card" aria-label={t("Today's outfit")}>
       <p className="today-card__eyebrow">
-        Today · {longDate(today)}
+        {t("Today")} · {longDate(today)}
         {weather && Number.isFinite(weather.temperature) && <> · {Math.round(weather.temperature)}°C {t(weather.label || "")}</>}
-        {pick.planned && <> · planned</>}
+        {pick.planned && <> · {t("planned")}</>}
       </p>
       <button type="button" className="today-card__title" onClick={() => onOpenOutfit?.(outfit.id)}>
         {outfit.name || t("Today's outfit")}

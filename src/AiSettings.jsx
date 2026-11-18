@@ -105,7 +105,7 @@ export function AiSettings({ onChange }) {
             type="password"
             value={key}
             onChange={(event) => setKey(event.target.value)}
-            placeholder={`Paste your ${selected.name} API key`}
+            placeholder={t("Paste your {name} API key", { name: selected.name })}
             autoComplete="off"
             spellCheck="false"
             autoCapitalize="off"
@@ -137,8 +137,8 @@ export function AiSettings({ onChange }) {
       </form>
 
       <p className="settings-note">
-        <a href={selected.keyUrl} target="_blank" rel="noreferrer">Get your {selected.maker} API key <ArrowSquareOut size={12} aria-hidden="true" /></a>
-        {" "}API keys are billed by use, apart from any ChatGPT, Gemini or Claude plan. Signing in with those plans only works in their own apps, so this app needs a key.
+        <a href={selected.keyUrl} target="_blank" rel="noreferrer">{t("Get your {maker} API key", { maker: selected.maker })} <ArrowSquareOut size={12} aria-hidden="true" /></a>
+        {" "}{t("API keys are billed by use, apart from any ChatGPT, Gemini or Claude plan. Signing in with those plans only works in their own apps, so this app needs a key.")}
       </p>
     </section>
   );

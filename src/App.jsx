@@ -351,7 +351,7 @@ function ColorControl({ label, field, value, palette, onChange, sampling, setSam
         <span>{t("Image suggestions")}</span>
         <small>{t("Tap one to use it")}</small>
       </div>
-      <div className="palette" aria-label={`${label} suggestions from image`}>
+      <div className="palette" aria-label={t("{label} suggestions from image", { label })}>
         {palette.map((color) => (
           <button
             type="button"
@@ -427,7 +427,7 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
       <div className="sort-fields">
         <label className="field">
           <span>{t("Kind")}</span>
-          <input value={draft.kind || ""} onChange={(event) => setDraft((current) => ({ ...current, kind: event.target.value }))} placeholder="sweater" maxLength={30} />
+          <input value={draft.kind || ""} onChange={(event) => setDraft((current) => ({ ...current, kind: event.target.value }))} placeholder={t("sweater")} maxLength={30} />
         </label>
         <label className="field">
           <span>{t("Warmth")}</span>
@@ -1090,7 +1090,7 @@ function Wardrobe({ onConnectionFailed }) {
       </main>
 
       {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} onWear={wearItem} onPicture={(saved) => setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry))} />}
-      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} weather={weather} onStarter={() => { setSettingsOpen(false); setStarterOpen(true); }} />}
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} weather={weather} />}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} onStarter={() => setStarterOpen(true)} away={view !== "closet"} />
       {starterOpen && <StarterPicker onClose={() => setStarterOpen(false)} onAdded={addImportedItem} />}
       <AiConsentPrompt />

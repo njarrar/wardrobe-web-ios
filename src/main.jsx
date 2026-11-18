@@ -4,7 +4,7 @@ import "@capacitor/core";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.jsx";
-import { isNativeApp } from "./api.js";
+import { isNativeApp, loadSavedToken } from "./api.js";
 import "./styles.css";
 import "./glass.css";
 import "./extras.css";
@@ -51,7 +51,8 @@ if (closetMode() === "local") {
 
 // An iCloud closet opens its files first; if that fails, the app falls back
 // to the connect screen and says why.
-startLocalMode({ version: packageInfo.version })
+loadSavedToken()
+  .then(() => startLocalMode({ version: packageInfo.version }))
   .catch((error) => { window.__wardrobeLocalError = error.message; setClosetMode("server"); })
   .finally(render);
 

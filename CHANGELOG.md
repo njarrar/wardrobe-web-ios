@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.0.2 (review fixes)
+
+- **Arabic:** the AI help text, occasion chips, group names, import hints and the AI consent screen are now translated. A test fails when a screen shows text that is not set up for translation.
+- **Import:** one review per piece. The crop is approved for you; you check the finished piece once.
+- **Move to iCloud:** a picture that fails to copy is tried three times. If any still fail, the app says how many and stays on the server, so nothing goes missing. Trying again skips pictures already copied.
+- **Server token:** on iPhone and iPad it is kept in the Keychain, not in the web store. An old saved token moves over on first start.
+- **Faster start:** the iCloud code loads only when iCloud mode is on.
+- **Settings:** "Add basics, no photo" is gone from Settings. It stays on the Closet tab.
+
 ## 3.0.1 (safer iCloud)
 
 ### iCloud closet
