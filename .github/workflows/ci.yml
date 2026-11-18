@@ -12,8 +12,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -23,7 +23,7 @@ jobs:
       - run: npm run test:ui
         env:
           SCREENSHOT_DIR: screenshots
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: phone-screenshots
@@ -35,8 +35,8 @@ jobs:
   ios:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -49,23 +49,46 @@ jobs:
           xcodebuild -project ios/App/App.xcodeproj -scheme App
           -configuration Release -sdk iphonesimulator
           -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath build
           CODE_SIGNING_ALLOWED=NO build
+      # Opens the built app in a simulator. Fails when the app does not
+      # install, does not start, or quits within 20 seconds. Keeps a
+      # picture of the first screen.
+      - name: Open the app in a simulator
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if 'iPhone' in x['name']))")
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" build/Build/Products/Release-iphonesimulator/App.app
+          xcrun simctl launch "$device" com.njarrar.wardrobe
+          sleep 20
+          xcrun simctl spawn "$device" launchctl list | grep com.njarrar.wardrobe
+          mkdir -p simulator
+          xcrun simctl io "$device" screenshot simulator/first-screen.png
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: simulator-first-screen
+          path: simulator
+          if-no-files-found: ignore
 
   # Builds the Android app (debug, unsigned) so a broken Gradle project
   # shows up on the pull request instead of at release time.
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
       - run: npm ci
       - run: npx vite build && npx cap sync android
-      - run: ./gradlew assembleDebug
+      # Maven downloads fail now and then, so try once more.
+      - run: ./gradlew assembleDebug || ./gradlew assembleDebug
         working-directory: android
