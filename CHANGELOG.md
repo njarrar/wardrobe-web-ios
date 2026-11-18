@@ -5,6 +5,7 @@
 - **A busy AI is tried again.** When Claude, ChatGPT or Gemini says it is overloaded, the app waits and tries twice more. If it is still busy, the message says so in plain words and tells you to try again or pick another AI.
 - **The phone app no longer zooms.** Tapping a text field made iOS zoom the screen, which cut off the top and the sides and stayed that way. Fields now use 16px text and the app screen is fixed at its own size.
 - Sheets keep a little more room from the screen edges.
+- **Reading your photo.** After you pick photos, the sheet now says the AI is reading them ("Reading photo 1 of 2") until the pieces show up. Before, it showed nothing for up to a minute, which looked as if nothing had happened.
 
 ## 3.0.2 (review fixes)
 

@@ -427,4 +427,7 @@ export const AR = {
   "{n} picture could not be copied. Check the server and try again.": "تعذر نسخ صورة واحدة ({n}). تحقق من الخادم وحاول مرة أخرى.",
   "{n} pictures could not be copied. Check the server and try again.": "تعذر نسخ {n} صور. تحقق من الخادم وحاول مرة أخرى.",
   "We couldn’t find a piece of clothing in {name}. Try a clearer or closer photo.": "لم نجد قطعة ملابس في {name}. جرّب صورة أوضح أو أقرب.",
+  "Reading photo {n} of {total}…": "جارٍ قراءة الصورة {n} من {total}…",
+  "Reading your photo…": "جارٍ قراءة صورتك…",
+  "The AI is finding each piece. This can take up to a minute. Keep the app open.": "الذكاء الاصطناعي يبحث عن كل قطعة. قد يستغرق ذلك دقيقة. أبقِ التطبيق مفتوحًا.",
 };

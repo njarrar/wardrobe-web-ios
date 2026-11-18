@@ -102,3 +102,8 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
   .import-popover { padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); }
   .import-status { padding-inline: 2px; }
 }
+
+/* Shown while the AI reads a photo, before any piece exists. */
+.import-reading { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 16px; padding: 16px; border-radius: 16px; background: var(--surface-2); }
+.import-reading strong { display: block; font-weight: 600; }
+.import-reading p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; line-height: 1.4; }

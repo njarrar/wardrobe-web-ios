@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -255,6 +256,35 @@ describe("phone screens", () => {
     } finally {
       await context.close();
       withKey.child.kill();
+    }
+  });
+
+  test("says it is reading while the AI works on a photo", async () => {
+    // A slow AI that finds no clothes: the wait must show, then the result.
+    const ai = http.createServer((request, response) => {
+      request.resume();
+      request.on("end", () => setTimeout(() => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ items: [] }) }] } }] }));
+      }, 1500));
+    }).listen(0, "127.0.0.1");
+    await new Promise((resolve) => ai.once("listening", resolve));
+    const withKey = await startServer(dataDir, { GEMINI_API_KEY: "AIza-test-key-9876", WARDROBE_AI_PROVIDER: "gemini", GEMINI_BASE_URL: `http://127.0.0.1:${ai.address().port}` });
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    try {
+      await page.goto(withKey.base);
+      const photo = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#5f7a45" } }).png().toBuffer();
+      await page.locator('input[type="file"]:not([capture])').setInputFiles({ name: "tee.png", mimeType: "image/png", buffer: photo });
+      await page.getByRole("alertdialog").getByRole("button", { name: "Allow" }).click();
+      await page.getByRole("status").filter({ hasText: "Reading your photo…" }).waitFor();
+      await snap(page, "light-7-reading-photo");
+      await page.getByText("No clothing detected").first().waitFor();
+      assert.equal(await page.getByRole("status").filter({ hasText: "Reading your photo…" }).count(), 0);
+    } finally {
+      await context.close();
+      withKey.child.kill();
+      ai.close();
     }
   });
 
