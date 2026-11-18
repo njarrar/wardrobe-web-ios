@@ -73,3 +73,6 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
   .settings-sheet .ai-switch button { flex-direction: row; min-height: 40px; font-size: 13.5px; }
 }
 .edge-editor__tools .segmented { flex: 1 1 240px; } .edge-editor .segmented button { white-space: nowrap; }
+.connect-icloud { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.connect-icloud strong { display: flex; align-items: center; gap: 8px; }
+.connect-icloud p { margin: 0; color: var(--muted); font-size: 13.5px; }

@@ -38,6 +38,16 @@ The apps contain no ads, no analytics and no tracking.
   Vision framework, and the Fix edges brush runs in the app. Only the
   finished picture goes to your server.
 
+## iCloud closet
+
+If you pick **Use iCloud** in the iPhone or iPad app, there is no server.
+Your pieces, pictures, outfits, wear days and plan are saved in the app's
+own folder in your iCloud Drive, under your Apple Account, and Apple's
+[privacy policy](https://www.apple.com/legal/privacy/) applies. Your AI key
+is kept in the Keychain. When you use the AI, the app sends the photo, or
+the names, colors and tags of your pieces, from your phone to the AI you
+picked, under your own key, after asking you. We never receive any of it.
+
 ## Location
 
 The app asks for your location only when you tap Use my location in the

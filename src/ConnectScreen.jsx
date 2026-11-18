@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ArrowSquareOut, CheckCircle, CoatHanger, Globe, HardDrives, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
+import { ArrowSquareOut, CheckCircle, CloudCheck, CoatHanger, Globe, HardDrives, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
 import { accessToken, isNativeApp, normalizeServerUrl, saveConnection, serverUrl, testConnection } from "./api.js";
-import { t, tn } from "./i18n.js";
+import { t } from "./i18n.js";
+import { canUseLocalMode, setClosetMode } from "./local/mode.js";
 
 const MESSAGES = {
   setup: "Your closet, kept on your own server.",
@@ -41,7 +42,7 @@ export function ConnectScreen({ reason }) {
     const target = native ? normalizeServerUrl(server) : "";
     const result = await testConnection({ server: target, token });
     if (!result.ok) {
-      setState({ status: "failed", message: FAILURES[result.reason] || FAILURES.server });
+      setState({ status: "failed", message: t(FAILURES[result.reason] || FAILURES.server) });
       return;
     }
     setState({ status: "ok" });
@@ -59,14 +60,24 @@ export function ConnectScreen({ reason }) {
           <span className="brand-mark" aria-hidden="true"><CoatHanger size={22} weight="bold" /></span>
           <div>
             <h1>{t("Wardrobe")}</h1>
-            <p>{MESSAGES[reason] || MESSAGES.setup}</p>
+            <p>{t(MESSAGES[reason] || MESSAGES.setup)}{window.__wardrobeLocalError ? ` ${window.__wardrobeLocalError}` : ""}</p>
           </div>
         </div>
+
+        {native && reason !== "token" && canUseLocalMode() && (
+          <div className="connect-icloud">
+            <strong><CloudCheck size={18} aria-hidden="true" /> {t("No server? Keep it in iCloud")}</strong>
+            <p>{t("Your closet stays in your own iCloud and syncs to your iPhone and iPad. Nothing goes to us. AI calls go from this phone with your own key.")}</p>
+            <button className="secondary-button" type="button" onClick={() => { setClosetMode("local"); window.location.reload(); }}>
+              {t("Use iCloud")}
+            </button>
+          </div>
+        )}
 
         {native && reason !== "token" && (
           <div className="connect-needs">
             <strong>{t("What you need")}</strong>
-            <ol>{NEEDS.map((need) => <li key={need}>{need}</li>)}</ol>
+            <ol>{NEEDS.map((need) => <li key={need}>{t(need)}</li>)}</ol>
             <a href={SETUP_GUIDE} target="_blank" rel="noreferrer">{t("How to set up a server")} <ArrowSquareOut size={14} aria-hidden="true" /></a>
           </div>
         )}
@@ -93,7 +104,7 @@ export function ConnectScreen({ reason }) {
             {EXAMPLES.map(({ icon: Icon, title, value }) => (
               <button type="button" key={value} className="connect-example" onClick={() => setServer(value)}>
                 <Icon size={18} aria-hidden="true" />
-                <span><strong>{title}</strong><small>{value}</small></span>
+                <span><strong>{t(title)}</strong><small>{value}</small></span>
               </button>
             ))}
           </div>

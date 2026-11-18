@@ -4,6 +4,7 @@ import { AiSettings } from "./AiSettings.jsx";
 import { accessToken, connectionLabel, forgetConnection, isNativeApp, serverUrl, testConnection } from "./api.js";
 import { LANGUAGES, language, setLanguage, t } from "./i18n.js";
 import { deviceLocation, findCity } from "./weather.js";
+import { canUseLocalMode, isLocalMode, localApi, setClosetMode } from "./local/mode.js";
 
 // Where the closet lives and how this device is connected to it.
 export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
@@ -40,7 +41,7 @@ export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
     ...current,
     config: { ...current.config, ready: ai.ready, provider: ai.provider, providerName: ai.providers.find((entry) => entry.id === ai.provider)?.name },
   }));
-  const storage = config.storage === "cloudflare" ? t("Cloudflare") : t("Your server");
+  const storage = config.storage === "cloudflare" ? t("Cloudflare") : config.storage === "icloud" ? t("iCloud") : config.storage === "device" ? t("This device") : t("Your server");
   const version = status.server?.version;
 
   return (
@@ -57,7 +58,7 @@ export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
 
         <div className="settings-card">
           <span className="settings-card__icon" aria-hidden="true">
-            {config.storage === "cloudflare" ? <CloudCheck size={22} /> : <HardDrives size={22} />}
+            {config.storage === "cloudflare" || config.local ? <CloudCheck size={22} /> : <HardDrives size={22} />}
           </span>
           <div className="settings-card__body">
             <strong>{connectionLabel() || t("This server")}</strong>
@@ -73,8 +74,8 @@ export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
           <div><dt>{t("Pieces")}</dt><dd>{pieces}</dd></div>
           <div><dt>{t("Photos stored on")}</dt><dd>{status.state === "ok" ? storage : "-"}</dd></div>
           <div><dt>{t("AI styling")}</dt><dd>{status.state !== "ok" ? "-" : config.ready ? t("Ready ({name})", { name: config.providerName || "Claude" }) : t("Add a {name} key below", { name: config.providerName || "Claude" })}</dd></div>
-          <div><dt>{t("Protected by token")}</dt><dd>{typeof status.server?.protected !== "boolean" ? "-" : status.server.protected ? t("Yes") : t("No, this computer only")}</dd></div>
-          {version && <div><dt>{t("Server version")}</dt><dd>{version}</dd></div>}
+          {!config.local && <div><dt>{t("Protected by token")}</dt><dd>{typeof status.server?.protected !== "boolean" ? "-" : status.server.protected ? t("Yes") : t("No, this computer only")}</dd></div>}
+          {version && !config.local && <div><dt>{t("Server version")}</dt><dd>{version}</dd></div>}
         </dl>
 
         {status.state === "ok" && <AiSettings onChange={aiChanged} />}
@@ -91,6 +92,8 @@ export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
           </div>
         </section>
 
+        {canUseLocalMode() && <ClosetPlace serverReady={status.state === "ok" && !isLocalMode()} />}
+
         {weather && <WeatherSettings weather={weather} />}
 
         {onStarter && (
@@ -100,7 +103,7 @@ export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
         )}
 
         <div className="settings-actions">
-          {native && (
+          {native && !isLocalMode() && (
             <button className="secondary-button" type="button" onClick={switchServer}>
               <HardDrives size={16} aria-hidden="true" /> {t("Switch server")}
             </button>
@@ -112,11 +115,11 @@ export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
           )}
         </div>
 
-        <p className="settings-note">
+        {!isLocalMode() && <p className="settings-note">
           {native
             ? t("At home, use your server's address on Wi-Fi (for example http://192.168.1.20:4173). Away from home, use an HTTPS address, such as a Synology DDNS name or Tailscale.")
             : t("Everything you add is saved on this server. Open the same address in any browser, or connect the phone app to it.")}
-        </p>
+        </p>}
       </section>
     </div>
   );
@@ -161,6 +164,47 @@ function WeatherSettings({ weather }) {
       </form>
       {(error || loadError) && <p className="status error">{error || loadError}</p>}
       <p className="settings-note">{t("Forecast from Open-Meteo. Only a rough location (about 10 km) is sent, from this device, and never to us.")}</p>
+    </section>
+  );
+}
+
+// Server or iCloud. Moving copies the closet; it never deletes the server's.
+function ClosetPlace({ serverReady }) {
+  const local = isLocalMode();
+  const [state, setState] = useState({ status: "idle" });
+  const move = async () => {
+    setState({ status: "copying", done: 0, total: 0 });
+    try {
+      const { copyServerToLocal } = await import("./local/migrate.js");
+      const result = await copyServerToLocal((done, total) => setState({ status: "copying", done, total }));
+      setState({ status: "done", pieces: result.pieces });
+      setClosetMode("local");
+      setTimeout(() => window.location.reload(), 600);
+    } catch (error) { setState({ status: "failed", message: error.message }); }
+  };
+  const leave = () => { setClosetMode("server"); window.location.reload(); };
+  const kind = local ? localApi().store.kind : null;
+
+  return (
+    <section className="settings-section">
+      <h3><CloudCheck size={16} aria-hidden="true" /> {t("Where your closet lives")}</h3>
+      <div className="segmented" role="group" aria-label={t("Where your closet lives")}>
+        <button type="button" className={!local ? "active" : ""} aria-pressed={!local} onClick={local ? leave : undefined}>{t("On a server")}</button>
+        <button type="button" className={local ? "active" : ""} aria-pressed={local} onClick={local ? undefined : serverReady ? move : () => { setClosetMode("local"); window.location.reload(); }}>{t("In iCloud")}</button>
+      </div>
+      {local && <p className="settings-note">{kind === "icloud" ? t("Saved in your iCloud. It syncs to your other iPhone and iPad signed in to the same Apple Account.") : t("iCloud is off on this device, so the closet is saved here only. Turn on iCloud Drive to sync it.")}</p>}
+      {local && <p className="settings-note">{t("Your iCloud closet stays where it is, so you can come back to it.")}</p>}
+      {!local && serverReady && (
+        <>
+          <button className="secondary-button" type="button" onClick={move} disabled={state.status === "copying" || state.status === "done"}>
+            {state.status === "copying" ? <SpinnerGap size={16} className="import-spinner" aria-hidden="true" /> : <CloudCheck size={16} aria-hidden="true" />}
+            {state.status === "copying" && state.total ? t("Copying {done} of {total}", { done: state.done, total: state.total }) : t("Copy my closet to iCloud")}
+          </button>
+          <p className="settings-note">{t("Your server keeps its copy. After the move, add your AI key again: keys stay on the server and are not copied.")}</p>
+        </>
+      )}
+      {state.status === "done" && <p className="status">{t("Copied {n} pieces. Switching to iCloud…", { n: state.pieces })}</p>}
+      {state.status === "failed" && <p className="status error">{state.message}</p>}
     </section>
   );
 }

@@ -31,7 +31,13 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 **[App stores](#releasing-to-the-app-stores)** ·
 **[Settings](#settings)**
 
-## What's new in 2.6
+## What's new in 3.0
+
+- **No server needed on iPhone and iPad.** Pick **Use iCloud** on the first screen and your closet lives in your own iCloud, synced across your Apple devices. Nothing goes to us.
+- **The AI is called from your phone** with the key you paste, kept in the Keychain.
+- **Move an existing closet** from your server to iCloud in Settings. The server keeps its copy.
+
+## What was new in 2.6
 
 - **Arabic.** The whole app in Arabic, right to left. Switch in Settings.
 - **Dressed for the weather.** Turn on Weather and Today and the plan suit the forecast.
@@ -225,6 +231,12 @@ npm run ios        # builds the web app, copies it into ios/, opens Xcode
 ```
 
 In Xcode, pick your team under Signing & Capabilities, choose your iPhone, and press Run. On first launch the app asks for your server address and token, and tests the connection before saving it. Tap the gear icon later to see the connection status or switch servers. You can browse, edit, delete, add photos from your library or camera, and style outfits.
+
+### iCloud closet (no server)
+
+On iPhone and iPad you can skip the server: tap **Use iCloud** on the first screen. The app then keeps everything in its own hidden iCloud Drive folder (`iCloud.com.njarrar.wardrobe`), so the closet follows you to every device on the same Apple Account. AI keys go in the Keychain (synced by iCloud Keychain), and the app calls the AI you picked straight from the phone. With iCloud Drive off, the closet stays on that device. In **Settings > Where your closet lives** you can copy a server closet into iCloud, or go back to a server. Photo cutouts use Apple's on-device Vision (iOS 17 and later); on older iOS the crop is kept, and Fix edges can clean it up.
+
+Before the first release with iCloud, turn on **iCloud** (with CloudKit off, iCloud Documents on) for `com.njarrar.wardrobe` in the Apple Developer site under Identifiers, and add the container `iCloud.com.njarrar.wardrobe`. The release workflow signs automatically and picks it up from there.
 
 On any phone, the add button offers **Take photo** next to **Choose images**. Photos are turned upright and shrunk to 2048 px before upload.
 
