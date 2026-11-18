@@ -316,3 +316,18 @@ div.outfit-viewer__photo .outfit-collage { height: 100%; padding: 28px; }
   .outfit-grid { gap: 12px; }
   .outfit-card__name { font-size: 13.5px; }
 }
+
+/* Make on this phone, and favorites. */
+.outfit-style-form .outfit-make {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+}
+.outfit-card { position: relative; }
+.outfit-card__heart {
+  position: absolute; inset-block-start: 8px; inset-inline-end: 8px;
+  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 85%, transparent); color: #d6405f;
+}
+.outfit-heart.is-on svg { color: #d6405f; }
+.outfit-occasions button svg { vertical-align: -2px; color: #d6405f; }

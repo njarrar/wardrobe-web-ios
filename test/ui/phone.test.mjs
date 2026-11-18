@@ -114,6 +114,10 @@ describe("phone screens", () => {
       page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
 
       await page.goto(base);
+      // Home opens first once the closet can make an outfit.
+      await page.getByRole("heading", { name: "Wear this today" }).waitFor();
+      await snap(page, `${colorScheme}-0-home`);
+      await page.getByRole("tab", { name: /Closet/ }).click();
       await page.locator('[aria-label="View White oxford shirt"]').waitFor();
       assert.equal(await page.locator('[aria-label^="View "]').count(), PIECES.length);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -152,6 +156,9 @@ describe("phone screens", () => {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript(() => localStorage.setItem("wardrobe-language", "ar"));
     await page.goto(base);
+    await page.getByRole("heading", { name: "البس هذا اليوم" }).waitFor();
+    await snap(page, "ar-0-home");
+    await page.getByRole("tab", { name: /الخزانة/ }).click();
     await page.locator('[aria-label="اعرض White oxford shirt"]').waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.dir), "rtl");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -166,6 +173,70 @@ describe("phone screens", () => {
     await snap(page, "ar-7-plan");
     assert.deepEqual(errors, []);
     await context.close();
+  });
+
+  test("Home makes an outfit with no AI: lock, shuffle, Not me, favorite, wear", async () => {
+    const homeDir = await mkdtemp(path.join(os.tmpdir(), "wardrobe-ui-home-"));
+    await seed(homeDir);
+    const home = await startServer(homeDir);
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    const shown = () => page.locator(".flat-lay__open").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")).sort().join(", "));
+    try {
+      await page.goto(home.base);
+      await page.getByRole("heading", { name: "Wear this today" }).waitFor();
+      const first = await shown();
+      assert.match(first, /chinos/i, "the only bottom is in every outfit");
+      assert.ok((await page.locator(".home__why").innerText()).length > 10, "says why");
+
+      // Lock the olive tee if shown, else whatever top is there, and shuffle.
+      const top = /Olive tee/.test(first) ? "Olive tee" : "White oxford shirt";
+      await page.getByRole("button", { name: `Keep ${top}` }).click();
+      const seen = new Set([first]);
+      for (let round = 0; round < 6; round += 1) {
+        await page.getByRole("button", { name: "Shuffle" }).click();
+        const now = await shown();
+        assert.ok(now.includes(top), `${top} stays locked`);
+        seen.add(now);
+      }
+      assert.ok(seen.size >= 2, "shuffle gives other mixes");
+      await snap(page, "light-0-home-locked");
+
+      // Not me: this mix never comes back today.
+      const refused = await shown();
+      await page.getByRole("button", { name: /^Not me/ }).click();
+      for (let round = 0; round < 6; round += 1) {
+        assert.notEqual(await shown(), refused);
+        await page.getByRole("button", { name: "Shuffle" }).click();
+      }
+
+      // Heart saves it; Wear this logs it; both show in Outfits.
+      await page.getByRole("button", { name: "Save to favorites" }).click();
+      await page.getByRole("button", { name: "Remove from favorites" }).waitFor();
+      await page.getByRole("button", { name: "Wear this" }).click();
+      await page.getByRole("heading", { name: "You wore this today" }).waitFor();
+      await page.reload();
+      await page.getByRole("heading", { name: "You wore this today" }).waitFor();
+      await page.getByRole("tab", { name: /Outfits/ }).click();
+      await page.getByRole("button", { name: /Favorites/ }).waitFor();
+      assert.equal(await page.locator(".outfit-card").count(), 1);
+
+      // Outfits made on the phone, with no AI key set.
+      await page.getByRole("button", { name: "Make on this phone, no AI" }).click();
+      await page.waitForFunction(() => document.querySelectorAll(".outfit-card").length >= 3);
+      await snap(page, "light-4-outfits-made");
+
+      // The camera button is on every tab.
+      await page.getByRole("button", { name: "Add clothes from a photo" }).click();
+      await page.getByRole("dialog", { name: /Add an AI key first|Add to your wardrobe/ }).waitFor().catch(() => page.locator(".import-popover-backdrop[data-open='true']").waitFor());
+      assert.deepEqual(errors, []);
+    } finally {
+      await context.close();
+      home.child.kill();
+      await rm(homeDir, { recursive: true, force: true });
+    }
   });
 
   test("adds a basic without a photo, then fixes its edges", async () => {
@@ -340,6 +411,7 @@ describe("phone screens", () => {
     }, guarded.base);
     try {
       await page.goto(guarded.base);
+      await page.getByRole("tab", { name: /Closet/ }).click();
       await page.locator('[aria-label="View White oxford shirt"]').waitFor();
       await page.waitForFunction(() => [...document.images].filter((image) => image.src.includes("/api/import/library/")).every((image) => image.complete && image.naturalWidth > 0));
       assert.ok(imageUrls.some((url) => url.includes("/api/import/library/")));

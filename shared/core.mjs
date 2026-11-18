@@ -137,6 +137,8 @@ export function normalizeManualOutfit(input = {}, items = []) {
     garmentIds: ids,
     reason: typeof input.reason === "string" ? input.reason.trim().slice(0, 400) : "",
     image: null,
+    ...(input.favorite === true ? { favorite: true } : {}),
+    ...(input.madeOnPhone === true ? { madeOnPhone: true } : {}),
     createdAt: new Date().toISOString(),
   };
 }
@@ -149,6 +151,7 @@ export function applyOutfitEdit(current, input = {}) {
   if (typeof input.name === "string" && input.name.trim()) next.name = input.name.trim().slice(0, 80);
   if (input.occasion !== undefined) next.occasion = outfitOccasions(input.occasion);
   if (typeof input.reason === "string") next.reason = input.reason.trim().slice(0, 400);
+  if (typeof input.favorite === "boolean") next.favorite = input.favorite;
   return next;
 }
 

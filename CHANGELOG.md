@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.0 (Home, and outfits with no AI)
+
+- **Home tab.** The app opens on one outfit for today, laid out flat, with a short line that says why: the colors, the weather, a piece that has waited a while. A strip under it shows the next seven days, the forecast and which days have a plan.
+- **Outfits made on the phone.** The phone puts outfits together from your closet by itself. It weighs the color wheel, the weather, how dressy each piece is and how long each has rested. No AI key, no cost, and it works offline.
+- **Lock and shuffle.** Tap the lock on a piece to keep it, then Shuffle to change the rest.
+- **Not me.** One tap, and that mix does not come back.
+- **Favorites.** The heart saves an outfit. Outfits has a Favorites filter.
+- **Make on this phone.** Outfits has a second button that makes outfits with no AI. "Style new outfits" still uses the AI.
+- **Camera button on every tab.** It sits in the top bar next to Settings.
+- A piece worn in the last two days rests when another can stand in.
+- Photos that wait for "Try again" now show on every tab, not only on Closet.
+
 ## 3.0.3 (busy AI, no zoom)
 
 - **A busy AI is tried again.** When Claude, ChatGPT or Gemini says it is overloaded, the app waits and tries twice more. If it is still busy, the message says so in plain words and tells you to try again or pick another AI.

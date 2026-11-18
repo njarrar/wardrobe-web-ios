@@ -52,7 +52,7 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 
 ## What was new in 2.4
 
-- **Today's outfit.** The closet opens with one outfit for today. Wear it, or shuffle for another.
+- **Home.** The app opens on one outfit for today, made on the phone with no AI. Lock a piece and shuffle the rest, say "Not me", or save it with the heart.
 - **Clothes you forgot.** A row shows what has not been worn in 60 days or more.
 - **Wear log and cost per wear.** Tap **Wore today**, add the price, and see what each wear costs.
 - **Outfits built on the color wheel.** Pick tonal, neighbors, opposites or three-way. Every outfit shows its rule and a score.
