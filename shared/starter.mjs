@@ -37,6 +37,11 @@ const BASICS = [
   ["boots", "Boots", "shoes", "boots", "black", ["leather"]],
   ["tote", "Tote bag", "accessories_up", "tote", "beige", ["canvas"]],
   ["scarf", "Scarf", "accessories_up", "scarf", "rust", ["wool", "warm"]],
+  ["abaya", "Abaya", "upperbody", "abaya", "black", ["modest"]],
+  ["thobe", "Thobe", "upperbody", "thobe", "white", ["modest"]],
+  ["hijab", "Hijab", "accessories_up", "hijab", "beige", ["modest"]],
+  ["shemagh", "Shemagh", "accessories_up", "shemagh", "burgundy", ["modest"]],
+  ["bisht", "Bisht", "wholebody_up", "bisht", "black", ["modest", "formal"]],
 ];
 
 // Kind, seasons, warmth and dress level for each starter piece.
@@ -60,6 +65,11 @@ const SORT_DEFAULTS = {
   boots: { kind: "boots", seasons: ["fall", "winter"], warmth: 4, formality: "smart" },
   tote: { kind: "bag", seasons: ["spring", "summer", "fall", "winter"], warmth: 1, formality: "casual" },
   scarf: { kind: "scarf", seasons: ["fall", "winter"], warmth: 4, formality: "casual" },
+  abaya: { kind: "abaya", seasons: ["spring", "summer", "fall", "winter"], warmth: 2, formality: "smart" },
+  thobe: { kind: "thobe", seasons: ["spring", "summer", "fall", "winter"], warmth: 2, formality: "smart" },
+  hijab: { kind: "hijab", seasons: ["spring", "summer", "fall", "winter"], warmth: 2, formality: "smart" },
+  shemagh: { kind: "shemagh", seasons: ["spring", "summer", "fall", "winter"], warmth: 2, formality: "smart" },
+  bisht: { kind: "bisht", seasons: ["fall", "winter", "spring"], warmth: 3, formality: "formal" },
 };
 
 export const STARTER_PIECES = BASICS.map(([id, name, part, shape, color, tags]) => ({

@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.3.0 (modest wear, wind and rain, small touches)
+
+- **Modest wear.** Abaya, thobe, hijab, shemagh and bisht are among the basics you can add with no photo, each with its Arabic name. The AI knows these kinds, and the closet has a "Modest wear" group. The outfit maker pairs an abaya with a hijab and a thobe with a shemagh, and adds a hijab to every outfit when you own one.
+- **Rest a piece.** Plan rules has a new choice: how many days a piece rests after you wear it (none to 7, 2 to start). Home and the plan both follow it.
+- **Wind and rain.** The forecast now brings wind speed and how much rain falls. A windy day counts as colder and calls for a layer. A wet day keeps sandals and canvas at home. Home shows the wind and the rain next to the temperature.
+- **Tiles say more.** A closet tile shows how often you wore the piece and, in a few words, how it pairs.
+- **Accent color.** Settings has seven accent colors. The choice stays on this device.
+
 ## 3.2.0 (piece page, worn days, occasions)
 
 - **A piece opens to read.** Its page now shows the picture, wear counts, colors and facts first. The fields sit behind an Edit button, so a stray tap changes nothing.

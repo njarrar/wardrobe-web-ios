@@ -289,6 +289,34 @@ describe("phone screens", () => {
         assert.deepEqual(Object.values(saved.occasions), ["work"]);
         await snap(page, "light-7-plan-occasion");
       }
+
+      // Closet tiles show how often a piece was worn and how it pairs.
+      await page.getByRole("tab", { name: /Closet/ }).click();
+      await page.locator(".gallery-item__worn").first().waitFor();
+      assert.ok(await page.locator(".gallery-item__worn").count() >= 2);
+      assert.equal(await page.locator(".gallery-item__worn").first().innerText(), "1×");
+      assert.ok(await page.locator(".gallery-item__type", { hasText: /Best with neutrals|Goes with any color|Keep the rest plain/ }).count() >= 6);
+      await snap(page, "light-1-closet-tiles");
+
+      // The accent color changes at once and stays after a restart.
+      const accentNow = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
+      assert.equal(await accentNow(), "#c2562b");
+      await page.getByRole("button", { name: "Settings and connection" }).click();
+      await page.getByRole("group", { name: "Accent color" }).getByRole("button", { name: "Blue" }).click();
+      assert.equal(await accentNow(), "#2f62c4");
+      await snap(page, "light-3-settings-accent");
+      await page.reload();
+      await page.getByRole("heading", { name: "You wore this today" }).waitFor();
+      assert.equal(await accentNow(), "#2f62c4");
+
+      // Modest wear is among the basics.
+      await page.getByRole("tab", { name: /Closet/ }).click();
+      await page.evaluate(() => window.dispatchEvent(new Event("wardrobe:add-clothes")));
+      await page.getByRole("button", { name: /Add basics without a photo|Basics, no photo/ }).first().click();
+      const basics = page.getByRole("dialog", { name: "Add basics" });
+      for (const name of ["Abaya", "Thobe", "Hijab", "Shemagh", "Bisht"]) await basics.getByText(name, { exact: true }).waitFor();
+      await basics.getByText("Bisht", { exact: true }).scrollIntoViewIfNeeded();
+      await snap(page, "light-8-basics-modest");
       assert.deepEqual(errors, []);
     } finally {
       await context.close();
@@ -352,7 +380,7 @@ describe("phone screens", () => {
     await page.goto(base);
     await page.getByRole("button", { name: "Add basics without a photo" }).click();
     const sheet = page.getByRole("dialog", { name: "Add basics" });
-    await sheet.locator(".starter-piece").nth(10).getByRole("button", { name: "Add" }).click();
+    await sheet.locator(".starter-piece", { hasText: "Jeans" }).getByRole("button", { name: "Add" }).click();
     await sheet.getByRole("button", { name: "Added" }).waitFor();
     await sheet.getByRole("button", { name: "Close" }).click();
     await page.locator('[aria-label="View Navy jeans"]').waitFor();

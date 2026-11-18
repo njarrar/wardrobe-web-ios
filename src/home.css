@@ -4,7 +4,7 @@
 .home__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .home__head h2 { margin: 2px 0 0; font-size: 24px; font-weight: 680; letter-spacing: -0.02em; }
 .home__date, .home__weather { margin: 0; color: var(--muted); font-size: 13px; }
-.home__weather { white-space: nowrap; }
+.home__weather { text-align: end; }
 
 .flat-lay {
   display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;

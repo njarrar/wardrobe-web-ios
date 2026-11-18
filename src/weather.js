@@ -6,7 +6,7 @@ import { dayString } from "../shared/style.mjs";
 import { t } from "./i18n.js";
 
 const SETTINGS_KEY = "wardrobe-weather";
-const CACHE_KEY = "wardrobe-weather-cache";
+const CACHE_KEY = "wardrobe-weather-cache-2"; // 2: wind and rain amount added
 const CACHE_HOURS = 3;
 
 export function roundCoord(value) {
@@ -39,7 +39,14 @@ export function parseForecast(data) {
     if (!Number.isFinite(high) || !Number.isFinite(low)) return;
     const { label, rain } = describeCode(Number(daily.weather_code?.[index]));
     const chance = Number(daily.precipitation_probability_max?.[index]);
-    forecast[day] = { temperature: Math.round(low + (high - low) * 0.6), high: Math.round(high), low: Math.round(low), rain: rain || chance >= 60, label };
+    const wind = Number(daily.wind_speed_10m_max?.[index]);
+    const rainMm = Number(daily.precipitation_sum?.[index]);
+    forecast[day] = {
+      temperature: Math.round(low + (high - low) * 0.6), high: Math.round(high), low: Math.round(low), rain: rain || chance >= 60, label,
+      ...(Number.isFinite(wind) ? { wind: Math.round(wind) } : {}),
+      ...(Number.isFinite(rainMm) ? { rainMm: Math.round(rainMm * 10) / 10 } : {}),
+      ...(Number.isFinite(chance) ? { rainChance: Math.round(chance) } : {}),
+    };
   });
   return forecast;
 }
@@ -47,7 +54,7 @@ export function parseForecast(data) {
 export function forecastUrl(lat, lon) {
   const params = new URLSearchParams({
     latitude: String(roundCoord(lat)), longitude: String(roundCoord(lon)),
-    daily: "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max",
+    daily: "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,precipitation_sum,wind_speed_10m_max",
     timezone: "auto", forecast_days: "16",
   });
   return `https://api.open-meteo.com/v1/forecast?${params}`;

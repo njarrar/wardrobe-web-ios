@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, CloudCheck, CloudSun, HardDrives, MapPin, SignOut, SpinnerGap, Translate, WarningCircle, X } from "@phosphor-icons/react";
+import { CheckCircle, CloudCheck, CloudSun, HardDrives, MapPin, SignOut, SpinnerGap, Translate, WarningCircle, X, Palette } from "@phosphor-icons/react";
+import { ACCENTS, accent, setAccent } from "./accent.js";
 import { AiSettings } from "./AiSettings.jsx";
 import { accessToken, connectionLabel, forgetConnection, isNativeApp, serverUrl, testConnection } from "./api.js";
 import { LANGUAGES, language, setLanguage, t, tn } from "./i18n.js";
@@ -37,6 +38,7 @@ export function SettingsSheet({ onClose, pieces, weather }) {
   };
 
   const config = status.config || {};
+  const [chosenAccent, setChosenAccent] = useState(accent);
   const aiChanged = (ai) => setStatus((current) => ({
     ...current,
     config: { ...current.config, ready: ai.ready, provider: ai.provider, providerName: ai.providers.find((entry) => entry.id === ai.provider)?.name },
@@ -87,6 +89,18 @@ export function SettingsSheet({ onClose, pieces, weather }) {
               <button key={entry.id} type="button" lang={entry.id} className={language() === entry.id ? "active" : ""} aria-pressed={language() === entry.id}
                 onClick={() => { if (language() !== entry.id) { setLanguage(entry.id); window.location.reload(); } }}>
                 {entry.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3><Palette size={16} aria-hidden="true" /> {t("Accent color")}</h3>
+          <div className="accent-picker" role="group" aria-label={t("Accent color")}>
+            {ACCENTS.map((entry) => (
+              <button key={entry.id} type="button" className={chosenAccent === entry.id ? "active" : ""} aria-pressed={chosenAccent === entry.id} aria-label={t(entry.label)} title={t(entry.label)}
+                onClick={() => { setAccent(entry.id); setChosenAccent(entry.id); }}>
+                <span style={{ backgroundColor: entry.colors[0] }} aria-hidden="true" />
               </button>
             ))}
           </div>

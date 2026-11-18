@@ -296,6 +296,13 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
               {[3, 5, 7, 10, 14, 21].map((value) => <option key={value} value={value}>{tn(value, "{n} day", "{n} days")}</option>)}
             </select>
           </label>
+          <label className="field">
+            <span>{t("Rest a piece after it is worn")}</span>
+            <select value={settings.pieceRest ?? 2} onChange={(event) => setSettings({ pieceRest: Number(event.target.value) })}>
+              <option value={0}>{t("No rest")}</option>
+              {[1, 2, 3, 5, 7].map((value) => <option key={value} value={value}>{tn(value, "{n} day", "{n} days")}</option>)}
+            </select>
+          </label>
           <label className="plan-settings__check">
             <input type="checkbox" checked={settings.mixForgotten !== false} onChange={(event) => setSettings({ mixForgotten: event.target.checked })} />
             {t("Mix in pieces I haven't worn lately")}

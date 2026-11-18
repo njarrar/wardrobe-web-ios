@@ -9,11 +9,13 @@ import "./styles.css";
 import "./glass.css";
 import "./extras.css";
 import { applyLanguage } from "./i18n.js";
+import { applyAccent } from "./accent.js";
 import { announceChange, closetMode, localApi, setClosetMode, startLocalMode } from "./local/mode.js";
 import { t } from "./i18n.js";
 import packageInfo from "../package.json";
 
 applyLanguage();
+applyAccent();
 
 // In the phone app the screen must not zoom: a zoomed web view cuts the
 // top and sides off and stays that way. Browsers keep their zoom.
