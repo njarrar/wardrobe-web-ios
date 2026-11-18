@@ -429,7 +429,7 @@ export const AR = {
   "We couldn’t find a piece of clothing in {name}. Try a clearer or closer photo.": "لم نجد قطعة ملابس في {name}. جرّب صورة أوضح أو أقرب.",
   "Reading photo {n} of {total}…": "جارٍ قراءة الصورة {n} من {total}…",
   "Reading your photo…": "جارٍ قراءة صورتك…",
-  "The AI is finding each piece. You can leave: photos not read yet are saved and carry on when you open the app again.": "الذكاء الاصطناعي يبحث عن كل قطعة. يمكنك المغادرة: الصور التي لم تُقرأ بعد محفوظة وتُكمل عند فتح التطبيق من جديد.",
+  "The AI is finding each piece. A photo can take up to a minute. You can leave: photos not read yet are saved and carry on when you open the app again.": "الذكاء الاصطناعي يبحث عن كل قطعة. قد تأخذ الصورة دقيقة. يمكنك المغادرة: الصور التي لم تُقرأ بعد محفوظة وتُكمل عند فتح التطبيق من جديد.",
   "{n} photo was not read": "لم تُقرأ صورة واحدة ({n})",
   "{n} photos were not read": "لم تُقرأ {n} صور",
   "Try again": "حاول مرة أخرى",
@@ -523,4 +523,7 @@ export const AR = {
   "Hijab": "حجاب",
   "Shemagh": "شماغ",
   "Bisht": "بشت",
+  "This photo took too long to read. Try again.": "أخذت قراءة هذه الصورة وقتًا طويلًا. حاول مرة أخرى.",
+  "You skipped this photo.": "تخطيت هذه الصورة.",
+  "Skip this photo": "تخطَّ هذه الصورة",
 };

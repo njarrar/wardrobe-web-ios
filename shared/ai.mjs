@@ -74,6 +74,7 @@ function describe(id, stored, env) {
     baseURL: env(info.baseEnv) || undefined,
     // First wait before a busy AI is tried again (tests set it to 0).
     retryWait: env("WARDROBE_AI_RETRY_MS") ? Number(env("WARDROBE_AI_RETRY_MS")) || 0 : undefined,
+    timeout: Number(env("WARDROBE_AI_TIMEOUT_MS")) > 0 ? Number(env("WARDROBE_AI_TIMEOUT_MS")) : undefined,
   };
 }
 
@@ -253,10 +254,19 @@ export function requireAi(ai) {
   return ai;
 }
 
+// How long one AI request may take, retries included.
+export const AI_TIMEOUT_MS = 120000;
+
 async function askForJson(ai, request) {
   requireAi(ai);
   try {
-    return await ASK[ai.id](ai, request);
+    // An AI that never answers must not hold the import forever.
+    const limit = ai.timeout ?? AI_TIMEOUT_MS;
+    let timer;
+    const late = new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new AiError(504, `${AI_PROVIDERS[ai.id].name} took too long to answer. Your photo was not read. Try again, or pick another AI in Settings.`)), limit);
+    });
+    try { return await Promise.race([ASK[ai.id](ai, request), late]); } finally { clearTimeout(timer); }
   } catch (error) {
     // A rejected key must not look like a rejected wardrobe token (401 signs the app out).
     if (!(error instanceof AiError) && (error.status === 401 || error.status === 403)) {

@@ -446,6 +446,45 @@ describe("phone screens", () => {
     }
   });
 
+  test("a photo that hangs can be skipped, and the next one is read", async () => {
+    // The AI never answers the first photo and answers the second.
+    let calls = 0;
+    const open = [];
+    const ai = http.createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        calls += 1;
+        if (calls === 1) { open.push(response); return; }
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ items: [] }) }] } }] }));
+      });
+    }).listen(0, "127.0.0.1");
+    await new Promise((resolve) => ai.once("listening", resolve));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "wardrobe-ui-hang-"));
+    const withKey = await startServer(dir, { GEMINI_API_KEY: "AIza-test-key-9876", WARDROBE_AI_PROVIDER: "gemini", GEMINI_BASE_URL: `http://127.0.0.1:${ai.address().port}` });
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    await page.addInitScript(() => { window.WARDROBE_SLOW_AFTER_MS = 300; });
+    try {
+      await page.goto(withKey.base);
+      const photo = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#34528f" } }).png().toBuffer();
+      await page.locator('input[type="file"]:not([capture])').setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: photo }, { name: "two.png", mimeType: "image/png", buffer: photo }]);
+      await page.getByRole("alertdialog").getByRole("button", { name: "Allow" }).click();
+      await page.getByRole("status").filter({ hasText: "Reading photo 1 of 2…" }).waitFor();
+      await page.getByRole("button", { name: "Skip this photo" }).click();
+      await page.getByText("1 photo was not read").waitFor();
+      await page.getByText("You skipped this photo.").waitFor();
+      assert.equal(calls, 2, "the second photo was read");
+      await snap(page, "light-8-photo-skipped");
+    } finally {
+      for (const response of open) response.destroy();
+      await context.close();
+      withKey.child.kill();
+      ai.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a photo the AI could not read waits for Try again, even after a restart", async () => {
     // Busy for the first photo (three tries), then fine.
     let calls = 0;

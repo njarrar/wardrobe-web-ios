@@ -27,3 +27,10 @@ test("a rejected key is not tried again", async () => {
   await assert.rejects(detectClothing(ai, { imageBase64: "AAAA" }), /Check the API key/);
   assert.equal(calls.length, 1);
 });
+
+test("an AI that never answers is given up on, with a plain message", async () => {
+  const ai = { id: "gemini", apiKey: "AIza-test", model: "gemini-test", retryWait: 0, timeout: 40, fetch: () => new Promise(() => {}) };
+  const started = Date.now();
+  await assert.rejects(detectClothing(ai, { imageBase64: "AAAA" }), /Gemini took too long to answer\. Your photo was not read/);
+  assert.ok(Date.now() - started < 2000);
+});

@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.1 (a photo can no longer hang the import)
+
+- **Time limit.** The AI gets two minutes for one photo. After that the photo is marked "not read" with a plain reason, and the next photo starts. Before, a request that never came back left the import on "Reading photo 1 of 3" with no end.
+- **Skip this photo.** After 25 seconds a Skip button shows under the reading note. The skipped photo waits under "Try again".
+- The phone app's own AI requests now have a connect and a read time limit.
+
 ## 3.3.0 (modest wear, wind and rain, small touches)
 
 - **Modest wear.** Abaya, thobe, hijab, shemagh and bisht are among the basics you can add with no photo, each with its Arabic name. The AI knows these kinds, and the closet has a "Modest wear" group. The outfit maker pairs an abaya with a hijab and a thobe with a shemagh, and adds a hijab to every outfit when you own one.
