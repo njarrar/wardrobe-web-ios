@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.3 (busy AI, no zoom)
+
+- **A busy AI is tried again.** When Claude, ChatGPT or Gemini says it is overloaded, the app waits and tries twice more. If it is still busy, the message says so in plain words and tells you to try again or pick another AI.
+- **The phone app no longer zooms.** Tapping a text field made iOS zoom the screen, which cut off the top and the sides and stayed that way. Fields now use 16px text and the app screen is fixed at its own size.
+- Sheets keep a little more room from the screen edges.
+
 ## 3.0.2 (review fixes)
 
 - **Arabic:** the AI help text, occasion chips, group names, import hints and the AI consent screen are now translated. A test fails when a screen shows text that is not set up for translation.

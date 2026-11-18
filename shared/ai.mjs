@@ -146,13 +146,30 @@ function parseJson(text, name) {
   try { return JSON.parse(text); } catch { throw new Error(`${name} returned an answer that was not JSON`); }
 }
 
+// The AI is busy or briefly down: worth another try.
+const BUSY = new Set([429, 500, 502, 503, 504, 529]);
+
 async function readError(response, name) {
   const text = await response.text().catch(() => "");
   let detail = "";
   try { const value = JSON.parse(text); detail = value.error?.message || value.message || ""; } catch { detail = text.slice(0, 200); }
   const status = response.status === 401 || response.status === 403 ? 502 : response.status === 429 ? 429 : 502;
+  if (response.status === 503 || response.status === 529) return new AiError(status, `${name} is busy right now. Your photo was not read. Try again in a minute, or pick another AI in Settings.`);
   const hint = response.status === 401 || response.status === 403 ? " Check the API key in Settings." : "";
   return new AiError(status, `${name} said: ${detail || `HTTP ${response.status}`}.${hint}`);
+}
+
+// Sends the request, and tries twice more when the AI is busy.
+// ai.retryWait (milliseconds) is the first wait; tests set it to 0.
+async function post(ai, url, init) {
+  const send = ai.fetch || fetch;
+  const wait = ai.retryWait ?? 1500;
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await send(url, init);
+    if (response.ok || attempt === 2 || !BUSY.has(response.status)) return response;
+    await response.text().catch(() => "");
+    await new Promise((resolve) => setTimeout(resolve, wait * (attempt * 2 + 1)));
+  }
 }
 
 async function askClaude(ai, { image, text, schema }) {
@@ -180,7 +197,7 @@ async function askOpenAi(ai, { image, text, schema, name }) {
   const content = [];
   if (image) content.push({ type: "image_url", image_url: { url: `data:${image.mediaType};base64,${image.base64}` } });
   content.push({ type: "text", text });
-  const response = await (ai.fetch || fetch)(`${(ai.baseURL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
+  const response = await post(ai, `${(ai.baseURL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${ai.apiKey}` },
     body: JSON.stringify({
@@ -208,7 +225,7 @@ async function askGemini(ai, { image, text, schema }) {
   if (image) parts.push({ inline_data: { mime_type: image.mediaType, data: image.base64 } });
   parts.push({ text });
   const base = (ai.baseURL || "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, "");
-  const response = await (ai.fetch || fetch)(`${base}/models/${encodeURIComponent(ai.model)}:generateContent`, {
+  const response = await post(ai, `${base}/models/${encodeURIComponent(ai.model)}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": ai.apiKey },
     body: JSON.stringify({

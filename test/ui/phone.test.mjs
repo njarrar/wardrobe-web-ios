@@ -56,6 +56,19 @@ async function waitForServer(base, child) {
 }
 
 async function snap(page, name) {
+  // Nothing may be wider than the screen: that shifts the whole app sideways.
+  const wide = await page.evaluate(() => {
+    const limit = window.innerWidth + 1;
+    const found = [];
+    if (document.documentElement.scrollWidth > limit) found.push(`page ${document.documentElement.scrollWidth}`);
+    for (const node of document.querySelectorAll("body *")) {
+      const box = node.getBoundingClientRect();
+      if (box.width && (box.right > limit || box.left < -1) && getComputedStyle(node).position !== "fixed" && !node.closest("[aria-hidden='true'], .visually-hidden, .category-nav, .group-filter, .today-card__pieces, .forgotten__list")) found.push(`${node.tagName}.${node.className} ${Math.round(box.left)}..${Math.round(box.right)}`);
+      if (found.length > 6) break;
+    }
+    return found;
+  });
+  assert.deepEqual(wide, [], `${name}: wider than the screen`);
   if (shots) await page.screenshot({ path: path.join(shots, `${name}.png`) });
 }
 
@@ -275,6 +288,10 @@ describe("phone screens", () => {
     await page.goto(base);
     await page.getByLabel("Server address").waitFor();
     await snap(page, "light-5-connect");
+    // The app must not zoom: no pinch, and no zoom when a field gets focus.
+    assert.match(await page.locator('meta[name="viewport"]').getAttribute("content"), /user-scalable=no/);
+    const small = await page.evaluate(() => [...document.querySelectorAll("input, select, textarea")].filter((field) => parseFloat(getComputedStyle(field).fontSize) < 16).length);
+    assert.equal(small, 0);
     await context.close();
   });
 });

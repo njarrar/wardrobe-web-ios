@@ -72,7 +72,7 @@
 
 * { box-sizing: border-box; }
 
-html { background: var(--bg); -webkit-tap-highlight-color: transparent; }
+html { background: var(--bg); -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 body {
   margin: 0;

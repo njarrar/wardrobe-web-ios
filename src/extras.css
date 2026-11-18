@@ -91,3 +91,14 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 /* The Add clothes button belongs to the closet. Other tabs hide it unless
    an import is running. */
 .import-tray.is-away { display: none; }
+
+/* iOS zooms the page when a field with small text gets focus, and the
+   zoom stays. Fields on touch screens use 16px text so it never starts. */
+@media (hover: none) and (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}
+/* Sheets keep clear of the screen edges and the notch in landscape. */
+@media (max-width: 720px) {
+  .import-popover { padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); }
+  .import-status { padding-inline: 2px; }
+}
