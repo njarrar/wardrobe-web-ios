@@ -308,5 +308,5 @@ export function checkPng(bytes) {
 
 // File names change with every new picture, because image links are cached for a year.
 export function garmentFileName(id) {
-  return `${id}-garment-${Date.now().toString(36)}.png`;
+  return `${id}-garment-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.png`;
 }
