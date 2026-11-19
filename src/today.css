@@ -89,3 +89,21 @@
 
 .wear-idle { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .field-optional { font-style: normal; font-weight: 400; color: var(--muted); }
+
+.group-filter { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-top: 10px; }
+.group-filter::-webkit-scrollbar { display: none; }
+.group-filter button {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: var(--radius-pill); border: 1px solid var(--line);
+  background: var(--glass, var(--surface)); color: var(--ink-soft); font: inherit; font-size: 13px; cursor: pointer;
+}
+.group-filter button.active { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.group-filter button.active .chip-count { background: rgba(255, 255, 255, 0.16); color: inherit; }
+.group-filter .group-filter__sort { border-style: dashed; color: var(--accent); }
+
+.sort-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+@media (max-width: 520px) { .sort-fields { grid-template-columns: 1fr 1fr; } .sort-fields .field:first-child { grid-column: 1 / -1; } }
+.season-field { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; border: 0; }
+.season-field legend { width: 100%; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 560; }
+.season-field button { padding: 7px 12px; border-radius: var(--radius-pill); border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.season-field button.active { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }

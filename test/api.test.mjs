@@ -307,6 +307,34 @@ describe("importing and styling with Claude", () => {
     for (const outfit of outfits) await fetch(`${ctx.base}/api/import/outfits/${outfit.id}`, { method: "DELETE" });
   });
 
+  test("sorts pieces by kind, season, warmth and dress level", async () => {
+    const library = await (await fetch(`${ctx.base}/api/import/wardrobe`)).json();
+    const tee = library.find((entry) => entry.name === "Navy tee");
+    assert.equal(tee.kind, "tee");
+    assert.deepEqual(tee.seasons, ["spring", "summer"]);
+    assert.equal(tee.warmth, 2);
+    const response = await post("/api/import/wardrobe/sort", { all: true });
+    assert.equal(response.status, 200);
+    const { items } = await response.json();
+    assert.equal(items.length, library.length);
+    assert.equal(items[0].formality, "smart");
+    for (const entry of items) assert.ok([2, 4].includes(entry.warmth) || !("warmth" in entry), "an odd warmth is dropped");
+    const sent = claude.requests.at(-1).body.messages[0].content;
+    assert.equal(sent.some((block) => block.type === "image"), false, "sorting never sends photos");
+    const left = (await (await post("/api/import/wardrobe/sort", {})).json()).items;
+    assert.ok(left.every((entry) => items.some((first) => first.id === entry.id && !first.warmth)), "only pieces still missing a field are sorted again");
+  });
+
+  test("saves the outfit plan", async () => {
+    const empty = await (await fetch(`${ctx.base}/api/import/plan`)).json();
+    assert.deepEqual(empty.days, {});
+    const put = await fetch(`${ctx.base}/api/import/plan`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ days: { "2026-12-01": "easy-navy", "bad": "x" }, settings: { workDays: [0, 1, 2, 3, 4] }, trips: [{ name: "Cairo", from: "2026-12-10", to: "2026-12-12" }] }) });
+    assert.equal(put.status, 200);
+    const saved = await (await fetch(`${ctx.base}/api/import/plan`)).json();
+    assert.deepEqual(saved.days, { "2026-12-01": "easy-navy" });
+    assert.equal(saved.trips[0].name, "Cairo");
+  });
+
   test("the same combination is not styled twice", async () => {
     await post("/api/import/outfits/generate", { count: 1 });
     const again = await (await post("/api/import/outfits/generate", { count: 1 })).json();

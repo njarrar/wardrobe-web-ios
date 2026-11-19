@@ -1,0 +1,82 @@
+/* The Plan tab: week and month grids, the day sheet and trips. */
+
+.plan-view { padding: 18px var(--page-x) 40px; max-width: 980px; }
+
+.plan-hero { padding: 16px; }
+.plan-hero__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.plan-nav { display: flex; align-items: center; gap: 6px; }
+.plan-nav h2 { margin: 0 4px; font-size: 19px; font-weight: 650; letter-spacing: -0.015em; min-width: 9ch; text-align: center; }
+.plan-nav .icon-button { width: 34px; height: 34px; }
+.plan-mode { display: inline-flex; padding: 3px; border-radius: var(--radius-pill); background: var(--surface-2); border: 1px solid var(--line); }
+.plan-mode button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 560; padding: 7px 14px; border-radius: var(--radius-pill); cursor: pointer; }
+.plan-mode button.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.plan-hero__rules { margin: 10px 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.plan-hero__go { width: 100%; justify-content: center; min-height: 48px; }
+.plan-hero__again { display: block; margin: 8px auto 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 14px; cursor: pointer; }
+.plan-hero__hint { margin: 8px 0 0; text-align: center; color: var(--muted); font-size: 12.5px; }
+.plan-hero__notice { margin: 10px 0 0; color: var(--ink-soft); font-size: 13.5px; }
+.plan-hero__notice button { border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; padding: 0; }
+
+.plan-settings { margin: 12px 0 4px; }
+.plan-settings summary { cursor: pointer; color: var(--ink-soft); font-size: 14px; font-weight: 560; padding: 6px 2px; }
+.plan-settings__body { display: grid; gap: 10px; padding: 8px 2px 4px; font-size: 13px; color: var(--muted); }
+.plan-weekdays { display: flex; gap: 6px; }
+.plan-weekdays button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.plan-weekdays button.active { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.plan-settings__check { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 14px; }
+.plan-settings__check input { width: 18px; height: 18px; accent-color: var(--ink); }
+
+.plan-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin-top: 8px; }
+.plan-grid--head { margin-top: 14px; text-align: center; color: var(--muted); font-size: 12px; font-weight: 560; }
+.plan-grid--week { grid-template-columns: 1fr; gap: 8px; }
+.plan-day {
+  position: relative; display: flex; flex-direction: column; align-items: stretch;
+  min-height: 74px; padding: 4px; border-radius: 12px; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.plan-day.is-blank { background: none; border: 0; box-shadow: none; pointer-events: none; }
+.plan-day.is-past { opacity: 0.55; }
+.plan-day.is-today { outline: 2px solid var(--accent); outline-offset: -1px; }
+.plan-day.is-trip::after { content: ""; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: #3a6ee8; }
+.plan-day.is-repeat::before { content: ""; position: absolute; bottom: 4px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+.plan-day__date { font-size: 11px; font-weight: 650; }
+.plan-day__empty { flex: 1; display: grid; place-items: center; color: var(--line-strong); font-size: 18px; }
+.plan-day__name { font-size: 14px; font-weight: 600; margin-top: 4px; }
+.plan-grid--week .plan-day { min-height: 0; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; }
+.plan-grid--week .plan-day__date { width: 100%; font-size: 13px; color: var(--muted); }
+
+.plan-pieces { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; align-items: center; justify-items: center; }
+.plan-pieces img { width: 100%; height: 22px; object-fit: contain; }
+.plan-pieces--large { display: flex; gap: 6px; flex: none; }
+.plan-pieces--large img { width: 52px; height: 52px; padding: 4px; border-radius: 12px; background: var(--paper); }
+
+.plan-sheet { max-height: 88vh; overflow-y: auto; }
+.plan-sheet__current { display: grid; justify-items: start; gap: 8px; margin: 4px 0 14px; }
+.plan-sheet__current strong { font-size: 17px; }
+.plan-sheet__title { margin: 6px 0 8px; font-size: 15px; font-weight: 650; }
+.plan-sheet__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.plan-sheet__list button {
+  display: grid; gap: 4px; padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.plan-sheet__list button.active { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.plan-sheet__list .plan-pieces { min-height: 50px; }
+.plan-sheet__name { font-size: 14px; font-weight: 600; }
+.plan-sheet__meta { font-size: 12px; color: var(--muted); }
+.plan-sheet__meta em { font-style: normal; color: var(--danger); }
+
+.plan-trips { margin-top: 22px; }
+.plan-trips .forgotten__head button { display: inline-flex; align-items: center; gap: 4px; }
+.plan-trips__empty { margin: 4px 0; }
+.trip-card, .trip-form { padding: 14px; margin-top: 10px; display: grid; gap: 10px; }
+.trip-card header { display: flex; justify-content: space-between; gap: 10px; }
+.trip-card h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 16px; }
+.trip-card p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.trip-card .secondary-button { justify-content: center; }
+.trip-form__dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.packing-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.packing-list label { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; }
+.packing-list input { width: 18px; height: 18px; accent-color: var(--success); }
+.packing-list img { width: 36px; height: 36px; object-fit: contain; border-radius: 8px; background: var(--paper); }
+.packing-list span { flex: 1; }
+.packing-list input:checked ~ span { text-decoration: line-through; color: var(--muted); }
+.packing-list small { color: var(--muted); }

@@ -31,7 +31,13 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 **[App stores](#releasing-to-the-app-stores)** ·
 **[Settings](#settings)**
 
-## What's new in 2.4
+## What's new in 2.5
+
+- **Plan a month in one tap.** The new Plan tab fills every day with an outfit, with no repeats inside a week. Add a trip and get a packing list.
+- **Sorted for you.** Pieces get a kind, seasons, warmth and dress level, and the closet groups them: Winter, Summer, Work, Neutrals and more.
+- **Glass look.** See-through bars and a floating tab bar, kept light on the battery.
+
+## What was new in 2.4
 
 - **Today's outfit.** The closet opens with one outfit for today. Wear it, or shuffle for another.
 - **Clothes you forgot.** A row shows what has not been worn in 60 days or more.

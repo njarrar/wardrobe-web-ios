@@ -5,6 +5,7 @@
 import {
   MAX_STYLE_COUNT,
   styleOptions,
+  sortFields,
   applyOutfitEdit,
   normalizeItemEdit,
   normalizeManualOutfit,
@@ -15,7 +16,8 @@ import {
   newImageKey,
   tokensMatch,
 } from "../shared/core.mjs";
-import { AI_IMAGE_EDGE, AiError, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, styleOutfits } from "../shared/ai.mjs";
+import { normalizePlan } from "../shared/style.mjs";
+import { AI_IMAGE_EDGE, AiError, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, sortCloset, styleOutfits } from "../shared/ai.mjs";
 import { cropDetectedItem, decodePng, encodePng, frameTransparentGarment, resize } from "../shared/pixels.mjs";
 
 const API_ROOT = "/api/import/jobs";
@@ -192,6 +194,7 @@ async function persistImported(env, job) {
     secondaryColor: metadata.secondaryColor || null,
     palette: [metadata.color, metadata.secondaryColor].filter(Boolean),
     tags: Array.isArray(metadata.tags) ? metadata.tags : [],
+    ...sortFields(metadata),
     image: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
     thumbnail: `${LIBRARY_ASSET_ROOT}/${garmentName}`,
     importJobId: job.id,
@@ -280,6 +283,30 @@ async function handleApi(request, env) {
     const next = applyAiSettingsEdit(await loadAiSettings(env), await readJson(request, 16 * 1024));
     await saveAiSettings(env, next);
     return json(200, publicAiSettings(next, envReader(env)));
+  }
+
+  if (pathname === "/api/import/plan" && method === "GET") {
+    const row = await env.DB.prepare("SELECT data FROM settings WHERE key = 'plan'").first().catch(() => null);
+    return json(200, normalizePlan(row ? JSON.parse(row.data) : {}));
+  }
+  if (pathname === "/api/import/plan" && method === "PUT") {
+    const plan = normalizePlan(await readJson(request, 256 * 1024));
+    await env.DB.prepare("INSERT INTO settings (key, data) VALUES ('plan', ?1) ON CONFLICT(key) DO UPDATE SET data = excluded.data").bind(JSON.stringify(plan)).run();
+    return json(200, plan);
+  }
+  if (pathname === "/api/import/wardrobe/sort" && method === "POST") {
+    const input = await readJson(request, 16 * 1024);
+    const ai = await currentAi(env);
+    const all = await listItems(env);
+    const todo = input.all ? all : all.filter((item) => !item.kind || !Array.isArray(item.seasons) || !item.warmth || !item.formality);
+    const updated = [];
+    for (const { id, ...fields } of todo.length ? await sortCloset(ai, todo) : []) {
+      const record = all.find((item) => item.id === id);
+      const next = { ...record, ...fields };
+      await env.DB.prepare("UPDATE items SET data = ? WHERE id = ?").bind(JSON.stringify(next), id).run();
+      updated.push(next);
+    }
+    return json(200, { items: updated });
   }
 
   // Same rules as the local server: see normalizeManualOutfit and applyOutfitEdit in shared/core.mjs.

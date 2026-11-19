@@ -120,6 +120,12 @@ describe("phone screens", () => {
       await page.getByText(/No outfits yet/).waitFor();
       await snap(page, `${colorScheme}-4-outfits`);
 
+      await page.getByRole("tab", { name: /Plan/ }).click();
+      await page.getByText(/You need saved outfits to plan/).waitFor();
+      const planOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(planOverflow <= 0, `plan scrolls sideways by ${planOverflow}px`);
+      await snap(page, `${colorScheme}-7-plan`);
+
       assert.deepEqual(errors, []);
       await context.close();
     });
