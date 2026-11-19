@@ -9,6 +9,9 @@ class WardrobeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(CutoutPlugin())
         bridge?.registerPluginInstance(CloudStorePlugin())
+        bridge?.registerPluginInstance(HapticsPlugin())
+        bridge?.registerPluginInstance(PhotoPickerPlugin())
+        bridge?.registerPluginInstance(WidgetBridgePlugin())
     }
 }
 

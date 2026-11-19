@@ -8,6 +8,7 @@ import {
   COLOR_RULES, DEFAULT_PLAN_SETTINGS, OCCASIONS, OCCASION_IDS, addDays, dayString, occasionFit, outfitHarmony, packingList, parseDay, planDays, planRepeats, wornByDay,
 } from "../shared/style.mjs";
 import { useSheetDrag } from "./useSheetDrag.js";
+import { tap } from "./native.js";
 import "./plan.css";
 import { formatDay, isRtl, t, tn } from "./i18n.js";
 
@@ -283,6 +284,7 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
     setOpenDay(null);
   };
   const toggleLockDay = (day) => {
+    tap("select");
     const list = Array.isArray(plan.lockedDays) ? plan.lockedDays : [];
     const lockedDays = list.includes(day) ? list.filter((entry) => entry !== day) : [...list, day].sort();
     savePlan({ ...plan, lockedDays });

@@ -7,6 +7,7 @@ import { tileNote } from "../shared/pairing.mjs";
 import { patchOutfit, sendJson, wearOutfit, wornOn } from "./wear.js";
 import { canMakeOutfit, isOnePiece, makeOutfits, outfitTitle, swapCandidates } from "../shared/make-outfit.mjs";
 import { FlatLay } from "./FlatLay.jsx";
+import { tap } from "./native.js";
 import { notMeKeys } from "./Home.jsx";
 import "./outfits.css";
 import "./today.css";
@@ -372,6 +373,7 @@ export function OutfitGallery({
       const updated = await patchOutfit(outfit.id, { swap: { from: oldId, to: newId } });
       setOutfits((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
       setSwappingId(null);
+      tap("select");
     } catch (requestError) { setError(requestError.message); }
     finally { setSwapping(false); }
   };
