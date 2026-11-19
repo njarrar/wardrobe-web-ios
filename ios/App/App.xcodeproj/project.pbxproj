@@ -16,6 +16,7 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		54E3360EEC549912C8642870 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E45049F99497D605E8C134CA /* WidgetKit.framework */; };
+		68C78B687074F6C25A3CC5CF /* PhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7576C9BA96066D8FC10F73B7 /* PhotoPicker.swift */; };
 		777990F27A0E42610448F303 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1858B30CBBE6B977320A3E2F /* Foundation.framework */; };
 		7ED96722E05034A298E5349C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 16AD8EC2922BBEF409AD5F5E /* SwiftUI.framework */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
@@ -64,6 +65,7 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		71B95AF87224869DC22F6E39 /* NativeExtras.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NativeExtras.swift; sourceTree = "<group>"; };
+		7576C9BA96066D8FC10F73B7 /* PhotoPicker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PhotoPicker.swift; sourceTree = "<group>"; };
 		80E8E5D01895AA71174EED7B /* WardrobeWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WardrobeWidget.swift; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
@@ -141,6 +143,7 @@
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
 				71B95AF87224869DC22F6E39 /* NativeExtras.swift */,
+				7576C9BA96066D8FC10F73B7 /* PhotoPicker.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -279,6 +282,7 @@
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				A1C0FFEE00000000000000A1 /* WardrobeViewController.swift in Sources */,
 				AD7E528EA5A3B013FFB45664 /* NativeExtras.swift in Sources */,
+				68C78B687074F6C25A3CC5CF /* PhotoPicker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -447,7 +451,6 @@
 				MARKETING_VERSION = 3.5.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.njarrar.wardrobe;
-				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 5.0;
@@ -470,7 +473,6 @@
 				);
 				MARKETING_VERSION = 3.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.njarrar.wardrobe;
-				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;

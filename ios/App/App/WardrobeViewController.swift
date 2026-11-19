@@ -230,7 +230,7 @@ public class CloudStorePlugin: CAPPlugin, CAPBridgedPlugin {
                 NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &failure) { readURL in
                     result = try? Data(contentsOf: readURL)
                 }
-                guard let result else { call.reject("Could not read \(url.lastPathComponent)"); return }
+                guard let result else { call.reject("Could not read \(url.lastPathComponent)" + (failure.map { ": \($0.localizedDescription)" } ?? "")); return }
                 // Other copies of this file that iCloud kept after two devices
                 // saved at about the same time. The app joins them.
                 var conflicts: [String] = []
