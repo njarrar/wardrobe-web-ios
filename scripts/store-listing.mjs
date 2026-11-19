@@ -10,7 +10,6 @@
 //
 // The listing is kept out of this repo. Its shape:
 // {
-//   "version": "2.3.0",            // optional, defaults to package.json
 //   "ios": {
 //     "name", "subtitle", "promotional_text", "description", "keywords",
 //     "release_notes", "privacy_url", "support_url", "marketing_url",
@@ -36,7 +35,11 @@ if (!raw) {
 }
 const listing = JSON.parse(raw);
 const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-const version = listing.version || pkg.version;
+// The store version always follows package.json, so a new build never reuses
+// an old version number. STORE_RELEASE_NOTES (the workflow's "What's new" box)
+// replaces the listing's release_notes for this run.
+const version = pkg.version;
+if (listing.ios && process.env.STORE_RELEASE_NOTES?.trim()) listing.ios.release_notes = process.env.STORE_RELEASE_NOTES;
 
 const IOS_LIMITS = { name: 30, subtitle: 30, promotional_text: 170, description: 4000, keywords: 100, release_notes: 4000 };
 const ANDROID_LIMITS = { title: 30, short_description: 80, full_description: 4000 };

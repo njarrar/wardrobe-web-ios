@@ -30,6 +30,10 @@ on:
         description: App Store only. Pick the newest processed build and send it for review (App Privacy and the price must already be set)
         type: boolean
         default: false
+      release_notes:
+        description: App Store "What's new" text for this version (leave empty to keep the listing's)
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -55,6 +59,7 @@ jobs:
       - name: Check the listing and lay it out for fastlane
         env:
           STORE_LISTING_JSON: ${{ secrets.STORE_LISTING_JSON }}
+          STORE_RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
           if [ -z "$STORE_LISTING_JSON" ]; then echo "::error::Add the STORE_LISTING_JSON secret first"; exit 1; fi
           node scripts/store-listing.mjs
