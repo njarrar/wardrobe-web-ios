@@ -4,6 +4,7 @@ import path from "node:path";
 import sharp from "sharp";
 import {
   MAX_STYLE_COUNT,
+  allowedOrigin,
   canMakeOutfit,
   styleOptions,
   checkPng,
@@ -265,7 +266,10 @@ export function createWardrobeApi(options = {}) {
     // Cross-origin access is only opened up when a token guards the API, so
     // a random web page cannot drive the local server through the browser.
     if (!setting("WARDROBE_TOKEN").trim()) return;
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Vary", "Origin");
+    const origin = allowedOrigin(req.headers.origin, setting("WARDROBE_CORS_ORIGINS"));
+    if (!origin) return;
+    res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
   }

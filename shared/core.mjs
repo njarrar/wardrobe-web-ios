@@ -198,6 +198,23 @@ export function applyOutfitEdit(current, input = {}, items = null) {
   return next;
 }
 
+// Which other web origin may call the API from a browser. The phone apps
+// (capacitor://localhost on iPhone, https://localhost on Android) and pages
+// on this computer always may. Any other site must be named in
+// WARDROBE_CORS_ORIGINS (comma separated; "*" opens it to all, as before).
+// Gives back the value for Access-Control-Allow-Origin, or "" for none.
+export function allowedOrigin(origin, extra = "") {
+  if (typeof origin !== "string" || !origin) return "";
+  const listed = String(extra || "").split(",").map((entry) => entry.trim().replace(/\/$/, "")).filter(Boolean);
+  if (listed.includes("*")) return "*";
+  if (listed.includes(origin)) return origin;
+  let url;
+  try { url = new URL(origin); } catch { return ""; }
+  if (url.protocol === "capacitor:" || url.protocol === "ionic:") return url.hostname === "localhost" ? origin : "";
+  if ((url.protocol === "http:" || url.protocol === "https:") && isLoopbackHost(url.host)) return origin;
+  return "";
+}
+
 export function isLoopbackHost(host = "") {
   const value = String(host).trim().toLowerCase();
   const hostname = value.startsWith("[")
