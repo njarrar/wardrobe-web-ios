@@ -280,6 +280,27 @@ export function weatherFit(pieces, weather) {
 
 // ---------- month plan ----------
 
+// What a day is for. Each one names how dressy the outfit should be and the
+// outfit tags that suit it.
+export const OCCASIONS = {
+  work: { label: "Work", dress: "smart", words: /work|office|smart|business|meeting/ },
+  casual: { label: "Casual", dress: "casual", words: /casual|weekend|everyday|relaxed|errand/ },
+  dinner: { label: "Dinner", dress: "smart", words: /dinner|date|evening|night|party/ },
+  formal: { label: "Formal", dress: "formal", words: /formal|wedding|event|ceremony|black tie/ },
+};
+export const OCCASION_IDS = Object.keys(OCCASIONS);
+
+// 1 when an outfit suits the occasion, down to 0. A matching tag settles it;
+// else it is the share of pieces at the right dress level.
+export function occasionFit(outfit, pieces, occasion) {
+  const rule = OCCASIONS[occasion];
+  if (!rule) return 0.5;
+  if ((outfit?.occasion || []).some((tag) => rule.words.test(tag))) return 1;
+  const known = pieces.filter((piece) => piece?.formality);
+  if (!known.length) return 0.5;
+  return known.filter((piece) => piece.formality === rule.dress).length / known.length;
+}
+
 export const DEFAULT_PLAN_SETTINGS = { workDays: [0, 1, 2, 3, 4], restDays: 7, mixForgotten: true };
 
 function isWorkOutfit(outfit) {
@@ -290,7 +311,7 @@ function isWorkOutfit(outfit) {
 // outfit never comes back inside `restDays`, the same top never repeats two
 // days in a row, work days lean on work outfits, and pieces that have sat for
 // a while get a turn. Days already set in `keep` stay as they are.
-export function planDays({ outfits = [], items = [], start, length = 30, settings = {}, keep = {}, forecast = {} } = {}) {
+export function planDays({ outfits = [], items = [], start, length = 30, settings = {}, keep = {}, forecast = {}, occasions = {} } = {}) {
   const options = { ...DEFAULT_PLAN_SETTINGS, ...settings };
   const itemsById = new Map(items.map((item) => [item.id, item]));
   const usable = outfits.filter((outfit) => (outfit.garmentIds || []).length >= 2 && outfit.garmentIds.every((id) => itemsById.has(id)));
@@ -320,7 +341,8 @@ export function planDays({ outfits = [], items = [], start, length = 30, setting
       if (since < options.restDays) score -= 1000;
       const top = pieces.find((piece) => piece.part === "upperbody")?.id;
       if (top && top === previousTop) score -= 200;
-      if (work === isWorkOutfit(outfit)) score += 25;
+      if (OCCASIONS[occasions[day]]) score += occasionFit(outfit, pieces, occasions[day]) * 60;
+      else if (work === isWorkOutfit(outfit)) score += 25;
       if (options.mixForgotten) score += pieces.reduce((total, piece) => total + Math.min(90, idleDays(piece, day) || 0), 0) / pieces.length / 6;
       score -= pieces.reduce((total, piece) => total + (pieceUses.get(piece.id) || 0), 0) * 3;
       if (weather) score += weatherFit(pieces, weather) * 30;
@@ -376,10 +398,24 @@ export function normalizePlan(value = {}) {
     .filter((trip) => trip && isDay(trip.from) && isDay(trip.to) && trip.from <= trip.to)
     .slice(0, 20)
     .map((trip) => ({ id: typeof trip.id === "string" ? trip.id.slice(0, 40) : `${trip.from}-${trip.to}`, name: typeof trip.name === "string" ? trip.name.trim().slice(0, 60) : "Trip", from: trip.from, to: trip.to }));
+  const occasions = {};
+  for (const [day, id] of Object.entries(input.occasions && typeof input.occasions === "object" ? input.occasions : {})) {
+    if (isDay(day) && OCCASIONS[id]) occasions[day] = id;
+  }
   return {
     days: Object.fromEntries(kept.map((day) => [day, days[day]])),
+    occasions: Object.fromEntries(Object.keys(occasions).sort().slice(-400).map((day) => [day, occasions[day]])),
     settings: { workDays, restDays, mixForgotten: settings.mixForgotten !== false },
     trips,
     updatedAt: new Date().toISOString(),
   };
+}
+
+// What was worn on each day: { "2026-11-18": { outfitIds: [...], pieceIds: [...] } }.
+export function wornByDay(outfits = [], items = []) {
+  const days = {};
+  const at = (day) => (days[day] ||= { outfitIds: [], pieceIds: [] });
+  for (const outfit of outfits) for (const day of outfit.wornDates || []) at(day).outfitIds.push(outfit.id);
+  for (const item of items) for (const day of item.wornDates || []) at(day).pieceIds.push(item.id);
+  return days;
 }

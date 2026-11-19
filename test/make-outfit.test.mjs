@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { canMakeOutfit, makeOutfit, makeOutfits, outfitKey, outfitTitle } from "../shared/make-outfit.mjs";
+import { canMakeOutfit, isOnePiece, makeOutfit, makeOutfits, outfitKey, outfitTitle } from "../shared/make-outfit.mjs";
 import { applyOutfitEdit, normalizeManualOutfit } from "../shared/core.mjs";
 
 const today = "2026-11-18";
@@ -72,6 +72,8 @@ test("a dress or an abaya needs no bottom", () => {
   const items = [piece("black-abaya", "upperbody", "#111111", { kind: "abaya" }), piece("sandals", "shoes", "#c8b48a")];
   assert.equal(canMakeOutfit(items), true);
   assert.deepEqual(makeOutfit({ items, today }).garmentIds, ["black-abaya", "sandals"]);
+  for (const name of ["Black dress", "Linen sundress"]) assert.equal(isOnePiece({ name }), true, name);
+  for (const name of ["White dress shirt", "Dress shoes", "Addressed tee"]) assert.equal(isOnePiece({ name }), false, name);
   assert.equal(canMakeOutfit([closet[0]]), false);
   assert.equal(makeOutfit({ items: [closet[0]], today }), null);
 });

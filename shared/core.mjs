@@ -6,14 +6,15 @@ export const PARTS = new Set(["upperbody", "wholebody_up", "lowerbody", "accesso
 export const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 export const SEASONS = ["spring", "summer", "fall", "winter"];
 export const FORMALITY = ["casual", "smart", "formal"];
+export const PATTERNS = ["solid", "striped", "checked", "dotted", "floral", "printed", "textured"];
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
-export const ANALYZE_PROMPT = "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe, at most 8. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody (tops), wholebody_up (jackets and outer layers), lowerbody (bottoms), accessories_up (accessories), shoes. Suggest a concise specific name, the primary color as a six-digit hex such as #1f2a44, a genuinely distinct secondary hex color or null, 1-4 useful lowercase detail tags, a short lowercase kind (such as tee, shirt, sweater, hoodie, jeans, chinos, skirt, dress, coat, sneakers, boots, scarf, bag), the seasons it suits, a warmth from 1 (very light) to 5 (very warm), and how dressy it is (casual, smart or formal). Return an empty list when there is no clothing.";
+export const ANALYZE_PROMPT = "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe, at most 8. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody (tops), wholebody_up (jackets and outer layers), lowerbody (bottoms), accessories_up (accessories), shoes. Suggest a concise specific name, the primary color as a six-digit hex such as #1f2a44, a genuinely distinct secondary hex color or null, 1-4 useful lowercase detail tags, a short lowercase kind (such as tee, shirt, sweater, hoodie, jeans, chinos, skirt, dress, coat, sneakers, boots, scarf, bag), the seasons it suits, a warmth from 1 (very light) to 5 (very warm), how dressy it is (casual, smart or formal), and its pattern (solid, striped, checked, dotted, floral, printed or textured). Return an empty list when there is no clothing.";
 
 // Structured outputs (Claude, ChatGPT and Gemini) accept a subset of JSON Schema, so ranges and
 // patterns are checked afterwards by normalizeMetadata instead.
 const BOX_SCHEMA = { type: "object", additionalProperties: false, properties: { x: { type: "integer" }, y: { type: "integer" }, width: { type: "integer" }, height: { type: "integer" } }, required: ["x", "y", "width", "height"] };
-export const ANALYZE_SCHEMA = { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, part: { type: "string", enum: [...PARTS] }, color: { type: "string" }, secondaryColor: { anyOf: [{ type: "string" }, { type: "null" }] }, tags: { type: "array", items: { type: "string" } }, kind: { type: "string" }, seasons: { type: "array", items: { type: "string", enum: SEASONS } }, warmth: { type: "integer" }, formality: { type: "string", enum: FORMALITY }, boundingBox: BOX_SCHEMA }, required: ["name", "part", "color", "secondaryColor", "tags", "kind", "seasons", "warmth", "formality", "boundingBox"] } } }, required: ["items"] };
+export const ANALYZE_SCHEMA = { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, part: { type: "string", enum: [...PARTS] }, color: { type: "string" }, secondaryColor: { anyOf: [{ type: "string" }, { type: "null" }] }, tags: { type: "array", items: { type: "string" } }, kind: { type: "string" }, seasons: { type: "array", items: { type: "string", enum: SEASONS } }, warmth: { type: "integer" }, formality: { type: "string", enum: FORMALITY }, pattern: { type: "string", enum: PATTERNS }, boundingBox: BOX_SCHEMA }, required: ["name", "part", "color", "secondaryColor", "tags", "kind", "seasons", "warmth", "formality", "pattern", "boundingBox"] } } }, required: ["items"] };
 
 // Sorting pieces already in the closet uses their names, colors and tags only.
 export const SORT_SCHEMA = { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false, properties: { id: { type: "string" }, kind: { type: "string" }, seasons: { type: "array", items: { type: "string", enum: SEASONS } }, warmth: { type: "integer" }, formality: { type: "string", enum: FORMALITY } }, required: ["id", "kind", "seasons", "warmth", "formality"] } } }, required: ["items"] };
@@ -36,6 +37,7 @@ export function sortFields(value = {}) {
   const warmth = Math.round(Number(input.warmth));
   if (Number.isFinite(warmth) && warmth >= 1 && warmth <= 5) fields.warmth = warmth;
   if (FORMALITY.includes(input.formality)) fields.formality = input.formality;
+  if (PATTERNS.includes(input.pattern)) fields.pattern = input.pattern;
   return fields;
 }
 
@@ -221,7 +223,7 @@ export function normalizeItemEdit(record, value = {}) {
     }
   }
   if (input.wear !== undefined || input.unwear !== undefined) next.wornDates = editWornDates(record.wornDates, input);
-  for (const key of ["kind", "seasons", "warmth", "formality"]) {
+  for (const key of ["kind", "seasons", "warmth", "formality", "pattern"]) {
     if (!(key in input)) continue;
     if (input[key] === null || input[key] === "") { delete next[key]; continue; }
     const clean = sortFields({ [key]: input[key] });

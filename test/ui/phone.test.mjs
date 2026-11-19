@@ -42,7 +42,7 @@ async function seed(dataDir) {
     const shape = `<svg width="600" height="600"><rect x="120" y="80" width="360" height="440" rx="60" fill="${color}" stroke="#999"/></svg>`;
     await sharp({ create: { width: 600, height: 600, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
       .composite([{ input: Buffer.from(shape) }]).png().toFile(path.join(imported, file));
-    records.push({ id: `seed-${index}`, name, part, color, palette: [color], tags: ["casual"], image: `/api/import/library/${file}`, thumbnail: `/api/import/library/${file}`, addedAt: new Date(2026, 0, index + 1).toISOString() });
+    records.push({ id: `import-seed-${index}`, name, part, color, palette: [color], tags: ["casual"], image: `/api/import/library/${file}`, thumbnail: `/api/import/library/${file}`, addedAt: new Date(2026, 0, index + 1).toISOString() });
   }
   await writeFile(path.join(dataDir, "library.json"), JSON.stringify(records));
 }
@@ -239,6 +239,64 @@ describe("phone screens", () => {
     }
   });
 
+  test("a piece opens to read, and the plan shows worn days and the day's occasion", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "wardrobe-ui-page-"));
+    await seed(dir);
+    const local = await startServer(dir);
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    try {
+      await page.goto(local.base);
+      await page.getByRole("heading", { name: "Wear this today" }).waitFor();
+      await page.getByRole("tab", { name: /Closet/ }).click();
+      await page.locator('[aria-label="View Olive tee"]').click();
+      const viewer = page.getByRole("dialog", { name: "Selected wardrobe item" });
+      // Read first: a note, partners and facts, with no fields until Edit.
+      await viewer.getByRole("heading", { name: "How to wear it" }).waitFor();
+      assert.match(await viewer.locator(".piece-read__note").innerText(), /neutrals/);
+      assert.ok(await viewer.locator(".piece-read__row button").count() >= 3);
+      assert.equal(await viewer.locator("input, select").count(), 0);
+      await snap(page, "light-2-item-read");
+      await viewer.getByRole("button", { name: "Edit" }).click();
+      await viewer.getByLabel("Pattern").selectOption("striped");
+      await viewer.getByRole("button", { name: "Save" }).click();
+      await viewer.locator(".piece-read__note").getByText(/pattern/).waitFor();
+      assert.match(await viewer.locator(".piece-read__facts").innerText(), /Striped/);
+      // A partner opens its own page.
+      await viewer.locator(".piece-read__row button").first().click();
+      await page.waitForFunction(() => !/Olive tee/.test(document.querySelector(".viewer h2")?.textContent || ""));
+      await page.getByRole("button", { name: "Close viewer" }).click();
+
+      // Wear today's outfit, then the plan marks today as worn.
+      await page.getByRole("tab", { name: /Home/ }).click();
+      await page.getByRole("button", { name: "Wear this" }).click();
+      await page.getByRole("heading", { name: "You wore this today" }).waitFor();
+      await page.getByRole("tab", { name: /Plan/ }).click();
+      await page.locator(".plan-day.is-today.is-worn").waitFor();
+      // Tomorrow is for work: the choice shows on the day and is saved.
+      await page.getByRole("tab", { name: "Week" }).click();
+      const tomorrow = page.locator(".plan-day.is-today + .plan-day");
+      if (await tomorrow.count()) {
+        await tomorrow.click();
+        const sheet = page.getByRole("dialog", { name: /Outfit for/ });
+        await sheet.getByRole("button", { name: "Work" }).click();
+        await sheet.getByRole("button", { name: "Work", pressed: true }).waitFor();
+        await sheet.getByRole("button", { name: "Close day" }).click();
+        await page.locator(".plan-day__occasion").getByText("Work").waitFor();
+        const saved = await (await fetch(`${local.base}/api/import/plan`)).json();
+        assert.deepEqual(Object.values(saved.occasions), ["work"]);
+        await snap(page, "light-7-plan-occasion");
+      }
+      assert.deepEqual(errors, []);
+    } finally {
+      await context.close();
+      local.child.kill();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("adds a basic without a photo, then fixes its edges", async () => {
     const emptyDir = await mkdtemp(path.join(os.tmpdir(), "wardrobe-ui-empty-"));
     const empty = await startServer(emptyDir);
@@ -256,6 +314,7 @@ describe("phone screens", () => {
       await sheet.getByRole("button", { name: "Added" }).waitFor();
       await sheet.getByRole("button", { name: "Close" }).click();
       await page.locator('[aria-label="View White t-shirt"]').click();
+      await page.getByRole("button", { name: "Edit" }).click();
       await page.getByRole("button", { name: "Fix edges" }).click();
       const editor = page.getByRole("dialog", { name: "Fix edges" });
       await editor.waitFor();

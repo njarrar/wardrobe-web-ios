@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsDownUp, CalendarBlank, Camera, Check, ClockCounterClockwise, CoatHanger, GearSix, House, MagicWand, MagnifyingGlass, Plus, Sparkle, SpinnerGap, Trash, TShirt, X } from "@phosphor-icons/react";
+import { ArrowsDownUp, CalendarBlank, Camera, Check, ClockCounterClockwise, CoatHanger, GearSix, House, MagicWand, MagnifyingGlass, PencilSimple, Plus, Sparkle, SpinnerGap, Trash, TShirt, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
@@ -14,6 +14,8 @@ import { canMakeOutfit } from "../shared/make-outfit.mjs";
 import { PlanView, usePlan } from "./Plan.jsx";
 import { StarterPicker } from "./StarterPicker.jsx";
 import { PictureTools } from "./PictureTools.jsx";
+import { PieceRead } from "./PiecePage.jsx";
+import { PATTERNS, PATTERN_LABELS } from "../shared/pairing.mjs";
 import { useWeather } from "./weather.js";
 import { askAiConsent, useAiSetup } from "./ai-setup.js";
 import { sendJson, wearPiece, wornOn } from "./wear.js";
@@ -447,6 +449,13 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
             <option value="formal">{t("Formal")}</option>
           </select>
         </label>
+        <label className="field">
+          <span>{t("Pattern")}</span>
+          <select value={draft.pattern || ""} onChange={(event) => setDraft((current) => ({ ...current, pattern: event.target.value }))}>
+            <option value="">{t("Not set")}</option>
+            {PATTERNS.map((value) => <option key={value} value={value}>{t(PATTERN_LABELS[value])}</option>)}
+          </select>
+        </label>
       </div>
       <fieldset className="season-field">
         <legend>{t("Seasons")}</legend>
@@ -493,7 +502,10 @@ function WearStats({ item }) {
   );
 }
 
-function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
+function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, onPicture }) {
+  // The page opens to read. Edit turns the fields on.
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { setEditing(false); }, [item.id]);
   const closeButtonRef = useRef(null);
   const imageRef = useRef(null);
   const samplingCanvasRef = useRef(null);
@@ -501,7 +513,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
   const [sampling, setSampling] = useState(null);
   const [sampleStatus, setSampleStatus] = useState("");
   const [palette, setPalette] = useState(item.palette || []);
-  const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", seasons: [...(item.seasons || [])] });
+  const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", pattern: item.pattern || "", seasons: [...(item.seasons || [])] });
   const [shaking, setShaking] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const type = t(TYPE_MAP[item.part]?.singular || t("Wardrobe item"));
@@ -520,7 +532,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
       secondaryColor: draft.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(draft.tags),
       price: draft.price === "" || draft.price === null ? null : Number(draft.price),
-      kind: draft.kind.trim().toLowerCase(), warmth: draft.warmth || null, formality: draft.formality || null, seasons: [...draft.seasons].sort(),
+      kind: draft.kind.trim().toLowerCase(), warmth: draft.warmth || null, formality: draft.formality || null, pattern: draft.pattern || null, seasons: [...draft.seasons].sort(),
     }) !== JSON.stringify({
       name: (item.name || "").trim(),
       part: item.part,
@@ -528,7 +540,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
       secondaryColor: item.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(item.tags || []),
       price: item.price ?? null,
-      kind: item.kind || "", warmth: item.warmth || null, formality: item.formality || null, seasons: [...(item.seasons || [])].sort(),
+      kind: item.kind || "", warmth: item.warmth || null, formality: item.formality || null, pattern: item.pattern || null, seasons: [...(item.seasons || [])].sort(),
     });
   }, [draft, item]);
 
@@ -573,21 +585,22 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
     setSampling(null);
     setSampleStatus("");
     setPalette(item.palette || []);
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", seasons: [...(item.seasons || [])] });
+    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", pattern: item.pattern || "", seasons: [...(item.seasons || [])] });
   }, [item]);
 
   const cancelEditing = () => {
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", seasons: [...(item.seasons || [])] });
+    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", pattern: item.pattern || "", seasons: [...(item.seasons || [])] });
     setSampling(null);
     setSampleStatus("");
-    onClose();
+    setEditing(false);
   };
 
   const saveEditing = async () => {
     setSampling(null);
     try {
-      await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean), price: draft.price === "" ? null : Number(draft.price), kind: draft.kind.trim().toLowerCase() || null, warmth: draft.warmth || null, formality: draft.formality || null, seasons: draft.seasons });
+      await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean), price: draft.price === "" ? null : Number(draft.price), kind: draft.kind.trim().toLowerCase() || null, warmth: draft.warmth || null, formality: draft.formality || null, pattern: draft.pattern || null, seasons: draft.seasons });
       setSampleStatus("Changes saved.");
+      setEditing(false);
     } catch (error) {
       setSampleStatus(error.message);
     }
@@ -635,7 +648,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
   return (
     <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
     <div className="viewer-entry">
-    <aside className={`viewer editing${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label={t("Selected wardrobe item")}>
+    <aside className={`viewer${editing ? " editing" : " reading"}${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label={t("Selected wardrobe item")}>
       <span className="sheet-grabber" aria-hidden="true" />
       <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label={t("Close viewer")} ref={closeButtonRef}>
         <X size={24} weight="light" aria-hidden="true" />
@@ -678,19 +691,30 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
             {wornOn(item) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> {t("Undo, not worn today")}</> : <><Check size={15} weight="bold" aria-hidden="true" /> {t("Wore today")}</>}
           </button>
         </div>
-        {onPicture && <PictureTools item={item} onSaved={onPicture} />}
-        <ItemEditor
+        {!editing && (
+          <>
+            <PieceRead item={item} items={items} category={t(TYPE_MAP[item.part]?.label || "")} onOpen={onOpen} />
+            <div className="viewer-actions">
+              <span className="action-spacer" />
+              <button className="secondary-button" type="button" onClick={() => setEditing(true)}>
+                <PencilSimple size={15} aria-hidden="true" /> {t("Edit")}
+              </button>
+            </div>
+          </>
+        )}
+        {editing && onPicture && <PictureTools item={item} onSaved={onPicture} />}
+        {editing && <ItemEditor
           draft={draft}
           setDraft={setDraft}
           palette={palette}
           sampling={sampling}
           setSampling={setSampling}
           sampleStatus={sampleStatus}
-        />
+        />}
 
         {closeBlocked && <p className="unsaved-notice" role="status">{t("Save or cancel changes before closing.")}</p>}
 
-        <div className="viewer-actions">
+        {editing && <div className="viewer-actions">
           <button className="delete-button" type="button" onClick={() => onDelete(item.id)}>
             <Trash size={15} weight="regular" aria-hidden="true" /> {t("Delete")}
           </button>
@@ -699,7 +723,7 @@ function ItemViewer({ item, onClose, onSave, onDelete, onWear, onPicture }) {
           <button className="primary-button" type="button" onClick={saveEditing}>
             <Check size={15} weight="bold" aria-hidden="true" /> {t("Save")}
           </button>
-        </div>
+        </div>}
       </div>
     </aside>
     </div>
@@ -890,6 +914,7 @@ function Wardrobe({ onConnectionFailed }) {
       kind: updatedItem.kind ?? null,
       warmth: updatedItem.warmth ?? null,
       formality: updatedItem.formality ?? null,
+      pattern: updatedItem.pattern ?? null,
       seasons: Array.isArray(updatedItem.seasons) && updatedItem.seasons.length ? updatedItem.seasons : null,
     });
     setItems((current) => current.map((item) => item.id === saved.id ? saved : item));
@@ -1101,7 +1126,7 @@ function Wardrobe({ onConnectionFailed }) {
         )}
       </main>
 
-      {selectedItem && <ItemViewer item={selectedItem} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} onWear={wearItem} onPicture={(saved) => setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry))} />}
+      {selectedItem && <ItemViewer item={selectedItem} items={items} onOpen={setSelectedId} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} onWear={wearItem} onPicture={(saved) => setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry))} />}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} weather={weather} />}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} onStarter={() => setStarterOpen(true)} away={view !== "closet"} />
       {starterOpen && <StarterPicker onClose={() => setStarterOpen(false)} onAdded={addImportedItem} />}

@@ -5,7 +5,8 @@
 
 import { colorHarmony, COLOR_RULES, dayString, daysBetween, idleDays, isNeutral, itemWarmth, lastWorn, targetWarmth, weatherFit } from "./style.mjs";
 
-const ONE_PIECE = /dress|jumpsuit|romper|abaya|thobe|kandura|dishdasha|jalabiya|kaftan/;
+// "dress" and "sundress" count; "dress shirt" and "dress shoes" do not.
+const ONE_PIECE = /\b\w*dress\b(?![- ]?(shirt|shoe|pant|trouser|sock|boot|watch|belt))|jumpsuit|romper|abaya|thobe|kandura|dishdasha|jalabiya|kaftan/;
 const DRESSY = { casual: 0, smart: 1, formal: 2 };
 const SEASON_BY_MONTH = ["winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "fall", "fall", "fall", "winter"];
 
