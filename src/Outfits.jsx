@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, ClockCounterClockwise, CoatHanger, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
+import { Check, ClockCounterClockwise, CoatHanger, DeviceMobile, Heart, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
 import { apiFetch, assetUrl } from "./api.js";
 import { askAiConsent, useAiSetup } from "./ai-setup.js";
 import { COLOR_RULES, COLOR_RULE_IDS, dayString, forgottenPieces, lastWorn, outfitHarmony, wearCount } from "../shared/style.mjs";
-import { sendJson, wearOutfit, wornOn } from "./wear.js";
+import { patchOutfit, sendJson, wearOutfit, wornOn } from "./wear.js";
+import { canMakeOutfit, makeOutfits, outfitTitle } from "../shared/make-outfit.mjs";
+import { notMeKeys } from "./Home.jsx";
 import "./outfits.css";
 import "./today.css";
 import { formatDay, t, tn } from "./i18n.js";
@@ -19,6 +21,7 @@ const PART_LABELS = {
   shoes: "Shoes",
   accessories_up: "Accessories",
 };
+const FAVORITES = "\u2665 favorites"; // cannot clash with an occasion tag
 const QUICK_PROMPTS = ["Weekend in the city", "Smart casual office", "Dinner out", "Cold and rainy"];
 
 function outfitPieces(outfit, itemsById) {
@@ -47,7 +50,7 @@ function Collage({ pieces }) {
   );
 }
 
-function StyleForm({ busy, ready, onStyle, onCompose, canCompose, forgottenCount }) {
+function StyleForm({ busy, ready, onStyle, onMake, canMake, onCompose, canCompose, forgottenCount }) {
   const [count, setCount] = useState(4);
   const [notes, setNotes] = useState("");
   const [rule, setRule] = useState("");
@@ -76,13 +79,18 @@ function StyleForm({ busy, ready, onStyle, onCompose, canCompose, forgottenCount
         {busy ? <SpinnerGap size={15} className="import-spinner" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
         {busy ? t("Styling") : t("Style new outfits")}
       </button>
+      {canMake && (
+        <button type="button" className="outfit-make" onClick={() => onMake({ count })} disabled={busy}>
+          <DeviceMobile size={15} aria-hidden="true" /> {t("Make on this phone, no AI")}
+        </button>
+      )}
       {forgottenCount > 0 && (
         <label className="style-forgotten">
           <input type="checkbox" checked={useForgotten} onChange={(event) => setUseForgotten(event.target.checked)} disabled={busy} />
           {t("Use pieces I haven't worn lately ({n})", { n: forgottenCount })}
         </label>
       )}
-      {!ready && <p className="outfit-style-form__hint" id="outfit-needs-key">{t("To style outfits, add an AI key in Settings (the gear at the top). You can still build your own.")}</p>}
+      {!ready && <p className="outfit-style-form__hint" id="outfit-needs-key">{canMake ? t("The phone can make outfits with no AI. For outfits styled by AI, add an AI key in Settings (the gear at the top).") : t("To style outfits, add an AI key in Settings (the gear at the top). You can still build your own.")}</p>}
       <div className="outfit-style-form__footer">
         <div className="outfit-prompts" aria-label={t("Ideas")}>
           {QUICK_PROMPTS.map((prompt) => t(prompt)).map((prompt) => (
@@ -213,7 +221,7 @@ function OutfitBuilder({ items, onClose, onCreated }) {
   );
 }
 
-export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWorn, openId, setOpenId, onSelectGarment }) {
+export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weather = null, onWorn, openId, setOpenId, onSelectGarment }) {
   const setup = useAiSetup();
   const [error, setError] = useState("");
   const [wearing, setWearing] = useState(false);
@@ -253,8 +261,8 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
 
   // Drop a filter whose last outfit was deleted or renamed away.
   useEffect(() => {
-    if (occasion !== "all" && !occasions.some(([tag]) => tag === occasion)) setOccasion("all");
-  }, [occasion, occasions]);
+    if (occasion === FAVORITES ? !(outfits || []).some((outfit) => outfit.favorite) : occasion !== "all" && !occasions.some(([tag]) => tag === occasion)) setOccasion("all");
+  }, [occasion, occasions, outfits]);
 
   const style = async ({ count, notes, rule, useForgotten }) => {
     if (!(await askAiConsent(setup))) return;
@@ -267,6 +275,31 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
       else if (created.length < count) setNotice(t("Found {n} new outfits in your wardrobe.", { n: created.length }));
     } catch (requestError) { setError(requestError.message); }
     finally { setStyling(false); }
+  };
+
+  // Outfits made here on the device: no AI, no cost, works offline.
+  const make = async ({ count }) => {
+    setStyling(true); setError(""); setNotice("");
+    try {
+      const made = makeOutfits({ items, outfits: outfits || [], rejected: notMeKeys(), count, weather });
+      const created = [];
+      for (const outfit of made) {
+        const value = await sendJson("/api/import/outfits", "POST", { name: outfitTitle(outfit.pieces), reason: outfit.why.map(([text, vars]) => t(text, vars)).join(" "), garmentIds: outfit.garmentIds, madeOnPhone: true }, "Could not save the outfit.");
+        created.push(value.outfit);
+      }
+      setOutfits((current) => [...created, ...(current || [])]);
+      if (!created.length) setNotice(t("No new combinations found. Add more pieces and try again."));
+      else if (created.length < count) setNotice(t("Found {n} new outfits in your wardrobe.", { n: created.length }));
+    } catch (requestError) { setError(requestError.message); }
+    finally { setStyling(false); }
+  };
+
+  const toggleFavorite = async (outfit) => {
+    setError("");
+    try {
+      const updated = await patchOutfit(outfit.id, { favorite: !outfit.favorite });
+      setOutfits((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+    } catch (requestError) { setError(requestError.message); }
   };
 
   const saveEdit = async (id) => {
@@ -301,18 +334,24 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
 
   if (!outfits) return loadError ? <p className="status error">{loadError}</p> : <p className="status">{t("Loading outfits")}</p>;
 
-  const shown = occasion === "all" ? outfits : outfits.filter((outfit) => (outfit.occasion || []).includes(occasion));
+  const favorites = outfits.filter((outfit) => outfit.favorite);
+  const shown = occasion === "all" ? outfits : occasion === FAVORITES ? favorites : outfits.filter((outfit) => (outfit.occasion || []).includes(occasion));
   const open = outfits.find((outfit) => outfit.id === openId);
   const openPieces = open ? outfitPieces(open, itemsById) : [];
 
   return (
     <>
-      <StyleForm busy={styling} ready={Boolean(setup?.ready)} onStyle={style} canCompose={items.length >= 2} onCompose={() => setBuilding(true)} forgottenCount={forgotten.length} />
-      {occasions.length > 0 && (
+      <StyleForm busy={styling} ready={Boolean(setup?.ready)} onStyle={style} onMake={make} canMake={canMakeOutfit(items)} canCompose={items.length >= 2} onCompose={() => setBuilding(true)} forgottenCount={forgotten.length} />
+      {(occasions.length > 0 || favorites.length > 0) && (
         <nav className="category-nav outfit-occasions" aria-label={t("Filter outfits by occasion")}>
           <button type="button" className={occasion === "all" ? "active" : ""} aria-pressed={occasion === "all"} onClick={() => setOccasion("all")}>
             {t("All")} <span className="chip-count">{outfits.length}</span>
           </button>
+          {favorites.length > 0 && (
+            <button type="button" className={occasion === FAVORITES ? "active" : ""} aria-pressed={occasion === FAVORITES} onClick={() => setOccasion(occasion === FAVORITES ? "all" : FAVORITES)}>
+              <Heart size={13} weight="fill" aria-hidden="true" /> {t("Favorites")} <span className="chip-count">{favorites.length}</span>
+            </button>
+          )}
           {occasions.map(([tag, count]) => (
             <button key={tag} type="button" className={occasion === tag ? "active" : ""} aria-pressed={occasion === tag} onClick={() => setOccasion(occasion === tag ? "all" : tag)}>
               {tag} <span className="chip-count">{count}</span>
@@ -328,6 +367,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
         {shown.map((outfit) => (
           <button className="outfit-card" type="button" key={outfit.id} onClick={() => setOpenId(outfit.id)}>
             {outfit.image ? <img src={assetUrl(outfit.image)} alt="" loading="lazy" /> : <Collage pieces={outfitPieces(outfit, itemsById)} />}
+            {outfit.favorite && <span className="outfit-card__heart" aria-label={t("Favorite")}><Heart size={14} weight="fill" aria-hidden="true" /></span>}
             <span className="outfit-card__name">{outfit.name || outfit.id}</span>
             {outfit.occasion?.length > 0 && <span className="outfit-card__occasion">{outfit.occasion.join(" · ")}</span>}
             <span className="outfit-card__harmony"><HarmonyBadge harmony={outfitHarmony(outfit, itemsById)} /></span>
@@ -372,6 +412,9 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
                   <div className="wear-actions">
                     <button type="button" className={wornOn(open) ? "secondary-button" : "primary-button"} onClick={() => toggleWorn(open)} disabled={wearing}>
                       {wornOn(open) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> {t("Undo, not worn today")}</> : <><Check size={15} weight="bold" aria-hidden="true" /> {t("Wore it today")}</>}
+                    </button>
+                    <button type="button" className={`secondary-button outfit-heart${open.favorite ? " is-on" : ""}`} aria-pressed={Boolean(open.favorite)} onClick={() => toggleFavorite(open)}>
+                      <Heart size={15} weight={open.favorite ? "fill" : "regular"} aria-hidden="true" /> {open.favorite ? t("In favorites") : t("Save to favorites")}
                     </button>
                   </div>
                 </>

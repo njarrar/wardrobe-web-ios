@@ -1,69 +1,8 @@
 import { useMemo, useState } from "react";
-import { ArrowsClockwise, Check, ClockCounterClockwise } from "@phosphor-icons/react";
 import { assetUrl } from "./api.js";
-import { dayString, forgottenPieces, idleLabel, outfitHarmony, todaysOutfit, COLOR_RULES } from "../shared/style.mjs";
-import { wearOutfit, wornOn } from "./wear.js";
+import { dayString, forgottenPieces, idleLabel } from "../shared/style.mjs";
 import "./today.css";
-import { locale, t, tn } from "./i18n.js";
-
-const PART_ORDER = ["wholebody_up", "upperbody", "lowerbody", "shoes", "accessories_up"];
-
-function longDate(day) {
-  const [year, month, date] = day.split("-").map(Number);
-  return new Date(year, month - 1, date).toLocaleDateString(locale(), { weekday: "short", day: "numeric", month: "short" });
-}
-
-// One saved outfit for today, with Wear this and Shuffle. Shuffle runs on the
-// device, so it costs nothing.
-export function TodayCard({ items, outfits, plan, weather, onWorn, onOpenOutfit }) {
-  const today = dayString();
-  const [shuffle, setShuffle] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
-  const pick = useMemo(() => todaysOutfit({ outfits, items, plan, today, shuffle, weather }), [outfits, items, plan, today, shuffle, weather]);
-  if (!pick) return null;
-  const { outfit } = pick;
-  const pieces = outfit.garmentIds.map((id) => itemsById.get(id)).filter(Boolean)
-    .sort((a, b) => PART_ORDER.indexOf(a.part) - PART_ORDER.indexOf(b.part));
-  const worn = wornOn(outfit, today);
-  const harmony = outfitHarmony(outfit, itemsById);
-
-  const toggleWorn = async () => {
-    setBusy(true); setError("");
-    try { onWorn(await wearOutfit(outfit, { day: today, undo: worn })); }
-    catch (requestError) { setError(requestError.message); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <section className="today-card glass-card" aria-label={t("Today's outfit")}>
-      <p className="today-card__eyebrow">
-        {t("Today")} · {longDate(today)}
-        {weather && Number.isFinite(weather.temperature) && <> · {Math.round(weather.temperature)}°C {t(weather.label || "")}</>}
-        {pick.planned && <> · {t("planned")}</>}
-      </p>
-      <button type="button" className="today-card__title" onClick={() => onOpenOutfit?.(outfit.id)}>
-        {outfit.name || t("Today's outfit")}
-        <span className="harmony-badge">{t(COLOR_RULES[harmony.rule]?.label || "")} · {harmony.score}</span>
-      </button>
-      <div className="today-card__pieces">
-        {pieces.map((piece) => (
-          <span className="today-card__piece" key={piece.id}><img src={assetUrl(piece.thumbnail || piece.image)} alt={piece.name || ""} /></span>
-        ))}
-      </div>
-      <div className="today-card__actions">
-        <button type="button" className={worn ? "secondary-button" : "primary-button"} onClick={toggleWorn} disabled={busy}>
-          {worn ? <><ClockCounterClockwise size={15} aria-hidden="true" /> {t("Undo, not worn")}</> : <><Check size={15} weight="bold" aria-hidden="true" /> {t("Wear this")}</>}
-        </button>
-        <button type="button" className="secondary-button" onClick={() => setShuffle((value) => value + 1)} disabled={busy || worn}>
-          <ArrowsClockwise size={15} aria-hidden="true" /> {t("Shuffle")}
-        </button>
-      </div>
-      {error && <p className="status error">{error}</p>}
-    </section>
-  );
-}
+import { locale, t } from "./i18n.js";
 
 // Pieces that have sat in the closet for 60 days or more.
 export function ForgottenRow({ items, onOpen }) {

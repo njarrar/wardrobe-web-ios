@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsDownUp, CalendarBlank, Check, ClockCounterClockwise, CoatHanger, GearSix, MagicWand, MagnifyingGlass, Plus, Sparkle, SpinnerGap, Trash, TShirt, X } from "@phosphor-icons/react";
+import { ArrowsDownUp, CalendarBlank, Camera, Check, ClockCounterClockwise, CoatHanger, GearSix, House, MagicWand, MagnifyingGlass, Plus, Sparkle, SpinnerGap, Trash, TShirt, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
@@ -8,7 +8,9 @@ import { SettingsSheet } from "./SettingsSheet.jsx";
 import { AiConsentPrompt } from "./AiConsentPrompt.jsx";
 import { AUTH_EVENT, apiFetch, ensureImageKey, isNativeApp, needsServerUrl } from "./api.js";
 import { CLOSET_CHANGED_EVENT } from "./local/mode.js";
-import { ForgottenRow, TodayCard } from "./Today.jsx";
+import { ForgottenRow } from "./Today.jsx";
+import { ADD_CLOTHES_EVENT, HomeView } from "./Home.jsx";
+import { canMakeOutfit } from "../shared/make-outfit.mjs";
 import { PlanView, usePlan } from "./Plan.jsx";
 import { StarterPicker } from "./StarterPicker.jsx";
 import { PictureTools } from "./PictureTools.jsx";
@@ -726,7 +728,8 @@ function Wardrobe({ onConnectionFailed }) {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [view, setView] = useState("closet");
+  // Home opens first once the closet can make an outfit; until then, Closet.
+  const [chosenView, setView] = useState(null);
   const [query, setQuery] = useState("");
   const [colorFilter, setColorFilter] = useState(null);
   const [sort, setSort] = useState(() => {
@@ -812,6 +815,8 @@ function Wardrobe({ onConnectionFailed }) {
     catch (requestError) { setError(requestError.message); }
   };
 
+  const view = chosenView || (!loading && canMakeOutfit(items) ? "home" : "closet");
+  const showingHome = view === "home";
   const openOutfit = (id) => { setOpenOutfitId(id); setView("outfits"); setSelectedId(null); };
   const browsingAll = activeType === "all" && !query && !colorFilter && !group;
   const showingPlan = view === "plan";
@@ -921,7 +926,7 @@ function Wardrobe({ onConnectionFailed }) {
             </div>
 
             <div className="view-switch" role="tablist" aria-label={t("Choose a view")}>
-              {[{ id: "closet", label: "Closet", Icon: CoatHanger }, { id: "outfits", label: "Outfits", Icon: Sparkle }, { id: "plan", label: "Plan", Icon: CalendarBlank }].map(({ id, label, Icon }) => (
+              {[{ id: "home", label: "Home", Icon: House }, { id: "closet", label: "Closet", Icon: CoatHanger }, { id: "outfits", label: "Outfits", Icon: Sparkle }, { id: "plan", label: "Plan", Icon: CalendarBlank }].map(({ id, label, Icon }) => (
                 <button
                   key={id}
                   type="button"
@@ -936,12 +941,15 @@ function Wardrobe({ onConnectionFailed }) {
               ))}
             </div>
 
+            <button className="icon-button topbar__add" type="button" onClick={() => window.dispatchEvent(new Event(ADD_CLOTHES_EVENT))} aria-label={t("Add clothes from a photo")}>
+              <Camera size={20} aria-hidden="true" />
+            </button>
             <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label={t("Settings and connection")}>
               <GearSix size={20} aria-hidden="true" />
             </button>
           </div>
 
-          {!showingOutfits && !showingPlan && (
+          {!showingHome && !showingOutfits && !showingPlan && (
             <>
               <div className="toolbar">
                 <label className="search">
@@ -1026,12 +1034,17 @@ function Wardrobe({ onConnectionFailed }) {
         </header>
 
         {error && <p className="status error">{error}</p>}
+        {showingHome && (
+          <HomeView items={items} outfits={outfits} setOutfits={setOutfits} plan={plan} weather={weather} onWorn={onWorn} onOpenPiece={setSelectedId} onGoToPlan={() => setView("plan")} />
+        )}
+
         {showingOutfits && (
           <OutfitGallery
             items={items}
             outfits={outfits}
             setOutfits={setOutfits}
             loadError={outfitsError}
+            weather={weather.today}
             onWorn={onWorn}
             openId={openOutfitId}
             setOpenId={setOpenOutfitId}
@@ -1043,20 +1056,19 @@ function Wardrobe({ onConnectionFailed }) {
           <PlanView items={items} outfits={outfits} plan={plan} savePlan={savePlan} forecast={weather.forecast} planError={planError || outfitsError} onGoToOutfits={() => setView("outfits")} />
         )}
 
-        {!showingOutfits && !showingPlan && !loading && !error && browsingAll && !!items.length && (
+        {!showingHome && !showingOutfits && !showingPlan && !loading && !error && browsingAll && !!items.length && (
           <div className="closet-highlights">
-            {!!outfits?.length && <TodayCard items={items} outfits={outfits} plan={plan} weather={weather.today} onWorn={onWorn} onOpenOutfit={openOutfit} />}
             <ForgottenRow items={items} onOpen={setSelectedId} />
           </div>
         )}
 
-        {!showingOutfits && !showingPlan && !error && loading && (
+        {!showingHome && !showingOutfits && !showingPlan && !error && loading && (
           <section className="gallery-grid" aria-hidden="true">
             {Array.from({ length: 10 }, (_, index) => <span className="gallery-skeleton" key={index} />)}
           </section>
         )}
 
-        {!showingOutfits && !showingPlan && !error && !loading && !items.length && (
+        {!showingHome && !showingOutfits && !showingPlan && !error && !loading && !items.length && (
           <div className="empty-state">
             <span className="empty-state__icon" aria-hidden="true"><CoatHanger size={34} weight="light" /></span>
             <h2>{t("Your closet is empty")}</h2>
@@ -1066,7 +1078,7 @@ function Wardrobe({ onConnectionFailed }) {
           </div>
         )}
 
-        {!showingOutfits && !showingPlan && !!items.length && !visibleItems.length && (
+        {!showingHome && !showingOutfits && !showingPlan && !!items.length && !visibleItems.length && (
           <div className="empty-state compact">
             <h2>{query || colorFilter || group ? t("No matches") : t("No {type} yet", { type: activeType === "all" ? t("pieces") : t(TYPE_MAP[activeType]?.label || t("All")).toLowerCase() })}</h2>
             <p>{query || colorFilter || group ? t("Nothing in {where} matches these filters.", { where: activeType === "all" ? t("your closet") : t(TYPE_MAP[activeType]?.label || t("All")).toLowerCase() }) : t("Add a photo and it will show up here.")}</p>
@@ -1074,7 +1086,7 @@ function Wardrobe({ onConnectionFailed }) {
           </div>
         )}
 
-        {!showingOutfits && !showingPlan && !!visibleItems.length && (
+        {!showingHome && !showingOutfits && !showingPlan && !!visibleItems.length && (
           <section className="gallery-grid" aria-label={t(TYPE_MAP[activeType]?.label || t("All"))}>
             {visibleItems.map((item, index) => (
               <GalleryItem
