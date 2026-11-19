@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.3 (busy AI, no zoom)
+
+- **A busy AI is tried again.** When Claude, ChatGPT or Gemini says it is overloaded, the app waits and tries twice more. If it is still busy, the message says so in plain words and tells you to try again or pick another AI.
+- **The phone app no longer zooms.** Tapping a text field made iOS zoom the screen, which cut off the top and the sides and stayed that way. Fields now use 16px text and the app screen is fixed at its own size.
+- Sheets keep a little more room from the screen edges.
+- **Reading your photo.** After you pick photos, the sheet now says the AI is reading them ("Reading photo 1 of 2") until the pieces show up. Before, it showed nothing for up to a minute, which looked as if nothing had happened.
+- **Import queue.** Picked photos are saved on the device first, then read one by one. Close the app and the rest carry on when you open it again. The screen stays on while photos are read.
+- **Try again.** A photo the AI could not read stays in the queue with its reason. "Try again" reads all failed photos; "Remove them" drops them. One busy photo no longer stops the others.
+- **Add all.** When two or more pieces are ready, "Add all to my closet" saves them with the details the AI suggested.
+
 ## 3.0.2 (review fixes)
 
 - **Arabic:** the AI help text, occasion chips, group names, import hints and the AI consent screen are now translated. A test fails when a screen shows text that is not set up for translation.

@@ -15,6 +15,12 @@ import packageInfo from "../package.json";
 
 applyLanguage();
 
+// In the phone app the screen must not zoom: a zoomed web view cuts the
+// top and sides off and stays that way. Browsers keep their zoom.
+if (isNativeApp()) {
+  document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover");
+}
+
 function render() {
   createRoot(document.getElementById("root")).render(
     <React.StrictMode>

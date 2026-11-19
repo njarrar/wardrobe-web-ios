@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -56,6 +57,19 @@ async function waitForServer(base, child) {
 }
 
 async function snap(page, name) {
+  // Nothing may be wider than the screen: that shifts the whole app sideways.
+  const wide = await page.evaluate(() => {
+    const limit = window.innerWidth + 1;
+    const found = [];
+    if (document.documentElement.scrollWidth > limit) found.push(`page ${document.documentElement.scrollWidth}`);
+    for (const node of document.querySelectorAll("body *")) {
+      const box = node.getBoundingClientRect();
+      if (box.width && (box.right > limit || box.left < -1) && getComputedStyle(node).position !== "fixed" && !node.closest("[aria-hidden='true'], .visually-hidden, .category-nav, .group-filter, .today-card__pieces, .forgotten__list")) found.push(`${node.tagName}.${node.className} ${Math.round(box.left)}..${Math.round(box.right)}`);
+      if (found.length > 6) break;
+    }
+    return found;
+  });
+  assert.deepEqual(wide, [], `${name}: wider than the screen`);
   if (shots) await page.screenshot({ path: path.join(shots, `${name}.png`) });
 }
 
@@ -245,6 +259,74 @@ describe("phone screens", () => {
     }
   });
 
+  test("says it is reading while the AI works on a photo", async () => {
+    // A slow AI that finds no clothes: the wait must show, then the result.
+    const ai = http.createServer((request, response) => {
+      request.resume();
+      request.on("end", () => setTimeout(() => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ items: [] }) }] } }] }));
+      }, 1500));
+    }).listen(0, "127.0.0.1");
+    await new Promise((resolve) => ai.once("listening", resolve));
+    const withKey = await startServer(dataDir, { GEMINI_API_KEY: "AIza-test-key-9876", WARDROBE_AI_PROVIDER: "gemini", GEMINI_BASE_URL: `http://127.0.0.1:${ai.address().port}` });
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    try {
+      await page.goto(withKey.base);
+      const photo = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#5f7a45" } }).png().toBuffer();
+      await page.locator('input[type="file"]:not([capture])').setInputFiles({ name: "tee.png", mimeType: "image/png", buffer: photo });
+      await page.getByRole("alertdialog").getByRole("button", { name: "Allow" }).click();
+      await page.getByRole("status").filter({ hasText: "Reading your photo…" }).waitFor();
+      await snap(page, "light-7-reading-photo");
+      await page.getByText("No clothing detected").first().waitFor();
+      assert.equal(await page.getByRole("status").filter({ hasText: "Reading your photo…" }).count(), 0);
+    } finally {
+      await context.close();
+      withKey.child.kill();
+      ai.close();
+    }
+  });
+
+  test("a photo the AI could not read waits for Try again, even after a restart", async () => {
+    // Busy for the first photo (three tries), then fine.
+    let calls = 0;
+    const ai = http.createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        calls += 1;
+        const busy = calls <= 3;
+        response.writeHead(busy ? 503 : 200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify(busy ? { error: { message: "high demand" } } : { candidates: [{ content: { parts: [{ text: JSON.stringify({ items: [] }) }] } }] }));
+      });
+    }).listen(0, "127.0.0.1");
+    await new Promise((resolve) => ai.once("listening", resolve));
+    const withKey = await startServer(dataDir, { GEMINI_API_KEY: "AIza-test-key-9876", WARDROBE_AI_PROVIDER: "gemini", WARDROBE_AI_RETRY_MS: "1", GEMINI_BASE_URL: `http://127.0.0.1:${ai.address().port}` });
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    try {
+      await page.goto(withKey.base);
+      const photo = await sharp({ create: { width: 64, height: 64, channels: 3, background: "#34528f" } }).png().toBuffer();
+      await page.locator('input[type="file"]:not([capture])').setInputFiles([{ name: "one.png", mimeType: "image/png", buffer: photo }, { name: "two.png", mimeType: "image/png", buffer: photo }]);
+      await page.getByRole("alertdialog").getByRole("button", { name: "Allow" }).click();
+      await page.getByText("1 photo was not read").waitFor();
+      await page.getByText("Gemini is busy right now").waitFor();
+      await snap(page, "light-8-photo-not-read");
+      assert.equal(calls, 4);
+      // The failed photo is still there after the app is opened again.
+      await page.reload();
+      await page.getByRole("button", { name: "Open import progress" }).click();
+      await page.getByText("1 photo was not read").waitFor();
+      await page.getByRole("button", { name: "Try again" }).click();
+      await page.getByText("1 photo was not read").waitFor({ state: "detached" });
+      assert.equal(calls, 5);
+    } finally {
+      await context.close();
+      withKey.child.kill();
+      ai.close();
+    }
+  });
+
   test("images load with a token, and the link never holds it", async () => {
     const guarded = await startServer(dataDir, { WARDROBE_TOKEN: "s3cret-token" });
     const context = await browser.newContext({ ...devices["iPhone 13"] });
@@ -275,6 +357,10 @@ describe("phone screens", () => {
     await page.goto(base);
     await page.getByLabel("Server address").waitFor();
     await snap(page, "light-5-connect");
+    // The app must not zoom: no pinch, and no zoom when a field gets focus.
+    assert.match(await page.locator('meta[name="viewport"]').getAttribute("content"), /user-scalable=no/);
+    const small = await page.evaluate(() => [...document.querySelectorAll("input, select, textarea")].filter((field) => parseFloat(getComputedStyle(field).fontSize) < 16).length);
+    assert.equal(small, 0);
     await context.close();
   });
 });
