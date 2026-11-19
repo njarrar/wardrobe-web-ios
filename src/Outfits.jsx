@@ -6,6 +6,7 @@ import { COLOR_RULES, COLOR_RULE_IDS, dayString, forgottenPieces, lastWorn, outf
 import { sendJson, wearOutfit, wornOn } from "./wear.js";
 import "./outfits.css";
 import "./today.css";
+import { formatDay, t, tn } from "./i18n.js";
 
 // The Outfits tab: outfits the AI styles, outfits built by hand, an occasion
 // filter, and a viewer where an outfit can be edited or deleted.
@@ -33,7 +34,7 @@ function splitOccasions(text) {
 }
 
 function HarmonyBadge({ harmony }) {
-  return <span className="harmony-badge" title={COLOR_RULES[harmony.rule]?.hint}>{COLOR_RULES[harmony.rule]?.label} · {harmony.score}</span>;
+  return <span className="harmony-badge" title={t(COLOR_RULES[harmony.rule]?.hint || "")}>{t(COLOR_RULES[harmony.rule]?.label || "")} · {harmony.score}</span>;
 }
 
 // New outfits have no photo; show the garment cutouts together instead.
@@ -54,26 +55,26 @@ function StyleForm({ busy, ready, onStyle, onCompose, canCompose, forgottenCount
   return (
     <form className="outfit-style-form" onSubmit={(event) => { event.preventDefault(); onStyle({ count, notes, rule, useForgotten }); }}>
       <fieldset className="style-rules" disabled={busy}>
-        <legend>Color rule</legend>
+        <legend>{t("Color rule")}</legend>
         {[["", "Auto"], ...COLOR_RULE_IDS.map((id) => [id, COLOR_RULES[id].label])].map(([id, label]) => (
-          <button key={id || "auto"} type="button" className={rule === id ? "active" : ""} aria-pressed={rule === id} title={id ? COLOR_RULES[id].hint : "Pick the best rule for each outfit"} onClick={() => setRule(id)}>
-            {label}
+          <button key={id || "auto"} type="button" className={rule === id ? "active" : ""} aria-pressed={rule === id} title={t(id ? COLOR_RULES[id].hint : t("Pick the best rule for each outfit"))} onClick={() => setRule(id)}>
+            {t(label)}
           </button>
         ))}
       </fieldset>
       <label>
-        <span>Outfits</span>
+        <span>{t("Outfits")}</span>
         <select id="outfit-count" value={count} onChange={(event) => setCount(Number(event.target.value))} disabled={busy}>
           {[1, 2, 3, 4, 6, 8, 10, 12].map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
       </label>
       <label className="outfit-style-form__notes">
-        <span>Anything in mind? <em>optional</em></span>
-        <input id="outfit-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Weekend in the city, cool weather" maxLength={500} disabled={busy} />
+        <span>{t("Anything in mind?")} <em>{t("optional")}</em></span>
+        <input id="outfit-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={t("Weekend in the city, cool weather")} maxLength={500} disabled={busy} />
       </label>
       <button type="submit" disabled={busy || !ready} aria-describedby={ready ? undefined : "outfit-needs-key"}>
         {busy ? <SpinnerGap size={15} className="import-spinner" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
-        {busy ? "Styling" : "Style new outfits"}
+        {busy ? t("Styling") : t("Style new outfits")}
       </button>
       {forgottenCount > 0 && (
         <label className="style-forgotten">
@@ -81,9 +82,9 @@ function StyleForm({ busy, ready, onStyle, onCompose, canCompose, forgottenCount
           Use pieces I haven't worn lately ({forgottenCount})
         </label>
       )}
-      {!ready && <p className="outfit-style-form__hint" id="outfit-needs-key">To style outfits, add an AI key in Settings (the gear at the top). You can still build your own.</p>}
+      {!ready && <p className="outfit-style-form__hint" id="outfit-needs-key">{t("To style outfits, add an AI key in Settings (the gear at the top). You can still build your own.")}</p>}
       <div className="outfit-style-form__footer">
-        <div className="outfit-prompts" aria-label="Ideas">
+        <div className="outfit-prompts" aria-label={t("Ideas")}>
           {QUICK_PROMPTS.map((prompt) => (
             <button
               key={prompt}
@@ -99,7 +100,7 @@ function StyleForm({ busy, ready, onStyle, onCompose, canCompose, forgottenCount
         </div>
         {canCompose && (
           <button type="button" className="outfit-compose" onClick={onCompose}>
-            <CoatHanger size={15} aria-hidden="true" /> Build your own
+            <CoatHanger size={15} aria-hidden="true" /> {t("Build your own")}
           </button>
         )}
       </div>
@@ -126,16 +127,16 @@ function OutfitFields({ draft, setDraft }) {
   return (
     <div className="outfit-fields">
       <label className="field">
-        <span>Name</span>
-        <input id="outfit-name" value={draft.name} onChange={change("name")} placeholder="Easy Saturday" maxLength={80} />
+        <span>{t("Name")}</span>
+        <input id="outfit-name" value={draft.name} onChange={change("name")} placeholder={t("Easy Saturday")} maxLength={80} />
       </label>
       <label className="field">
-        <span>Occasions, separated by commas</span>
-        <input id="outfit-occasion" value={draft.occasion} onChange={change("occasion")} placeholder="weekend, coffee" />
+        <span>{t("Occasions, separated by commas")}</span>
+        <input id="outfit-occasion" value={draft.occasion} onChange={change("occasion")} placeholder={t("weekend, coffee")} />
       </label>
       <label className="field">
-        <span>Note</span>
-        <input id="outfit-reason" value={draft.reason} onChange={change("reason")} placeholder="Why these go together" maxLength={400} />
+        <span>{t("Note")}</span>
+        <input id="outfit-reason" value={draft.reason} onChange={change("reason")} placeholder={t("Why these go together")} maxLength={400} />
       </label>
     </div>
   );
@@ -170,17 +171,17 @@ function OutfitBuilder({ items, onClose, onCreated }) {
 
   return (
     <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <aside className="outfit-viewer outfit-builder" role="dialog" aria-modal="true" aria-label="Build an outfit">
-        <button className="viewer-icon-close" type="button" onClick={onClose} aria-label="Close">
+      <aside className="outfit-viewer outfit-builder" role="dialog" aria-modal="true" aria-label={t("Build an outfit")}>
+        <button className="viewer-icon-close" type="button" onClick={onClose} aria-label={t("Close")}>
           <X size={24} weight="light" aria-hidden="true" />
         </button>
         <div className="outfit-viewer__photo">
           {selected.length
             ? <Collage pieces={selected} />
-            : <p className="outfit-builder__empty"><CoatHanger size={32} weight="light" aria-hidden="true" />Pick at least two pieces</p>}
+            : <p className="outfit-builder__empty"><CoatHanger size={32} weight="light" aria-hidden="true" />{t("Pick at least two pieces")}</p>}
         </div>
         <form className="outfit-viewer__details" onSubmit={submit}>
-          <h2>Build an outfit</h2>
+          <h2>{t("Build an outfit")}</h2>
           <OutfitFields draft={draft} setDraft={setDraft} />
           {groups.map((group) => (
             <fieldset className="outfit-builder__group" key={group.part}>
@@ -201,9 +202,9 @@ function OutfitBuilder({ items, onClose, onCreated }) {
           ))}
           {error && <p className="status error">{error}</p>}
           <div className="viewer-actions">
-            <button type="button" className="secondary-button" onClick={onClose}>Cancel</button>
+            <button type="button" className="secondary-button" onClick={onClose}>{t("Cancel")}</button>
             <button type="submit" className="primary-button" disabled={saving || selectedIds.length < 2}>
-              <Plus size={15} weight="bold" aria-hidden="true" /> {saving ? "Saving" : "Save outfit"}
+              <Plus size={15} weight="bold" aria-hidden="true" /> {saving ? t("Saving") : t("Save outfit")}
             </button>
           </div>
         </form>
@@ -262,8 +263,8 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
       const value = await sendJson("/api/import/outfits/generate", "POST", { count, notes, rule, preferIds: useForgotten ? forgotten.map((item) => item.id) : [] }, "Could not style outfits.");
       const created = value.outfits || [];
       setOutfits((current) => [...(current || []), ...created]);
-      if (!created.length) setNotice("No new combinations found. Add more pieces and try again.");
-      else if (created.length < count) setNotice(`Found ${created.length} new ${created.length === 1 ? "outfit" : "outfits"} in your wardrobe.`);
+      if (!created.length) setNotice(t("No new combinations found. Add more pieces and try again."));
+      else if (created.length < count) setNotice(t("Found {n} new outfits in your wardrobe.", { n: created.length }));
     } catch (requestError) { setError(requestError.message); }
     finally { setStyling(false); }
   };
@@ -285,7 +286,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
     setError("");
     try {
       const response = await apiFetch(`/api/import/outfits/${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 404) throw new Error("Could not delete the outfit.");
+      if (!response.ok && response.status !== 404) throw new Error(t("Could not delete the outfit."));
       setOutfits((current) => current.filter((outfit) => outfit.id !== id));
       closeViewer();
     } catch (requestError) { setError(requestError.message); }
@@ -298,7 +299,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
     finally { setWearing(false); }
   };
 
-  if (!outfits) return loadError ? <p className="status error">{loadError}</p> : <p className="status">Loading outfits</p>;
+  if (!outfits) return loadError ? <p className="status error">{loadError}</p> : <p className="status">{t("Loading outfits")}</p>;
 
   const shown = occasion === "all" ? outfits : outfits.filter((outfit) => (outfit.occasion || []).includes(occasion));
   const open = outfits.find((outfit) => outfit.id === openId);
@@ -308,9 +309,9 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
     <>
       <StyleForm busy={styling} ready={Boolean(setup?.ready)} onStyle={style} canCompose={items.length >= 2} onCompose={() => setBuilding(true)} forgottenCount={forgotten.length} />
       {occasions.length > 0 && (
-        <nav className="category-nav outfit-occasions" aria-label="Filter outfits by occasion">
+        <nav className="category-nav outfit-occasions" aria-label={t("Filter outfits by occasion")}>
           <button type="button" className={occasion === "all" ? "active" : ""} aria-pressed={occasion === "all"} onClick={() => setOccasion("all")}>
-            All <span className="chip-count">{outfits.length}</span>
+            {t("All")} <span className="chip-count">{outfits.length}</span>
           </button>
           {occasions.map(([tag, count]) => (
             <button key={tag} type="button" className={occasion === tag ? "active" : ""} aria-pressed={occasion === tag} onClick={() => setOccasion(occasion === tag ? "all" : tag)}>
@@ -321,9 +322,9 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
       )}
       {error && <p className="status error">{error}</p>}
       {notice && <p className="status">{notice}</p>}
-      {!outfits.length && !styling && <p className="status empty">{setup?.ready ? "No outfits yet. Press Style new outfits, or build your own." : "No outfits yet. Build your own to start."}</p>}
+      {!outfits.length && !styling && <p className="status empty">{setup?.ready ? t("No outfits yet. Press Style new outfits, or build your own.") : t("No outfits yet. Build your own to start.")}</p>}
 
-      <section className="outfit-grid" aria-label="Outfits">
+      <section className="outfit-grid" aria-label={t("Outfits")}>
         {shown.map((outfit) => (
           <button className="outfit-card" type="button" key={outfit.id} onClick={() => setOpenId(outfit.id)}>
             {outfit.image ? <img src={assetUrl(outfit.image)} alt="" loading="lazy" /> : <Collage pieces={outfitPieces(outfit, itemsById)} />}
@@ -344,33 +345,33 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
 
       {open && (
         <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeViewer()}>
-          <aside className="outfit-viewer" role="dialog" aria-modal="true" aria-label={open.name || "Outfit"}>
-            <button className="viewer-icon-close" type="button" onClick={closeViewer} aria-label="Close outfit">
+          <aside className="outfit-viewer" role="dialog" aria-modal="true" aria-label={open.name || t("Outfit")}>
+            <button className="viewer-icon-close" type="button" onClick={closeViewer} aria-label={t("Close outfit")}>
               <X size={24} weight="light" aria-hidden="true" />
             </button>
             {open.image
-              ? <img className="outfit-viewer__photo" src={assetUrl(open.image)} alt={`${open.name || "Outfit"} worn by a model`} />
+              ? <img className="outfit-viewer__photo" src={assetUrl(open.image)} alt={open.name || t("Outfit")} />
               : <div className="outfit-viewer__photo"><Collage pieces={openPieces} /></div>}
             <div className="outfit-viewer__details">
               {editing ? (
                 <form onSubmit={(event) => { event.preventDefault(); saveEdit(open.id); }}>
-                  <h2>Edit outfit</h2>
+                  <h2>{t("Edit outfit")}</h2>
                   <OutfitFields draft={editing} setDraft={setEditing} />
                   <div className="viewer-actions">
-                    <button type="button" className="secondary-button" onClick={() => setEditing(null)}>Cancel</button>
-                    <button type="submit" className="primary-button"><Check size={14} weight="bold" aria-hidden="true" /> Save</button>
+                    <button type="button" className="secondary-button" onClick={() => setEditing(null)}>{t("Cancel")}</button>
+                    <button type="submit" className="primary-button"><Check size={14} weight="bold" aria-hidden="true" /> {t("Save")}</button>
                   </div>
                 </form>
               ) : (
                 <>
                   <h2>{open.name || open.id}</h2>
                   {open.occasion?.length > 0 && <p className="outfit-viewer__occasion">{open.occasion.join(" · ")}</p>}
-                  <p className="outfit-viewer__harmony"><HarmonyBadge harmony={outfitHarmony(open, itemsById)} /> {COLOR_RULES[outfitHarmony(open, itemsById).rule]?.hint}</p>
+                  <p className="outfit-viewer__harmony"><HarmonyBadge harmony={outfitHarmony(open, itemsById)} /> {t(COLOR_RULES[outfitHarmony(open, itemsById).rule]?.hint || "")}</p>
                   {open.reason && <p>{open.reason}</p>}
-                  {wearCount(open) > 0 && <p className="outfit-viewer__worn">Worn {wearCount(open)} {wearCount(open) === 1 ? "time" : "times"} · last {new Date(`${lastWorn(open)}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>}
+                  {wearCount(open) > 0 && <p className="outfit-viewer__worn">{t("Worn {n} times · last {date}", { n: wearCount(open), date: formatDay(lastWorn(open), { day: "numeric", month: "short" }) })}</p>}
                   <div className="wear-actions">
                     <button type="button" className={wornOn(open) ? "secondary-button" : "primary-button"} onClick={() => toggleWorn(open)} disabled={wearing}>
-                      {wornOn(open) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> Undo, not worn today</> : <><Check size={15} weight="bold" aria-hidden="true" /> Wore it today</>}
+                      {wornOn(open) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> {t("Undo, not worn today")}</> : <><Check size={15} weight="bold" aria-hidden="true" /> {t("Wore it today")}</>}
                     </button>
                   </div>
                 </>
@@ -383,10 +384,10 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWo
                     type="button"
                     onClick={() => setEditing({ name: open.name || "", occasion: (open.occasion || []).join(", "), reason: open.reason || "" })}
                   >
-                    <PencilSimple size={14} aria-hidden="true" /> Edit
+                    <PencilSimple size={14} aria-hidden="true" /> {t("Edit")}
                   </button>
                   <button className="outfit-delete" type="button" onClick={() => remove(open.id)}>
-                    <Trash size={14} aria-hidden="true" /> Delete outfit
+                    <Trash size={14} aria-hidden="true" /> {t("Delete outfit")}
                   </button>
                 </div>
               )}

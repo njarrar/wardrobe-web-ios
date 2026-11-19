@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck } from "@phosphor-icons/react";
 import { AI_COMPANIES, AI_CONSENT_ASK_EVENT, saveAiConsent } from "./ai-setup.js";
+import { t, tn } from "./i18n.js";
 
 // Asks once, before any photo goes to the AI picked in Settings.
 export function AiConsentPrompt() {
@@ -27,11 +28,11 @@ export function AiConsentPrompt() {
         <h2 id="consent-title">Send your photos to {ask.name}?</h2>
         <div id="consent-body" className="consent-sheet__body">
           <p>To find each piece and style outfits, your server sends {company} the clothing photos you add and the names, colors and tags of your pieces.</p>
-          <p>{company} handles them under its own rules{privacy ? <> (<a href={privacy} target="_blank" rel="noreferrer">privacy policy</a>)</> : null}. Nothing goes to {company} until you agree. You can switch AI in Settings at any time.</p>
+          <p>{company} handles them under its own rules{privacy ? <> (<a href={privacy} target="_blank" rel="noreferrer">{t("privacy policy")}</a>)</> : null}. Nothing goes to {company} until you agree. You can switch AI in Settings at any time.</p>
         </div>
         <div className="consent-sheet__actions">
-          <button className="secondary-button" type="button" onClick={() => answer(false)}>Not now</button>
-          <button className="primary-button" type="button" onClick={() => answer(true)} autoFocus>Allow</button>
+          <button className="secondary-button" type="button" onClick={() => answer(false)}>{t("Not now")}</button>
+          <button className="primary-button" type="button" onClick={() => answer(true)} autoFocus>{t("Allow")}</button>
         </div>
       </section>
     </div>

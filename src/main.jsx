@@ -4,6 +4,10 @@ import { App } from "./App.jsx";
 import { isNativeApp } from "./api.js";
 import "./styles.css";
 import "./glass.css";
+import "./extras.css";
+import { applyLanguage } from "./i18n.js";
+
+applyLanguage();
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

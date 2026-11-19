@@ -6,16 +6,19 @@ import {
   COLOR_RULES, DEFAULT_PLAN_SETTINGS, addDays, dayString, outfitHarmony, packingList, parseDay, planDays, planRepeats,
 } from "../shared/style.mjs";
 import "./plan.css";
+import { formatDay, isRtl, locale, t, tn } from "./i18n.js";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
-const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+// 2026-11-15 is a Sunday, so day 0 to 6 map to Sunday to Saturday.
+function weekdayName(day, style = "long") { return formatDay(`2026-11-${15 + day}`, { weekday: style }); }
+function weekdayShort(day) { return weekdayName(day, "short"); }
 const PART_ORDER = ["wholebody_up", "upperbody", "lowerbody", "shoes", "accessories_up"];
 
 function monthStart(day) { return `${day.slice(0, 7)}-01`; }
 function monthLength(day) { const date = parseDay(monthStart(day)); return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate(); }
 function shiftMonth(day, by) { const date = parseDay(monthStart(day)); date.setMonth(date.getMonth() + by); return dayString(date); }
-function monthLabel(day) { return parseDay(day).toLocaleDateString("en-GB", { month: "long", year: "numeric" }); }
-function dayLabel(day) { return parseDay(day).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }); }
+function monthLabel(day) { return formatDay(day, { month: "long", year: "numeric" }); }
+function dayLabel(day) { return formatDay(day, { weekday: "short", day: "numeric", month: "short" }); }
 function weekStart(day) { return addDays(day, -parseDay(day).getDay()); }
 
 function usePlan() {
@@ -23,13 +26,13 @@ function usePlan() {
   const [error, setError] = useState("");
   useEffect(() => {
     apiFetch("/api/import/plan", { cache: "no-store" })
-      .then((response) => { if (!response.ok) throw new Error("Could not load your plan."); return response.json(); })
+      .then((response) => { if (!response.ok) throw new Error(t("Could not load your plan.")); return response.json(); })
       .then(setPlan)
       .catch((requestError) => { setError(requestError.message); setPlan({ days: {}, settings: DEFAULT_PLAN_SETTINGS, trips: [] }); });
   }, []);
   const save = useCallback(async (next) => {
     setPlan(next);
-    try { setPlan(await sendJson("/api/import/plan", "PUT", next, "Could not save your plan.")); setError(""); }
+    try { setPlan(await sendJson("/api/import/plan", "PUT", next, t("Could not save your plan."))); setError(""); }
     catch (requestError) { setError(requestError.message); }
   }, []);
   return { plan, save, error };
@@ -58,19 +61,19 @@ function DaySheet({ day, plan, outfits, itemsById, onPick, onClear, onClose }) {
         <span className="sheet-grabber" aria-hidden="true" />
         <header className="settings-sheet__header">
           <div>
-            <p className="eyebrow">{WEEKDAY_NAMES[parseDay(day).getDay()]}</p>
+            <p className="eyebrow">{weekdayName(parseDay(day).getDay())}</p>
             <h2>{dayLabel(day)}</h2>
           </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close day"><X size={20} aria-hidden="true" /></button>
+          <button className="icon-button" type="button" onClick={onClose} aria-label={t("Close day")}><X size={20} aria-hidden="true" /></button>
         </header>
         {current ? (
           <div className="plan-sheet__current">
             <Pieces outfit={current} itemsById={itemsById} size="large" />
             <strong>{current.name}</strong>
-            <button type="button" className="secondary-button" onClick={onClear}><Trash size={14} aria-hidden="true" /> Clear this day</button>
+            <button type="button" className="secondary-button" onClick={onClear}><Trash size={14} aria-hidden="true" /> {t("Clear this day")}</button>
           </div>
-        ) : <p className="status">Nothing planned yet. Pick an outfit below.</p>}
-        <h3 className="plan-sheet__title">Pick an outfit</h3>
+        ) : <p className="status">{t("Nothing planned yet. Pick an outfit below.")}</p>}
+        <h3 className="plan-sheet__title">{t("Pick an outfit")}</h3>
         <div className="plan-sheet__list">
           {outfits.map((outfit) => {
             const harmony = outfitHarmony(outfit, itemsById);
@@ -79,7 +82,7 @@ function DaySheet({ day, plan, outfits, itemsById, onPick, onClear, onClose }) {
                 <Pieces outfit={outfit} itemsById={itemsById} />
                 <span className="plan-sheet__name">{outfit.name}</span>
                 <span className="plan-sheet__meta">
-                  {COLOR_RULES[harmony.rule]?.label}
+                  {t(COLOR_RULES[harmony.rule]?.label || "")}
                   {recent.has(outfit.id) && <em> · worn nearby</em>}
                 </span>
               </button>
@@ -108,11 +111,11 @@ function TripCard({ trip, plan, outfits, items, onPlan, onRemove }) {
       <header>
         <div>
           <h3><AirplaneTilt size={16} aria-hidden="true" /> {trip.name}</h3>
-          <p>{dayLabel(trip.from)} to {dayLabel(trip.to)} · {length} {length === 1 ? "day" : "days"} · {planned} planned</p>
+          <p>{t("{from} to {to} · {n} days · {p} planned", { from: dayLabel(trip.from), to: dayLabel(trip.to), n: length, p: planned })}</p>
         </div>
-        <button type="button" className="icon-button" onClick={onRemove} aria-label={`Remove ${trip.name}`}><Trash size={16} aria-hidden="true" /></button>
+        <button type="button" className="icon-button" onClick={onRemove} aria-label={t("Remove {name}", { name: trip.name })}><Trash size={16} aria-hidden="true" /></button>
       </header>
-      {planned < length && <button type="button" className="secondary-button" onClick={onPlan}><CalendarBlank size={15} aria-hidden="true" /> Plan the trip days</button>}
+      {planned < length && <button type="button" className="secondary-button" onClick={onPlan}><CalendarBlank size={15} aria-hidden="true" /> {t("Plan the trip days")}</button>}
       {list.length > 0 && (
         <ul className="packing-list">
           {list.map(({ item, count }) => (
@@ -121,7 +124,7 @@ function TripCard({ trip, plan, outfits, items, onPlan, onRemove }) {
                 <input type="checkbox" checked={packed.includes(item.id)} onChange={() => toggle(item.id)} />
                 <img src={assetUrl(item.thumbnail || item.image)} alt="" />
                 <span>{item.name}</span>
-                <small>{count} {count === 1 ? "day" : "days"}</small>
+                <small>{tn(count, "{n} day", "{n} days")}</small>
               </label>
             </li>
           ))}
@@ -136,15 +139,15 @@ function TripForm({ onAdd, onCancel }) {
   const [trip, setTrip] = useState({ name: "", from: addDays(today, 7), to: addDays(today, 10) });
   const valid = trip.from && trip.to && trip.from <= trip.to;
   return (
-    <form className="trip-form glass-card" onSubmit={(event) => { event.preventDefault(); if (valid) onAdd({ ...trip, id: `${trip.from}-${Date.now().toString(36)}`, name: trip.name.trim() || "Trip" }); }}>
-      <label className="field"><span>Where to?</span><input value={trip.name} onChange={(event) => setTrip({ ...trip, name: event.target.value })} placeholder="Cairo" maxLength={60} /></label>
+    <form className="trip-form glass-card" onSubmit={(event) => { event.preventDefault(); if (valid) onAdd({ ...trip, id: `${trip.from}-${Date.now().toString(36)}`, name: trip.name.trim() || t("Trip") }); }}>
+      <label className="field"><span>{t("Where to?")}</span><input value={trip.name} onChange={(event) => setTrip({ ...trip, name: event.target.value })} placeholder={t("Cairo")} maxLength={60} /></label>
       <div className="trip-form__dates">
-        <label className="field"><span>From</span><input type="date" value={trip.from} onChange={(event) => setTrip({ ...trip, from: event.target.value })} /></label>
-        <label className="field"><span>To</span><input type="date" value={trip.to} min={trip.from} onChange={(event) => setTrip({ ...trip, to: event.target.value })} /></label>
+        <label className="field"><span>{t("From")}</span><input type="date" value={trip.from} onChange={(event) => setTrip({ ...trip, from: event.target.value })} /></label>
+        <label className="field"><span>{t("To")}</span><input type="date" value={trip.to} min={trip.from} onChange={(event) => setTrip({ ...trip, to: event.target.value })} /></label>
       </div>
       <div className="viewer-actions">
-        <button type="button" className="secondary-button" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="primary-button" disabled={!valid}><Plus size={14} weight="bold" aria-hidden="true" /> Add trip</button>
+        <button type="button" className="secondary-button" onClick={onCancel}>{t("Cancel")}</button>
+        <button type="submit" className="primary-button" disabled={!valid}><Plus size={14} weight="bold" aria-hidden="true" /> {t("Add trip")}</button>
       </div>
     </form>
   );
@@ -164,7 +167,7 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
   const usable = useMemo(() => (outfits || []).filter((outfit) => (outfit.garmentIds || []).filter((id) => itemsById.has(id)).length >= 2), [outfits, itemsById]);
 
   useEffect(() => { try { localStorage.setItem("wardrobe-plan-mode", mode); } catch { /* storage unavailable */ } }, [mode]);
-  if (!plan || !outfits) return <p className="status">Loading your plan</p>;
+  if (!plan || !outfits) return <p className="status">{t("Loading your plan")}</p>;
 
   const settings = plan.settings || DEFAULT_PLAN_SETTINGS;
   const firstDay = mode === "week" ? weekStart(anchor) : monthStart(anchor);
@@ -174,13 +177,13 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
   const repeats = new Set(planRepeats(plan.days, settings.restDays));
 
   const fill = (from, count, replace) => {
-    if (!usable.length) { setNotice("Save or style a few outfits first, then plan."); return; }
+    if (!usable.length) { setNotice(t("Save or style a few outfits first, then plan.")); return; }
     const keep = replace ? Object.fromEntries(Object.entries(plan.days).filter(([day]) => day < from)) : plan.days;
     const days = planDays({ outfits: usable, items, start: from, length: count, settings, keep, forecast });
     // Days before `from` stay in the history so the rest rule still sees them.
     savePlan({ ...plan, days: { ...plan.days, ...days } });
     const short = usable.length < settings.restDays;
-    setNotice(short ? `You have ${usable.length} outfits, so some come back inside ${settings.restDays} days. Style more to spread them out.` : `Planned ${count} ${count === 1 ? "day" : "days"} with no outfit back inside ${settings.restDays} days.`);
+    setNotice(short ? t("You have {n} outfits, so some come back inside {r} days. Style more to spread them out.", { n: usable.length, r: settings.restDays }) : t("Planned {n} days with no outfit back inside {r} days.", { n: count, r: settings.restDays }));
   };
 
   const planShown = (replace = false) => {
@@ -210,61 +213,61 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
       <section className="plan-hero glass-card">
         <div className="plan-hero__top">
           <div className="plan-nav">
-            <button type="button" className="icon-button" onClick={() => setAnchor(mode === "week" ? addDays(firstDay, -7) : shiftMonth(anchor, -1))} aria-label="Earlier"><CaretLeft size={18} aria-hidden="true" /></button>
+            <button type="button" className="icon-button" onClick={() => setAnchor(mode === "week" ? addDays(firstDay, -7) : shiftMonth(anchor, -1))} aria-label={t("Earlier")}><CaretLeft size={18} aria-hidden="true" /></button>
             <h2>{label}</h2>
-            <button type="button" className="icon-button" onClick={() => setAnchor(mode === "week" ? addDays(firstDay, 7) : shiftMonth(anchor, 1))} aria-label="Later"><CaretRight size={18} aria-hidden="true" /></button>
+            <button type="button" className="icon-button" onClick={() => setAnchor(mode === "week" ? addDays(firstDay, 7) : shiftMonth(anchor, 1))} aria-label={t("Later")}><CaretRight size={18} aria-hidden="true" /></button>
           </div>
-          <div className="plan-mode" role="tablist" aria-label="Plan view">
+          <div className="plan-mode" role="tablist" aria-label={t("Plan view")}>
             {["week", "month"].map((value) => (
               <button key={value} type="button" role="tab" aria-selected={mode === value} className={mode === value ? "active" : ""} onClick={() => { setMode(value); setAnchor(today); }}>
-                {value === "week" ? "Week" : "Month"}
+                {value === "week" ? t("Week") : t("Month")}
               </button>
             ))}
           </div>
         </div>
         <p className="plan-hero__rules">
-          Work days {settings.workDays.length ? settings.workDays.map((day) => WEEKDAY_NAMES[day].slice(0, 3)).join(", ") : "none"} · No repeat inside {settings.restDays} days{settings.mixForgotten ? " · Mixes in forgotten pieces" : ""}
+          {t("Work days {days} · No repeat inside {n} days", { days: settings.workDays.length ? settings.workDays.map((day) => weekdayShort(day)).join(isRtl() ? "، " : ", ") : t("none"), n: settings.restDays })}{settings.mixForgotten ? t(" · Mixes in forgotten pieces") : ""}
         </p>
         <button type="button" className="primary-button plan-hero__go" onClick={() => planShown(false)} disabled={end < today}>
-          <CalendarBlank size={16} aria-hidden="true" /> {plannedCount ? `Fill the empty days` : mode === "week" ? "Plan the whole week" : "Plan the whole month"}
+          <CalendarBlank size={16} aria-hidden="true" /> {plannedCount ? t("Fill the empty days") : mode === "week" ? t("Plan the whole week") : t("Plan the whole month")}
         </button>
-        {plannedCount > 0 && end >= today && <button type="button" className="plan-hero__again" onClick={() => planShown(true)}>Start over from today</button>}
-        <p className="plan-hero__hint">One tap. Change any day after.</p>
+        {plannedCount > 0 && end >= today && <button type="button" className="plan-hero__again" onClick={() => planShown(true)}>{t("Start over from today")}</button>}
+        <p className="plan-hero__hint">{t("One tap. Change any day after.")}</p>
         {notice && <p className="plan-hero__notice" role="status">{notice}</p>}
         {planError && <p className="status error">{planError}</p>}
-        {!usable.length && <p className="plan-hero__notice">You need saved outfits to plan. <button type="button" onClick={onGoToOutfits}>Go to Outfits</button></p>}
+        {!usable.length && <p className="plan-hero__notice">{t("You need saved outfits to plan.")} <button type="button" onClick={onGoToOutfits}>{t("Go to Outfits")}</button></p>}
       </section>
 
       <details className="plan-settings">
-        <summary>Plan rules</summary>
+        <summary>{t("Plan rules")}</summary>
         <div className="plan-settings__body">
-          <span>Work days</span>
+          <span>{t("Work days")}</span>
           <div className="plan-weekdays">
-            {WEEKDAYS.map((letter, day) => (
-              <button key={day} type="button" className={settings.workDays.includes(day) ? "active" : ""} aria-pressed={settings.workDays.includes(day)} aria-label={WEEKDAY_NAMES[day]} onClick={() => toggleWorkDay(day)}>{letter}</button>
+            {WEEKDAYS.map((_, day) => weekdayName(day, "narrow")).map((letter, day) => (
+              <button key={day} type="button" className={settings.workDays.includes(day) ? "active" : ""} aria-pressed={settings.workDays.includes(day)} aria-label={weekdayName(day)} onClick={() => toggleWorkDay(day)}>{letter}</button>
             ))}
           </div>
           <label className="field">
-            <span>Don't repeat an outfit inside</span>
+            <span>{t("Don't repeat an outfit inside")}</span>
             <select value={settings.restDays} onChange={(event) => setSettings({ restDays: Number(event.target.value) })}>
-              {[3, 5, 7, 10, 14, 21].map((value) => <option key={value} value={value}>{value} days</option>)}
+              {[3, 5, 7, 10, 14, 21].map((value) => <option key={value} value={value}>{tn(value, "{n} day", "{n} days")}</option>)}
             </select>
           </label>
           <label className="plan-settings__check">
             <input type="checkbox" checked={settings.mixForgotten !== false} onChange={(event) => setSettings({ mixForgotten: event.target.checked })} />
-            Mix in pieces I haven't worn lately
+            {t("Mix in pieces I haven't worn lately")}
           </label>
         </div>
       </details>
 
-      {mode === "month" && <div className="plan-grid plan-grid--head" aria-hidden="true">{WEEKDAYS.map((letter, index) => <span key={index}>{letter}</span>)}</div>}
+      {mode === "month" && <div className="plan-grid plan-grid--head" aria-hidden="true">{WEEKDAYS.map((_, index) => <span key={index}>{weekdayName(index, "narrow")}</span>)}</div>}
       <div className={`plan-grid plan-grid--${mode}`}>
         {cells.map((day, index) => {
           if (!day) return <span key={`blank-${index}`} className="plan-day is-blank" aria-hidden="true" />;
           const outfit = outfitsById.get(plan.days[day]);
           const classes = ["plan-day", "glass-card", day === today && "is-today", day < today && "is-past", repeats.has(day) && "is-repeat", tripDays.has(day) && "is-trip"].filter(Boolean).join(" ");
           return (
-            <button type="button" key={day} className={classes} onClick={() => setOpenDay(day)} aria-label={`${dayLabel(day)}: ${outfit ? outfit.name : "nothing planned"}`}>
+            <button type="button" key={day} className={classes} onClick={() => setOpenDay(day)} aria-label={`${dayLabel(day)}: ${outfit ? outfit.name : t("nothing planned")}`}>
               <span className="plan-day__date">{mode === "week" ? dayLabel(day) : Number(day.slice(8))}</span>
               {outfit ? <Pieces outfit={outfit} itemsById={itemsById} size={mode === "week" ? "large" : "small"} /> : <span className="plan-day__empty">+</span>}
               {mode === "week" && outfit && <span className="plan-day__name">{outfit.name}</span>}
@@ -272,15 +275,15 @@ export function PlanView({ items, outfits, plan, savePlan, planError, forecast =
           );
         })}
       </div>
-      {repeats.size > 0 && <p className="status">Days with a red mark repeat an outfit inside {settings.restDays} days.</p>}
+      {repeats.size > 0 && <p className="status">{t("Days with a red mark repeat an outfit inside {n} days.", { n: settings.restDays })}</p>}
 
       <section className="plan-trips">
         <div className="forgotten__head">
-          <h2>Trips</h2>
-          {!addingTrip && <button type="button" onClick={() => setAddingTrip(true)}><Plus size={13} aria-hidden="true" /> Add a trip</button>}
+          <h2>{t("Trips")}</h2>
+          {!addingTrip && <button type="button" onClick={() => setAddingTrip(true)}><Plus size={13} aria-hidden="true" /> {t("Add a trip")}</button>}
         </div>
         {addingTrip && <TripForm onAdd={addTrip} onCancel={() => setAddingTrip(false)} />}
-        {!addingTrip && !(plan.trips || []).length && <p className="status plan-trips__empty">Add a trip to get a packing list from your plan.</p>}
+        {!addingTrip && !(plan.trips || []).length && <p className="status plan-trips__empty">{t("Add a trip to get a packing list from your plan.")}</p>}
         {(plan.trips || []).map((trip) => (
           <TripCard key={trip.id} trip={trip} plan={plan} outfits={usable} items={items} onPlan={() => planTrip(trip)} onRemove={() => removeTrip(trip.id)} />
         ))}

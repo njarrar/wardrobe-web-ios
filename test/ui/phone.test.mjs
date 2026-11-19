@@ -131,6 +131,72 @@ describe("phone screens", () => {
     });
   }
 
+  test("Arabic turns the layout right to left", async () => {
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => localStorage.setItem("wardrobe-language", "ar"));
+    await page.goto(base);
+    await page.locator('[aria-label="اعرض White oxford shirt"]').waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.dir), "rtl");
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 0, `page scrolls sideways by ${overflow}px`);
+    await snap(page, "ar-1-closet");
+    await page.getByRole("button", { name: "الإعدادات والاتصال" }).click();
+    await page.getByRole("dialog").getByText("متصل").waitFor();
+    await snap(page, "ar-3-settings");
+    await page.getByRole("button", { name: "إغلاق الإعدادات" }).click();
+    await page.getByRole("tab", { name: /الخطة/ }).click();
+    await page.getByText(/تحتاج إطلالات محفوظة/).waitFor();
+    await snap(page, "ar-7-plan");
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
+  test("adds a basic without a photo, then fixes its edges", async () => {
+    const emptyDir = await mkdtemp(path.join(os.tmpdir(), "wardrobe-ui-empty-"));
+    const empty = await startServer(emptyDir);
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    try {
+      await page.goto(empty.base);
+      await page.getByRole("button", { name: "Add basics without a photo" }).click();
+      const sheet = page.getByRole("dialog", { name: "Add basics" });
+      await sheet.waitFor();
+      await snap(page, "light-8-basics");
+      await sheet.locator(".starter-piece").first().getByRole("button", { name: "Add" }).click();
+      await sheet.getByRole("button", { name: "Added" }).waitFor();
+      await sheet.getByRole("button", { name: "Close" }).click();
+      await page.locator('[aria-label="View White t-shirt"]').click();
+      await page.getByRole("button", { name: "Fix edges" }).click();
+      const editor = page.getByRole("dialog", { name: "Fix edges" });
+      await editor.waitFor();
+      const canvas = editor.locator("canvas");
+      await page.waitForFunction(() => document.querySelector(".edge-editor canvas")?.width === 1000);
+      const box = await canvas.boundingBox();
+      await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5, { steps: 8 });
+      await page.mouse.up();
+      await snap(page, "light-9-fix-edges");
+      const before = await page.locator(".viewer-art img, .garment-art img").first().getAttribute("src").catch(() => "");
+      await editor.getByRole("button", { name: "Save picture" }).click();
+      await editor.waitFor({ state: "detached" });
+      const library = await (await fetch(`${empty.base}/api/import/wardrobe`)).json();
+      assert.equal(library.length, 1);
+      assert.match(library[0].image, /-garment-\w+\.png$/);
+      assert.ok(!before || !before.includes(library[0].image));
+      assert.deepEqual(errors, []);
+    } finally {
+      await context.close();
+      empty.child.kill();
+      await rm(emptyDir, { recursive: true, force: true });
+    }
+  });
+
   test("asks before any photo goes to the AI", async () => {
     const withKey = await startServer(dataDir, { ANTHROPIC_API_KEY: "test-key", ANTHROPIC_BASE_URL: "http://127.0.0.1:9" });
     const context = await browser.newContext({ ...devices["iPhone 13"] });
