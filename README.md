@@ -2,24 +2,24 @@
 
 # Wardrobe
 
-Your closet on the web, on iPhone and iPad, and on Android. Snap a photo, and the AI you pick (Claude, ChatGPT or Gemini) finds each piece, cuts it out, and styles outfits from what you own.
+Your closet on the web, on iPhone and iPad, and on Android. Snap a photo, and the AI you pick (Claude, ChatGPT or Gemini) finds each piece, cuts it out, and styles outfits from what you own. Each morning, Home has an outfit ready, made on your phone.
 
-[![Version 2.3.0](https://img.shields.io/badge/version-2.3.0-191919?style=flat-square)](CHANGELOG.md)
+[![Version 3.5.0](https://img.shields.io/badge/version-3.5.0-191919?style=flat-square)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-191919?style=flat-square)](LICENSE)
 [![Node 22+](https://img.shields.io/badge/node-22%2B-191919?style=flat-square)](package.json)
 [![AI: Claude, ChatGPT or Gemini](https://img.shields.io/badge/AI-Claude%20%7C%20ChatGPT%20%7C%20Gemini-191919?style=flat-square)](#pick-your-ai)
+[![iCloud](https://img.shields.io/badge/iCloud-no%20server%20needed-191919?style=flat-square)](#icloud-closet-no-server)
 [![Docker](https://img.shields.io/badge/docker-amd64%20%7C%20arm64-191919?style=flat-square)](docs/synology.md)
-[![Synology](https://img.shields.io/badge/Synology-Container%20Manager-191919?style=flat-square)](docs/synology.md)
 
 Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original post](https://x.com/cdngdev/status/2076812846793650485)).
 
 </div>
 
-![Wardrobe with a real closet](docs/screenshots/real-closet.png)
+<p align="center"><img src="docs/screenshots/phone-home.png" width="200"> <img src="docs/screenshots/phone-closet.png" width="200"> <img src="docs/screenshots/phone-piece.png" width="200"> <img src="docs/screenshots/phone-plan.png" width="200"></p>
 
-<sub>A real closet from the original project. The other screenshots below use a small drawn sample closet.</sub>
+<sub>Screenshots use a small drawn sample closet.</sub>
 
-**[What's new](#whats-new-in-22)** ·
+**[What's new](#whats-new-in-35)** ·
 **[What it does](#what-it-does)** ·
 **[Screenshots](#screenshots)** ·
 **[Quick start](#quick-start-on-your-computer)** ·
@@ -31,103 +31,85 @@ Based on [tandpfun/wardrobe](https://github.com/tandpfun/wardrobe) ([original po
 **[App stores](#releasing-to-the-app-stores)** ·
 **[Settings](#settings)**
 
-## What's new in 3.0
+## What's new in 3.5
+
+Everything since 3.0, in short. See the [changelog](CHANGELOG.md) for every change.
+
+- **Home.** The app opens on an outfit for today, laid out as worn, with a line that says why it works. Lock the pieces you like and shuffle the rest, swap one piece, say "Not me", or keep it with the heart. A strip shows the next seven days with the weather.
+- **Outfits with no AI.** The phone puts outfits together by itself from the color wheel, the weather, how dressy each piece is and how long it has rested. No key, no cost, and it works offline.
+- **Home Screen widget** on iPhone with today's outfit, in small and medium sizes.
+- **A page for each piece.** How often you wore it, cost per wear, a short note on how to wear it, and pieces from your closet that go well with it.
+- **Plan.** Past days show what you wore. Give a day an occasion (Work, Casual, Dinner or Formal), pin a day so it stays, and set how long a piece rests after a wear.
+- **Your closet in numbers.** Pieces worn in 60 days, closet value, cost per wear, colors, most worn and not worn lately.
+- **Modest wear.** Abaya, thobe, hijab, shemagh and bisht, with their Arabic names, and outfits that pair them.
+- **Easier imports.** The system photo picker on iPhone, a queue that carries on after you close the app, "Try again" for failed photos, and "Add all to my closet".
+- **Feel and look.** Taps you can feel on iPhone, Light, Dark or Auto, seven accent colors, wind and rain in the forecast.
+- **Safer and faster.** A smaller first load, and a protected server that only answers the apps and the sites you name.
+
+## What was new in 3.0
 
 - **No server needed on iPhone and iPad.** Pick **Use iCloud** on the first screen and your closet lives in your own iCloud, synced across your Apple devices. Nothing goes to us.
 - **The AI is called from your phone** with the key you paste, kept in the Keychain.
 - **Move an existing closet** from your server to iCloud in Settings. The server keeps its copy.
 
-## What was new in 2.6
+<details>
+<summary>Older versions (2.1 to 2.6)</summary>
 
-- **Arabic.** The whole app in Arabic, right to left. Switch in Settings.
-- **Dressed for the weather.** Turn on Weather and Today and the plan suit the forecast.
-- **Basics without a photo.** Add a white tee or navy jeans in two taps.
-- **Cleaner cutouts.** Clean cut on iPhone, and a Fix edges brush everywhere.
+- **2.6:** the whole app in Arabic, right to left. Weather for the day. Basics you add with no photo. Clean cutouts on iPhone and a Fix edges brush.
+- **2.5:** the Plan tab fills a month with outfits in one tap, with packing lists for trips. Pieces sort themselves into groups such as Winter, Work and Neutrals. A see-through glass look.
+- **2.4:** a Today card, a row of clothes you have not worn in 60 days, a wear log with cost per wear, and outfits built on the color wheel with a score.
+- **2.3:** the Android app, a bottom tab bar on phones, a clear first run, a yes before any photo goes to an AI, safer image links, and one-button releases to TestFlight and Google Play.
+- **2.2:** pick Claude, ChatGPT or Gemini in Settings and paste its key there.
+- **2.1:** build outfits yourself, edit and filter outfits, filter by color, a new look with dark mode, and a Synology NAS guide.
 
-## What was new in 2.5
-
-- **Plan a month in one tap.** The new Plan tab fills every day with an outfit, with no repeats inside a week. Add a trip and get a packing list.
-- **Sorted for you.** Pieces get a kind, seasons, warmth and dress level, and the closet groups them: Winter, Summer, Work, Neutrals and more.
-- **Glass look.** See-through bars and a floating tab bar, kept light on the battery.
-
-## What was new in 2.4
-
-- **Home.** The app opens on one outfit for today, made on the phone with no AI. Lock a piece and shuffle the rest, say "Not me", or save it with the heart.
-- **Clothes you forgot.** A row shows what has not been worn in 60 days or more.
-- **Wear log and cost per wear.** Tap **Wore today**, add the price, and see what each wear costs.
-- **Outfits built on the color wheel.** Pick tonal, neighbors, opposites or three-way. Every outfit shows its rule and a score.
-
-## What was new in 2.3
-
-Version 2.3 gets the phone apps ready for the App Store and Google Play. See the [changelog](CHANGELOG.md) for every change.
-
-- **Android app.** The same app now runs on Android phones, next to the iPhone and iPad app. See [Android app](#android-app).
-- **Easier on a phone.** Closet and Outfits sit in a tab bar at the bottom, and the header scrolls away so your clothes get the screen.
-- **Clear first run.** The phone app says what you need (a server, its address and its token) and links to the setup guide.
-- **You say yes before any photo goes to an AI.** The app asks once for each AI and names the company behind it.
-- **Safer image links.** Your access token no longer appears in image links or server logs.
-- **One-button releases.** Publishing a GitHub release builds both phone apps and sends them to TestFlight and Google Play. See [Releasing to the app stores](#releasing-to-the-app-stores).
-
-## What was new in 2.2
-
-- **Pick your AI.** Choose Claude, ChatGPT or Gemini in Settings and paste its API key there. No more editing `.env` and restarting. See [Pick your AI](#pick-your-ai).
-
-## What was new in 2.1
-
-Version 2.1 brings together the best of two other builds of this app with our own work. See the [changelog](CHANGELOG.md) for every change.
-
-- **Build outfits yourself.** Pick pieces, give the look a name, occasions and a note, and save it next to the ones the AI styles.
-- **Edit and filter outfits.** Rename an outfit, change its occasions or note, filter the list by occasion, and tap any piece to open it.
-- **Filter by color.** Tap a color dot to see only blue, beige or black pieces. Search understands color words too, so "blue" finds navy.
-- **New look with dark mode**, a settings sheet, search and sort, from the 2.0 redesign.
-- **Run it on a Synology NAS** with Docker, with a step-by-step guide.
+</details>
 
 ## What it does
 
+- **An outfit for today.** Home picks one from your closet each day, and you can lock, shuffle or swap pieces until it feels right.
+- **Plan the week or month.** One tap fills the days, with no repeats inside a week, an occasion per day and a packing list for trips.
+- **Know your closet.** A wear log, cost per wear, clothes you have not worn lately, and your closet in numbers.
 - **Add clothes from a photo.** Drop, paste, choose or take a picture of one piece or a whole outfit. The AI finds every garment and suggests a name, category, colors and tags.
 - **Clean cutouts.** Each piece is cut out of the real photo with background removal, so it looks like your actual item. You check the crop and the cutout before anything is saved.
 - **Style outfits.** Press **Style new outfits** and the AI builds looks from your closet, names them, and says why they work. Add a note like "cool weekend in the city", or tap an idea such as "Dinner out", to steer it.
 - **Build your own outfits.** Press **Build your own**, pick two or more pieces, and save the look. Edit any outfit's name, occasions and note later, and filter outfits by occasion.
 - **Edit and sort.** Filter by tops, jackets, bottoms, accessories and shoes. Change names, colors and tags at any time.
-- **Search, filter and sort.** Find pieces by name, tag, category or color word, tap a color dot to filter, and sort by category, newest, color or name.
-- **Light and dark.** A clean, modern look that follows your system theme, on desktop and phone.
-- **Self-host it.** Run it as a container on your Synology NAS (or any Docker host) so all photos and data stay at home, or on Cloudflare. The web app, phone browsers and the iPhone, iPad and Android apps share one closet.
+- **Search, filter and sort.** Find pieces by name, tag, category or color word, filter by color or group, and sort by category, newest, color or name.
+- **Light and dark.** A clean, modern look in Light, Dark or Auto, with an accent color you pick, on desktop and phone.
+- **iCloud or your own server.** On iPhone and iPad, keep the closet in your own iCloud with no server. Or run it as a container on your Synology NAS (or any Docker host) so all photos and data stay at home, or on Cloudflare. The web app, phone browsers and the iPhone, iPad and Android apps share one closet.
 
 ## Screenshots
 
-| Your closet | Filter by color |
+**On the phone.** Home with today's outfit, the closet, a piece, saved outfits, one outfit, and the month plan.
+
+<p><img src="docs/screenshots/phone-home.png" width="250"> <img src="docs/screenshots/phone-closet.png" width="250"> <img src="docs/screenshots/phone-piece.png" width="250"></p>
+<p><img src="docs/screenshots/phone-outfits.png" width="250"> <img src="docs/screenshots/phone-outfit.png" width="250"> <img src="docs/screenshots/phone-plan.png" width="250"></p>
+
+**On a computer.** Home in light and dark, the closet, and your closet in numbers.
+
+| Home | Home in dark |
 | --- | --- |
-| ![Closet](docs/screenshots/gallery.png) | ![Color filter](docs/screenshots/color-filter.png) |
+| ![Home](docs/screenshots/desktop-home-light.png) | ![Home in dark](docs/screenshots/desktop-home-dark.png) |
 
-| Edit a piece | Server & settings |
+| Closet | Your closet in numbers |
 | --- | --- |
-| ![Editor](docs/screenshots/editor.png) | ![Settings](docs/screenshots/settings.png) |
-
-**Outfits.** The AI styles looks from your closet. Filter them by occasion, open one to see its pieces, or edit its name, occasions and note.
-
-| Outfits | One outfit |
-| --- | --- |
-| ![Outfits](docs/screenshots/outfits.png) | ![Outfit](docs/screenshots/outfit.png) |
-
-**Build your own.** Pick the pieces and the collage fills in as you go.
-
-![Build an outfit](docs/screenshots/outfit-builder.png)
+| ![Closet](docs/screenshots/desktop-closet.png) | ![Closet numbers](docs/screenshots/desktop-numbers.png) |
 
 **Review before saving.** After the AI finds a piece and the background is removed, you check the details, then approve, reject, or keep the background.
 
 ![Import review](docs/screenshots/import-review.png)
 
-**On the phone.** The closet in dark mode, outfits, and the iPhone app's connect screen.
+**A real closet** from the original project:
 
-<p><img src="docs/screenshots/phone-dark.png" width="250"> <img src="docs/screenshots/phone-outfits.png" width="250"> <img src="docs/screenshots/phone-connect.png" width="250"></p>
+![Wardrobe with a real closet](docs/screenshots/real-closet.png)
 
 ## Quick start (on your computer)
 
 You need Node 22 or newer and an API key for Claude, ChatGPT or Gemini (see [Pick your AI](#pick-your-ai)).
 
 ```bash
-git clone https://github.com/njarrar/wardrobe-najeeb.git
-cd wardrobe-najeeb
+git clone https://github.com/njarrar/wardrobe-web-ios.git
+cd wardrobe-web-ios
 npm install
 cp .env.example .env
 npm run dev              # http://localhost:5173
@@ -238,6 +220,12 @@ On iPhone and iPad you can skip the server: tap **Use iCloud** on the first scre
 
 Before the first release with iCloud, turn on **iCloud** (with CloudKit off, iCloud Documents on) for `com.njarrar.wardrobe` in the Apple Developer site under Identifiers, and add the container `iCloud.com.njarrar.wardrobe`. The release workflow signs automatically and picks it up from there.
 
+### Home Screen widget
+
+The `WardrobeWidget` target shows today's outfit on the Home Screen, in small and medium sizes. The app writes the week's outfits to a shared App Group (`group.com.njarrar.wardrobe`), and the widget moves to the next day on its own. Before the first signed build, add that App Group in the Apple Developer site and turn it on for both `com.njarrar.wardrobe` and `com.njarrar.wardrobe.widget`.
+
+On iPhone, **Choose images** opens Apple's photo picker, so the app needs no photo permission. Taps on Wear this, Shuffle, Lock, Swap, the heart and Pin day give a small buzz.
+
 On any phone, the add button offers **Take photo** next to **Choose images**. Photos are turned upright and shrunk to 2048 px before upload.
 
 ## Android app
@@ -272,13 +260,15 @@ The import skill finds each garment, cuts it out, checks every cutout, then writ
 
 | Part | Where |
 | --- | --- |
-| Web app (React 19 + Vite) | `src/` (closet in `App.jsx`, outfits in `Outfits.jsx`, settings in `SettingsSheet.jsx`) |
+| Web app (React 19 + Vite) | `src/` (Home in `Home.jsx`, closet in `App.jsx` and `ClosetGrid.jsx`, a piece in `ItemViewer.jsx`, outfits in `Outfits.jsx`, plan in `Plan.jsx`, settings in `SettingsSheet.jsx`) |
+| Outfits made on the phone, color wheel, plan, pairing | `shared/make-outfit.mjs`, `shared/style.mjs`, `shared/pairing.mjs` |
+| iCloud closet with no server | `src/local/` |
 | Local server and API | `scripts/import-job-api.mjs`, `scripts/serve.mjs` |
 | Rules shared by the server and the Worker (item edits, outfits) | `shared/core.mjs` |
 | Cloudflare Worker (R2, D1, Queue, Images) | `worker/`, `wrangler.jsonc` |
 | AI calls for Claude, ChatGPT and Gemini (finding clothes, styling outfits) | `shared/ai.mjs` |
 | AI picker in Settings | `src/AiSettings.jsx` |
-| iPhone app (Capacitor) | `ios/` |
+| iPhone app (Capacitor), widget and native plugins | `ios/` (`WardrobeWidget/`, `App/NativeExtras.swift`, `App/PhotoPicker.swift`) |
 | Android app (Capacitor) | `android/` |
 | Docker image and Synology setup | `Dockerfile`, `docker/`, `docker-compose.yml`, `docs/synology.md` |
 | Image publishing (GHCR, amd64 + arm64) | `.github/workflows/docker.yml` |
@@ -303,6 +293,7 @@ Your photos and closet stay in `data/` on your computer (or in your own R2 and D
 | `WARDROBE_DATA_DIR` | `data` |
 | `WARDROBE_HOST` | `127.0.0.1` |
 | `WARDROBE_TOKEN` | Required when `WARDROBE_HOST` is not local, and on Cloudflare |
+| `WARDROBE_CORS_ORIGINS` | Other web addresses, comma separated, that may call a protected server from a browser |
 | `PORT` | `4173` (for `npm start`) |
 | `PUID` / `PGID` | `1026` / `100` (Docker only: owner of files in `./data`) |
 | `TZ` | `Europe/London` (Docker only) |
@@ -314,7 +305,7 @@ Your photos and closet stay in `data/` on your computer (or in your own R2 and D
 npm test           # API and image tests, with a stand-in for the Claude, OpenAI and Gemini APIs
 npm run check      # build, test, and check the iOS app has the same version
 npm run test:ui    # open the built app on a phone-sized screen (needs Playwright's Chromium)
-npm version 2.3.0  # bump the version everywhere, including the iOS app
+npm version 3.5.0  # bump the version everywhere, including the iOS app
 ```
 
 ## Changelog
