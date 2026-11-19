@@ -2,6 +2,8 @@
 // folder on iPhone and iPad (or on the device when iCloud is off), and a
 // browser database elsewhere. Every store has the same small interface.
 
+import { cloudStore } from "./plugin.js";
+
 export function toBase64(bytes) {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
@@ -129,7 +131,7 @@ export async function createWebStore() {
 // Files sit in the app's iCloud Drive folder, and AI keys in the Keychain.
 export async function createNativeStore() {
   const capacitor = globalThis.Capacitor;
-  const plugin = capacitor?.registerPlugin?.("CloudStore");
+  const plugin = cloudStore();
   if (!plugin) throw new Error("iCloud needs the iPhone or iPad app.");
   // Waits until iCloud has listed the closet's files, so a new device
   // never mistakes "not here yet" for "empty".

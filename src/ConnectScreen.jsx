@@ -46,7 +46,7 @@ export function ConnectScreen({ reason }) {
       return;
     }
     setState({ status: "ok" });
-    saveConnection({ server: native ? target : undefined, token });
+    await saveConnection({ server: native ? target : undefined, token });
     setTimeout(() => window.location.reload(), 350);
   };
 

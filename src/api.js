@@ -2,6 +2,7 @@
 // origin; in the iOS app the person enters its address once (for example the
 // Synology NAS on the home network, or a public HTTPS address).
 import { isLocalMode, localApi } from "./local/mode.js";
+import { cloudStore } from "./local/plugin.js";
 
 const SERVER_KEY = "wardrobe-server-url";
 const TOKEN_KEY = "wardrobe-token";
@@ -42,18 +43,49 @@ export function serverUrl() {
   return read(SERVER_KEY).replace(/\/+$/, "");
 }
 
+// On iPhone and iPad the server token lives in the Keychain, not in the
+// page's storage. It is read once at start and kept in memory. null means
+// the Keychain is not in use (browsers, Android), and storage is used.
+const TOKEN_SECRET = "server-token";
+let keychainToken = null;
+
+export async function loadSavedToken() {
+  const vault = cloudStore();
+  if (!vault) return;
+  try {
+    let value = (await vault.getSecret({ key: TOKEN_SECRET })).value || "";
+    // A token saved by an older version moves over, then leaves storage.
+    const old = read(TOKEN_KEY);
+    if (old) {
+      await vault.setSecret({ key: TOKEN_SECRET, value: old });
+      value = old;
+      write(TOKEN_KEY, "");
+    }
+    keychainToken = value;
+  } catch { keychainToken = null; }
+}
+
+async function saveToken(value) {
+  if (keychainToken === null) { write(TOKEN_KEY, value); return; }
+  try {
+    await cloudStore().setSecret({ key: TOKEN_SECRET, value: value || null });
+    keychainToken = value;
+  } catch { keychainToken = null; write(TOKEN_KEY, value); }
+}
+
 export function accessToken() {
-  return read(TOKEN_KEY);
+  return keychainToken ?? read(TOKEN_KEY);
 }
 
-export function saveConnection({ server, token }) {
+// Both wait until the token is stored, so a reload right after is safe.
+export async function saveConnection({ server, token }) {
   if (server !== undefined) write(SERVER_KEY, normalizeServerUrl(server));
-  if (token !== undefined) write(TOKEN_KEY, token.trim());
+  if (token !== undefined) await saveToken(token.trim());
 }
 
-export function forgetConnection({ keepServer = false } = {}) {
+export async function forgetConnection({ keepServer = false } = {}) {
   if (!keepServer) write(SERVER_KEY, "");
-  write(TOKEN_KEY, "");
+  await saveToken("");
 }
 
 export function needsServerUrl() {

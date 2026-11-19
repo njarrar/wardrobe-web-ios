@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, CloudCheck, CloudSun, HardDrives, MapPin, SignOut, SpinnerGap, Translate, TShirt, WarningCircle, X } from "@phosphor-icons/react";
+import { CheckCircle, CloudCheck, CloudSun, HardDrives, MapPin, SignOut, SpinnerGap, Translate, WarningCircle, X } from "@phosphor-icons/react";
 import { AiSettings } from "./AiSettings.jsx";
 import { accessToken, connectionLabel, forgetConnection, isNativeApp, serverUrl, testConnection } from "./api.js";
-import { LANGUAGES, language, setLanguage, t } from "./i18n.js";
+import { LANGUAGES, language, setLanguage, t, tn } from "./i18n.js";
 import { deviceLocation, findCity } from "./weather.js";
 import { canUseLocalMode, isLocalMode, localApi, setClosetMode } from "./local/mode.js";
 
 // Where the closet lives and how this device is connected to it.
-export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
+export function SettingsSheet({ onClose, pieces, weather }) {
   const native = isNativeApp();
   const [status, setStatus] = useState({ state: "checking" });
 
@@ -26,13 +26,13 @@ export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
     };
   }, [onClose]);
 
-  const switchServer = () => {
-    forgetConnection();
+  const switchServer = async () => {
+    await forgetConnection();
     window.location.reload();
   };
 
-  const signOut = () => {
-    forgetConnection({ keepServer: true });
+  const signOut = async () => {
+    await forgetConnection({ keepServer: true });
     window.location.reload();
   };
 
@@ -96,11 +96,6 @@ export function SettingsSheet({ onClose, pieces, weather, onStarter }) {
 
         {weather && <WeatherSettings weather={weather} />}
 
-        {onStarter && (
-          <div className="settings-actions">
-            <button className="secondary-button" type="button" onClick={onStarter}><TShirt size={16} aria-hidden="true" /> {t("Add basics, no photo")}</button>
-          </div>
-        )}
 
         <div className="settings-actions">
           {native && !isLocalMode() && (
@@ -177,6 +172,9 @@ function ClosetPlace({ serverReady }) {
     try {
       const { copyServerToLocal } = await import("./local/migrate.js");
       const result = await copyServerToLocal((done, total) => setState({ status: "copying", done, total }));
+      // Pictures that would not copy: stay here and say so. The person
+      // can try again; pictures already copied are not fetched twice.
+      if (result.failed) { setState({ status: "failed", message: tn(result.failed, "{n} picture could not be copied. Check the server and try again.", "{n} pictures could not be copied. Check the server and try again.") }); return; }
       setState({ status: "done", pieces: result.pieces });
       setClosetMode("local");
       setTimeout(() => window.location.reload(), 600);

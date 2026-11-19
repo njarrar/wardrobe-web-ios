@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ShieldCheck } from "@phosphor-icons/react";
 import { AI_COMPANIES, AI_CONSENT_ASK_EVENT, saveAiConsent } from "./ai-setup.js";
 import { t, tn } from "./i18n.js";
+import { isLocalMode } from "./local/mode.js";
 
 // Asks once, before any photo goes to the AI picked in Settings.
 export function AiConsentPrompt() {
@@ -25,10 +26,10 @@ export function AiConsentPrompt() {
     <div className="viewer-overlay sheet-overlay consent-overlay" role="presentation">
       <section className="settings-sheet consent-sheet" role="alertdialog" aria-modal="true" aria-labelledby="consent-title" aria-describedby="consent-body">
         <span className="consent-sheet__icon" aria-hidden="true"><ShieldCheck size={26} /></span>
-        <h2 id="consent-title">Send your photos to {ask.name}?</h2>
+        <h2 id="consent-title">{t("Send your photos to {name}?", { name: ask.name })}</h2>
         <div id="consent-body" className="consent-sheet__body">
-          <p>To find each piece and style outfits, your server sends {company} the clothing photos you add and the names, colors and tags of your pieces.</p>
-          <p>{company} handles them under its own rules{privacy ? <> (<a href={privacy} target="_blank" rel="noreferrer">{t("privacy policy")}</a>)</> : null}. Nothing goes to {company} until you agree. You can switch AI in Settings at any time.</p>
+          <p>{t(isLocalMode() ? "To find each piece and style outfits, this device sends {company} the clothing photos you add and the names, colors and tags of your pieces." : "To find each piece and style outfits, your server sends {company} the clothing photos you add and the names, colors and tags of your pieces.", { company })}</p>
+          <p>{t("{company} handles them under its own rules", { company })}{privacy ? <> (<a href={privacy} target="_blank" rel="noreferrer">{t("privacy policy")}</a>)</> : null}. {t("Nothing goes to {company} until you agree. You can switch AI in Settings at any time.", { company })}</p>
         </div>
         <div className="consent-sheet__actions">
           <button className="secondary-button" type="button" onClick={() => answer(false)}>{t("Not now")}</button>

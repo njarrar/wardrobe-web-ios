@@ -68,7 +68,7 @@ function DaySheet({ day, plan, outfits, itemsById, onPick, onClear, onClose }) {
     .map(([, id]) => id));
   return (
     <div className="viewer-overlay sheet-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="settings-sheet plan-sheet" role="dialog" aria-modal="true" aria-label={`Outfit for ${dayLabel(day)}`}>
+      <section className="settings-sheet plan-sheet" role="dialog" aria-modal="true" aria-label={t("Outfit for {day}", { day: dayLabel(day) })}>
         <span className="sheet-grabber" aria-hidden="true" />
         <header className="settings-sheet__header">
           <div>
@@ -94,7 +94,7 @@ function DaySheet({ day, plan, outfits, itemsById, onPick, onClear, onClose }) {
                 <span className="plan-sheet__name">{outfit.name}</span>
                 <span className="plan-sheet__meta">
                   {t(COLOR_RULES[harmony.rule]?.label || "")}
-                  {recent.has(outfit.id) && <em> · worn nearby</em>}
+                  {recent.has(outfit.id) && <em> · {t("worn nearby")}</em>}
                 </span>
               </button>
             );

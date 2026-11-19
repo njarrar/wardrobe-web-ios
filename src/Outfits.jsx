@@ -79,13 +79,13 @@ function StyleForm({ busy, ready, onStyle, onCompose, canCompose, forgottenCount
       {forgottenCount > 0 && (
         <label className="style-forgotten">
           <input type="checkbox" checked={useForgotten} onChange={(event) => setUseForgotten(event.target.checked)} disabled={busy} />
-          Use pieces I haven't worn lately ({forgottenCount})
+          {t("Use pieces I haven't worn lately ({n})", { n: forgottenCount })}
         </label>
       )}
       {!ready && <p className="outfit-style-form__hint" id="outfit-needs-key">{t("To style outfits, add an AI key in Settings (the gear at the top). You can still build your own.")}</p>}
       <div className="outfit-style-form__footer">
         <div className="outfit-prompts" aria-label={t("Ideas")}>
-          {QUICK_PROMPTS.map((prompt) => (
+          {QUICK_PROMPTS.map((prompt) => t(prompt)).map((prompt) => (
             <button
               key={prompt}
               type="button"

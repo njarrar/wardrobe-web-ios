@@ -1,7 +1,7 @@
 // Server mode or local mode (iCloud on iPhone and iPad). Local mode keeps
 // the closet with the person and needs no server at all.
-import { createLocalApi } from "./backend.js";
-import { createNativeStore, createWebStore } from "./store.js";
+// The closet code and the AI libraries load only when this mode is on, so
+// a phone that talks to a server starts faster.
 
 const MODE_KEY = "wardrobe-closet-mode";
 let api = null;
@@ -61,6 +61,7 @@ async function deviceCutout(pngBytes) {
 export async function startLocalMode({ version } = {}) {
   if (closetMode() !== "local") return null;
   const native = globalThis.Capacitor?.isNativePlatform?.();
+  const [{ createLocalApi }, { createNativeStore, createWebStore }] = await Promise.all([import("./backend.js"), import("./store.js")]);
   const store = native ? await createNativeStore() : await createWebStore();
   api = createLocalApi({ store, version, aiFetch: native ? nativeFetch : null, cutout: native ? deviceCutout : null });
   // iCloud brought changes from another device: have the screens reload.

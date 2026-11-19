@@ -10,12 +10,21 @@ async function getJson(path) {
   return response.json();
 }
 
+// True when the picture is in the store afterwards. Tries three times, and
+// skips pictures an earlier run already copied.
 async function copyPicture(store, path) {
   const target = storePath(path);
-  if (!target) return;
-  const response = await apiFetch(path);
-  if (!response.ok) return;
-  await store.writeBytes(target, new Uint8Array(await response.arrayBuffer()));
+  if (!target) return true;
+  if (await store.readBytes(target)) return true;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await apiFetch(path);
+      if (response.ok) { await store.writeBytes(target, new Uint8Array(await response.arrayBuffer())); return true; }
+      if (response.status === 404) return false;
+    } catch { /* try again */ }
+    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+  }
+  return false;
 }
 
 export async function copyServerToLocal(onProgress = () => {}) {
@@ -26,21 +35,25 @@ export async function copyServerToLocal(onProgress = () => {}) {
   const plan = await getJson("/api/import/plan").catch(() => null);
   const total = items.length + outfits.length;
   let done = 0;
+  let failed = 0;
+  const copy = async (path) => { if (path && !(await copyPicture(store, path))) failed += 1; };
   for (const item of items) {
-    await copyPicture(store, item.image);
-    if (item.thumbnail && item.thumbnail !== item.image) await copyPicture(store, item.thumbnail);
-    if (item.modeledImage) await copyPicture(store, item.modeledImage);
+    await copy(item.image);
+    if (item.thumbnail !== item.image) await copy(item.thumbnail);
+    await copy(item.modeledImage);
     onProgress(++done, total);
   }
   for (const outfit of outfits) {
-    if (outfit.image) await copyPicture(store, outfit.image);
+    await copy(outfit.image);
     onProgress(++done, total);
   }
+  // Nothing is written to the closet lists unless every picture came over.
+  if (failed) return { pieces: items.length, outfits: outfits.length, kind: store.kind, failed };
   const existing = await store.readJson("items.json", []);
   const ids = new Set(items.map((item) => item.id));
   await store.writeJson("items.json", [...existing.filter((item) => !ids.has(item.id)), ...items]);
   const outfitIds = new Set(outfits.map((outfit) => outfit.id));
   await store.writeJson("outfits.json", [...(await store.readJson("outfits.json", [])).filter((outfit) => !outfitIds.has(outfit.id)), ...outfits]);
   if (plan) await store.writeJson("plan.json", plan);
-  return { pieces: items.length, outfits: outfits.length, kind: store.kind };
+  return { pieces: items.length, outfits: outfits.length, kind: store.kind, failed: 0 };
 }
