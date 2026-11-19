@@ -15,7 +15,7 @@ import { PlanView, usePlan } from "./Plan.jsx";
 import { StarterPicker } from "./StarterPicker.jsx";
 import { PictureTools } from "./PictureTools.jsx";
 import { PieceRead } from "./PiecePage.jsx";
-import { PATTERNS, PATTERN_LABELS } from "../shared/pairing.mjs";
+import { PATTERNS, PATTERN_LABELS, isModestWear, tileNote } from "../shared/pairing.mjs";
 import { useWeather } from "./weather.js";
 import { askAiConsent, useAiSetup } from "./ai-setup.js";
 import { sendJson, wearPiece, wornOn } from "./wear.js";
@@ -227,6 +227,7 @@ const GROUPS = [
   { id: "work", label: "Work", test: (item) => item.formality === "smart" || item.formality === "formal" },
   { id: "casual", label: "Casual", test: (item) => item.formality === "casual" },
   { id: "neutrals", label: "Neutrals", test: (item) => isNeutral(item.color) },
+  { id: "modest", label: "Modest wear", test: isModestWear },
 ];
 const GROUP_MAP = Object.fromEntries(GROUPS.map((group) => [group.id, group]));
 const SEASON_LABELS = { spring: "Spring", summer: "Summer", fall: "Fall", winter: "Winter" };
@@ -242,6 +243,8 @@ const SORTS = [
 function GalleryItem({ item, selected, onOpen, index }) {
   const type = t(TYPE_MAP[item.part]?.singular || t("Wardrobe item"));
   const swatches = [item.color, item.secondaryColor].filter(Boolean);
+  const worn = wearCount(item);
+  const note = tileNote(item);
 
   return (
     <button
@@ -260,11 +263,12 @@ function GalleryItem({ item, selected, onOpen, index }) {
           sizes="(max-width: 520px) calc(50vw - 24px), (max-width: 860px) calc(33vw - 24px), 220px"
           breakpoints={[160, 240, 320, 480, 640]}
         />
+        {worn > 0 && <span className="gallery-item__worn" title={tn(worn, "Worn {n} time", "Worn {n} times")}>{worn}×</span>}
       </span>
       <span className="gallery-item__meta">
         <span className="gallery-item__name">{item.name || type}</span>
         <span className="gallery-item__sub">
-          <span className="gallery-item__type">{type}</span>
+          <span className="gallery-item__type">{note ? t(note) : type}</span>
           {!!swatches.length && (
             <span className="gallery-item__swatches" aria-hidden="true">
               {swatches.map((color) => <i key={color} style={{ backgroundColor: color }} />)}

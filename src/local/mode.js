@@ -38,7 +38,8 @@ export async function nativeFetch(input, init = {}) {
   const headers = Object.fromEntries(new Headers(init.headers || {}).entries());
   let data = init.body;
   if (typeof data === "string" && /json/i.test(headers["content-type"] || "")) { try { data = JSON.parse(data); } catch { /* send as is */ } }
-  const result = await http.request({ url: String(input), method: init.method || "GET", headers, data, responseType: "text" });
+  // Without these the phone waits on a dead connection with no end.
+  const result = await http.request({ url: String(input), method: init.method || "GET", headers, data, responseType: "text", connectTimeout: 30000, readTimeout: 120000 });
   const body = typeof result.data === "string" ? result.data : JSON.stringify(result.data ?? null);
   return new Response(body, { status: result.status, headers: result.headers || {} });
 }

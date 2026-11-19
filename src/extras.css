@@ -105,11 +105,12 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 
 /* Shown while the AI reads a photo, before any piece exists. */
 .import-reading { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 16px; padding: 16px; border-radius: 16px; background: var(--surface-2); }
+.import-reading > div { min-width: 0; flex: 1; }
 .import-reading strong { display: block; font-weight: 600; }
-.import-reading p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; line-height: 1.4; }
+.import-reading p { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; line-height: 1.4; overflow-wrap: anywhere; }
 .import-reading--failed { color: var(--danger); }
 .import-reading--failed p { color: inherit; }
-.import-reading--failed .import-actions { margin-top: 12px; justify-content: flex-start; }
+.import-reading .import-actions { margin-top: 12px; justify-content: flex-start; }
 
 /* The read side of a piece's page. */
 .piece-read { display: grid; gap: 18px; margin-top: 14px; }
@@ -127,3 +128,15 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 .piece-read__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin: 0; }
 .piece-read__facts dt { font-size: 12px; color: var(--muted); }
 .piece-read__facts dd { margin: 1px 0 0; font-size: 15px; text-transform: capitalize; }
+
+/* Wear count on closet tiles, and the accent picker. */
+.gallery-item__worn {
+  position: absolute; inset-block-start: 8px; inset-inline-start: 8px;
+  padding: 2px 7px; border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg) 82%, transparent); color: var(--ink-soft);
+  font-size: 11.5px; font-weight: 600;
+}
+.accent-picker { display: flex; flex-wrap: wrap; gap: 10px; }
+.accent-picker button { width: 44px; height: 44px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.accent-picker button span { width: 30px; height: 30px; border-radius: 50%; }
+.accent-picker button.active span { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--ink); }

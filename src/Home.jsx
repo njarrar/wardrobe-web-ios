@@ -64,8 +64,8 @@ export function HomeView({ items, outfits, setOutfits, plan, weather, onWorn, on
   const wornOutfit = saved.find((outfit) => wornOn(outfit, today) && (outfit.garmentIds || []).some((id) => itemsById.has(id)));
   const planned = !state.seed && !state.locked.length ? saved.find((outfit) => outfit.id === plan?.days?.[today] && (outfit.garmentIds || []).every((id) => itemsById.has(id))) : null;
   const made = useMemo(
-    () => (wornOutfit || planned ? null : makeOutfit({ items, today, weather: weather?.today, locked: state.locked, rejected, seed: state.seed, dress: OCCASIONS[occasion]?.dress || "" })),
-    [wornOutfit, planned, items, today, weather?.today, state, rejected, occasion],
+    () => (wornOutfit || planned ? null : makeOutfit({ items, today, weather: weather?.today, locked: state.locked, rejected, seed: state.seed, dress: OCCASIONS[occasion]?.dress || "", rest: plan?.settings?.pieceRest })),
+    [wornOutfit, planned, items, today, weather?.today, state, rejected, occasion, plan?.settings?.pieceRest],
   );
 
   const fixed = wornOutfit || planned;
@@ -103,7 +103,12 @@ export function HomeView({ items, outfits, setOutfits, plan, weather, onWorn, on
   };
   const toggleLock = (id) => setState((current) => ({ ...current, locked: current.locked.includes(id) ? current.locked.filter((entry) => entry !== id) : [...current.locked, id] }));
 
-  const temperature = weather?.today && Number.isFinite(weather.today.temperature) ? `${Math.round(weather.today.temperature)}°C ${t(weather.today.label || "")}` : "";
+  const now = weather?.today;
+  const temperature = now && Number.isFinite(now.temperature) ? [
+    `${Math.round(now.temperature)}°C ${t(now.label || "")}`.trim(),
+    now.wind >= 20 && t("Wind {n} km/h", { n: now.wind }),
+    now.rainMm >= 1 && t("Rain {n} mm", { n: now.rainMm }),
+  ].filter(Boolean).join(" · ") : "";
 
   return (
     <section className="home" aria-label={t("Today's outfit")}>

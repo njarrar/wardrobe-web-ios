@@ -48,6 +48,18 @@ export function pairingNote(item) {
   return notes.slice(0, 3);
 }
 
+// Two or three words for a closet tile.
+export function tileNote(item) {
+  if (!item?.color) return "";
+  if (isPatterned(item)) return "Keep the rest plain";
+  return colorName(item.color) ? "Best with neutrals" : "Goes with any color";
+}
+
+// Modest wear, by kind, name or tag.
+export function isModestWear(item) {
+  return /abaya|hijab|thobe|kandura|dishdasha|shemagh|ghutra|bisht|jalabiya|kaftan|modest/.test(`${item?.kind || ""} ${item?.name || ""} ${(item?.tags || []).join(" ")}`.toLowerCase());
+}
+
 // Closet pieces from other categories that pair best with this one, best
 // first, at most two per category.
 export function goesWith(item, items = [], { limit = 6, today } = {}) {

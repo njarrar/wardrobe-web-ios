@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.3.2 (a used-up AI limit is said in plain words)
+
+- When your AI key has used up its plan (for example Gemini's free 20 reads a day), the app now says so in one line, with how long to wait. Before, it showed the AI's raw answer.
+- The app does not ask twice more when the plan is used up, so the answer comes at once.
+- A long message under "photos were not read" now wraps and no longer runs off the edge.
+
+## 3.3.1 (a photo can no longer hang the import)
+
+- **Time limit.** The AI gets two minutes for one photo. After that the photo is marked "not read" with a plain reason, and the next photo starts. Before, a request that never came back left the import on "Reading photo 1 of 3" with no end.
+- **Skip this photo.** After 25 seconds a Skip button shows under the reading note. The skipped photo waits under "Try again".
+- The phone app's own AI requests now have a connect and a read time limit.
+
+## 3.3.0 (modest wear, wind and rain, small touches)
+
+- **Modest wear.** Abaya, thobe, hijab, shemagh and bisht are among the basics you can add with no photo, each with its Arabic name. The AI knows these kinds, and the closet has a "Modest wear" group. The outfit maker pairs an abaya with a hijab and a thobe with a shemagh, and adds a hijab to every outfit when you own one.
+- **Rest a piece.** Plan rules has a new choice: how many days a piece rests after you wear it (none to 7, 2 to start). Home and the plan both follow it.
+- **Wind and rain.** The forecast now brings wind speed and how much rain falls. A windy day counts as colder and calls for a layer. A wet day keeps sandals and canvas at home. Home shows the wind and the rain next to the temperature.
+- **Tiles say more.** A closet tile shows how often you wore the piece and, in a few words, how it pairs.
+- **Accent color.** Settings has seven accent colors. The choice stays on this device.
+
 ## 3.2.0 (piece page, worn days, occasions)
 
 - **A piece opens to read.** Its page now shows the picture, wear counts, colors and facts first. The fields sit behind an Edit button, so a stray tap changes nothing.

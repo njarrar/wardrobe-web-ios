@@ -44,6 +44,24 @@ export const SHAPES = {
     <rect x="200" y="120" width="130" height="24" fill="${shade(c, 0.8)}"/>`,
   tote: (c) => `<path d="M230 220 Q230 120 300 120 Q370 120 370 220" fill="none" stroke="${shade(c, 0.75)}" stroke-width="16"/>
     <path d="M150 220 L450 220 L480 500 L120 500 Z" fill="${c}"/>`,
+  abaya: (c) => `<path d="M235 60 L365 60 L405 100 L525 400 L460 428 L412 310 L445 560 L155 560 L188 310 L140 428 L75 400 L195 100 Z" fill="${c}"/>
+    <path d="M255 62 Q300 110 345 62" fill="none" stroke="${shade(c, 0.8)}" stroke-width="8"/>
+    <line x1="300" y1="100" x2="300" y2="560" stroke="${shade(c, 0.78)}" stroke-width="4"/>
+    <path d="M140 428 L75 400 M460 428 L525 400" stroke="${shade(c, 0.78)}" stroke-width="6"/>`,
+  thobe: (c) => `<path d="M232 60 L368 60 L430 100 L492 400 L436 414 L404 250 L422 560 L178 560 L196 250 L164 414 L108 400 L170 100 Z" fill="${c}" stroke="${shade(c, 0.86)}" stroke-width="3"/>
+    <path d="M262 60 L300 96 L338 60 L338 84 L300 118 L262 84 Z" fill="${shade(c, 0.9)}"/>
+    <line x1="300" y1="118" x2="300" y2="300" stroke="${shade(c, 0.82)}" stroke-width="4"/>
+    ${[150, 200, 250].map((y) => `<circle cx="300" cy="${y}" r="5" fill="${shade(c, 0.72)}"/>`).join("")}
+    <rect x="325" y="170" width="46" height="52" rx="5" fill="none" stroke="${shade(c, 0.86)}" stroke-width="3"/>`,
+  hijab: (c) => `<path fill-rule="evenodd" d="M300 80 Q165 80 160 250 Q156 400 110 510 L490 510 Q444 400 440 250 Q435 80 300 80 Z M300 140 Q228 140 226 240 Q226 330 300 334 Q374 330 374 240 Q372 140 300 140 Z" fill="${c}"/>
+    <path d="M226 280 Q260 420 190 510 M374 280 Q350 400 420 510" fill="none" stroke="${shade(c, 0.85)}" stroke-width="6"/>`,
+  shemagh: (c) => `<defs><clipPath id="g"><path d="M300 90 Q170 90 160 250 Q156 400 100 520 L500 520 Q444 400 440 250 Q430 90 300 90 Z"/></clipPath></defs>
+    <g clip-path="url(#g)"><rect width="600" height="600" fill="#f4f1ea"/>
+    ${Array.from({ length: 16 }, (_, i) => `<rect x="${90 + i * 28}" width="9" height="600" fill="${c}"/><rect y="${80 + i * 28}" width="600" height="9" fill="${c}"/>`).join("")}</g>
+    <path d="M178 170 Q300 120 422 170 M176 196 Q300 146 424 196" fill="none" stroke="#1c1c1c" stroke-width="14" stroke-linecap="round"/>`,
+  bisht: (c) => `<path d="M215 70 L385 70 L530 520 L335 548 L300 170 L265 548 L70 520 Z" fill="${c}"/>
+    <path d="M215 70 L300 170 L265 548 M385 70 L300 170 L335 548" fill="none" stroke="#c9a24a" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M250 300 L262 300 M338 300 L350 300" stroke="#c9a24a" stroke-width="8" stroke-linecap="round"/>`,
   scarf: (c) => `<path d="M180 140 Q300 220 420 140 L440 200 Q300 290 160 200 Z" fill="${c}"/>
     <path d="M330 230 L400 230 L420 500 L350 500 Z" fill="${shade(c, 0.9)}"/>
     ${[360, 380, 400].map((x) => `<line x1="${x}" y1="500" x2="${x}" y2="530" stroke="${c}" stroke-width="6"/>`).join("")}`,

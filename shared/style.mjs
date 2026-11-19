@@ -265,16 +265,33 @@ export function targetWarmth(celsius) {
 }
 
 // 1 when the outfit suits the weather, down to 0 when it is far off.
+// Wind makes a day feel colder: 2 degrees at 30 km/h, 4 at 45.
+export function feelsLike(weather) {
+  const wind = Number(weather?.wind) || 0;
+  return weather.temperature - (wind >= 45 ? 4 : wind >= 30 ? 2 : 0);
+}
+
+// 5 mm in a day is real rain, not a passing shower.
+export function isWetDay(weather) {
+  return Boolean(weather?.rain) && (!Number.isFinite(weather?.rainMm) || weather.rainMm >= 5);
+}
+
 export function weatherFit(pieces, weather) {
   if (!weather || !Number.isFinite(weather.temperature)) return 0.5;
-  const target = targetWarmth(weather.temperature);
+  const target = targetWarmth(feelsLike(weather));
   const core = pieces.filter(Boolean);
   if (!core.length) return 0.5;
   const hasLayer = core.some((piece) => piece.part === "wholebody_up");
   const warmth = Math.max(...core.map(itemWarmth)) + (hasLayer && target >= 4 ? 0.5 : 0);
   let fit = 1 - Math.min(1, Math.abs(warmth - target) / 3);
   if (target >= 4 && !hasLayer) fit -= 0.25;
-  if (weather.rain && core.some((piece) => /suede|linen/.test((piece.tags || []).join(" ")))) fit -= 0.2;
+  const words = (piece) => `${piece.kind || ""} ${piece.name || ""} ${(piece.tags || []).join(" ")}`.toLowerCase();
+  if (weather.rain && core.some((piece) => /suede|linen/.test(words(piece)))) fit -= 0.2;
+  if (isWetDay(weather)) {
+    if (core.some((piece) => /sandal|canvas|espadrille|flip/.test(words(piece)))) fit -= 0.25;
+    if (!hasLayer) fit -= 0.1;
+  }
+  if ((Number(weather.wind) || 0) >= 30 && !hasLayer && target >= 3) fit -= 0.15;
   return Math.max(0, fit);
 }
 
@@ -301,7 +318,8 @@ export function occasionFit(outfit, pieces, occasion) {
   return known.filter((piece) => piece.formality === rule.dress).length / known.length;
 }
 
-export const DEFAULT_PLAN_SETTINGS = { workDays: [0, 1, 2, 3, 4], restDays: 7, mixForgotten: true };
+// pieceRest: days a piece rests after it is worn before it is picked again.
+export const DEFAULT_PLAN_SETTINGS = { workDays: [0, 1, 2, 3, 4], restDays: 7, mixForgotten: true, pieceRest: 2 };
 
 function isWorkOutfit(outfit) {
   return (outfit.occasion || []).some((tag) => /work|office|smart|business|formal|meeting/.test(tag));
@@ -319,6 +337,12 @@ export function planDays({ outfits = [], items = [], start, length = 30, setting
   if (!usable.length || !start) return days;
   const lastUsed = new Map();
   const pieceUses = new Map();
+  // The last day each piece was worn or planned, for the piece rest rule.
+  const pieceLast = new Map();
+  const touch = (id, day) => { if (!pieceLast.has(id) || pieceLast.get(id) < day) pieceLast.set(id, day); };
+  for (const item of items) { const last = lastWorn(item); if (last && last < start) touch(item.id, last); }
+  const outfitsById = new Map(usable.map((outfit) => [outfit.id, outfit]));
+  for (const [day, id] of Object.entries(keep)) if (day < start) for (const piece of outfitsById.get(id)?.garmentIds || []) touch(piece, day);
   for (const outfit of usable) {
     const last = lastWorn(outfit);
     if (last) lastUsed.set(outfit.id, last);
@@ -329,6 +353,7 @@ export function planDays({ outfits = [], items = [], start, length = 30, setting
     if (keep[day] && usable.some((outfit) => outfit.id === keep[day])) {
       days[day] = keep[day];
       lastUsed.set(keep[day], day);
+      for (const id of outfitsById.get(keep[day]).garmentIds) touch(id, day);
       continue;
     }
     const work = options.workDays.includes(parseDay(day).getDay());
@@ -346,12 +371,13 @@ export function planDays({ outfits = [], items = [], start, length = 30, setting
       if (options.mixForgotten) score += pieces.reduce((total, piece) => total + Math.min(90, idleDays(piece, day) || 0), 0) / pieces.length / 6;
       score -= pieces.reduce((total, piece) => total + (pieceUses.get(piece.id) || 0), 0) * 3;
       if (weather) score += weatherFit(pieces, weather) * 30;
+      if (options.pieceRest > 0) score -= pieces.filter((piece) => pieceLast.has(piece.id) && daysBetween(pieceLast.get(piece.id), day) <= options.pieceRest).length * 120;
       return { outfit, score, index, top };
     }).sort((a, b) => b.score - a.score || a.index - b.index);
     const pick = scored[0];
     days[day] = pick.outfit.id;
     lastUsed.set(pick.outfit.id, day);
-    for (const id of pick.outfit.garmentIds) pieceUses.set(id, (pieceUses.get(id) || 0) + 1);
+    for (const id of pick.outfit.garmentIds) { pieceUses.set(id, (pieceUses.get(id) || 0) + 1); touch(id, day); }
     previousTop = pick.top || null;
   }
   return days;
@@ -405,7 +431,7 @@ export function normalizePlan(value = {}) {
   return {
     days: Object.fromEntries(kept.map((day) => [day, days[day]])),
     occasions: Object.fromEntries(Object.keys(occasions).sort().slice(-400).map((day) => [day, occasions[day]])),
-    settings: { workDays, restDays, mixForgotten: settings.mixForgotten !== false },
+    settings: { workDays, restDays, mixForgotten: settings.mixForgotten !== false, pieceRest: Number.isInteger(settings.pieceRest) && settings.pieceRest >= 0 && settings.pieceRest <= 14 ? settings.pieceRest : DEFAULT_PLAN_SETTINGS.pieceRest },
     trips,
     updatedAt: new Date().toISOString(),
   };

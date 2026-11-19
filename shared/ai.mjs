@@ -74,6 +74,7 @@ function describe(id, stored, env) {
     baseURL: env(info.baseEnv) || undefined,
     // First wait before a busy AI is tried again (tests set it to 0).
     retryWait: env("WARDROBE_AI_RETRY_MS") ? Number(env("WARDROBE_AI_RETRY_MS")) || 0 : undefined,
+    timeout: Number(env("WARDROBE_AI_TIMEOUT_MS")) > 0 ? Number(env("WARDROBE_AI_TIMEOUT_MS")) : undefined,
   };
 }
 
@@ -151,14 +152,36 @@ function parseJson(text, name) {
 // The AI is busy or briefly down: worth another try.
 const BUSY = new Set([429, 500, 502, 503, 504, 529]);
 
+// A key that has used up its plan: waiting a second will not help.
+const QUOTA = /quota|per day|billing|credit balance|insufficient/i;
+
+// "10h6m39.4s" or a Retry-After header, as plain words.
+function waitWords(detail, response) {
+  const match = /retry in\s+(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?/i.exec(detail);
+  let seconds = match && match[0].trim().length > 8 ? (Number(match[1]) || 0) * 3600 + (Number(match[2]) || 0) * 60 + (Number(match[3]) || 0) : 0;
+  if (!seconds) seconds = Number(response.headers?.get?.("retry-after")) || 0;
+  if (seconds >= 5400) return ` Try again in about ${Math.round(seconds / 3600)} hours`;
+  if (seconds >= 3600) return " Try again in about an hour";
+  if (seconds >= 120) return ` Try again in about ${Math.round(seconds / 60)} minutes`;
+  if (seconds > 0) return " Try again in a minute";
+  return " Try again later";
+}
+
 async function readError(response, name) {
   const text = await response.text().catch(() => "");
   let detail = "";
-  try { const value = JSON.parse(text); detail = value.error?.message || value.message || ""; } catch { detail = text.slice(0, 200); }
+  try { const value = JSON.parse(text); detail = value.error?.message || value.message || ""; } catch { detail = text; }
   const status = response.status === 401 || response.status === 403 ? 502 : response.status === 429 ? 429 : 502;
   if (response.status === 503 || response.status === 529) return new AiError(status, `${name} is busy right now. Your photo was not read. Try again in a minute, or pick another AI in Settings.`);
+  if (response.status === 429 && QUOTA.test(detail)) {
+    const limit = /per day|daily/i.test(detail) ? "daily limit" : "limit";
+    const free = /free tier/i.test(detail) ? ` on the free plan` : "";
+    return new AiError(429, `Your ${name} key has used up its ${limit}${free}. Your photo was not read.${waitWords(detail, response)}, or pick another AI in Settings.`);
+  }
+  if (response.status === 429) return new AiError(429, `${name} is getting too many requests. Your photo was not read.${waitWords(detail, response)}, or pick another AI in Settings.`);
   const hint = response.status === 401 || response.status === 403 ? " Check the API key in Settings." : "";
-  return new AiError(status, `${name} said: ${detail || `HTTP ${response.status}`}.${hint}`);
+  const short = detail.length > 200 ? `${detail.slice(0, 200).trim()}…` : detail.replace(/\.+$/, "");
+  return new AiError(status, `${name} said: ${short || `HTTP ${response.status}`}.${hint}`);
 }
 
 // Sends the request, and tries twice more when the AI is busy.
@@ -169,6 +192,8 @@ async function post(ai, url, init) {
   for (let attempt = 0; ; attempt += 1) {
     const response = await send(url, init);
     if (response.ok || attempt === 2 || !BUSY.has(response.status)) return response;
+    // A used-up plan will say no again, so do not wait and ask twice more.
+    if (response.status === 429 && QUOTA.test(await response.clone().text().catch(() => ""))) return response;
     await response.text().catch(() => "");
     await new Promise((resolve) => setTimeout(resolve, wait * (attempt * 2 + 1)));
   }
@@ -253,10 +278,19 @@ export function requireAi(ai) {
   return ai;
 }
 
+// How long one AI request may take, retries included.
+export const AI_TIMEOUT_MS = 120000;
+
 async function askForJson(ai, request) {
   requireAi(ai);
   try {
-    return await ASK[ai.id](ai, request);
+    // An AI that never answers must not hold the import forever.
+    const limit = ai.timeout ?? AI_TIMEOUT_MS;
+    let timer;
+    const late = new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new AiError(504, `${AI_PROVIDERS[ai.id].name} took too long to answer. Your photo was not read. Try again, or pick another AI in Settings.`)), limit);
+    });
+    try { return await Promise.race([ASK[ai.id](ai, request), late]); } finally { clearTimeout(timer); }
   } catch (error) {
     // A rejected key must not look like a rejected wardrobe token (401 signs the app out).
     if (!(error instanceof AiError) && (error.status === 401 || error.status === 403)) {

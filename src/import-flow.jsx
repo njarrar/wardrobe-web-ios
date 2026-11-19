@@ -44,6 +44,11 @@ async function prepareImage(file) {
 
 const canUseCamera = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
+// One photo may take this long before the queue moves on, and the Skip
+// button shows after SLOW_AFTER_MS. Tests shorten both.
+const READ_LIMIT_MS = Number(globalThis.WARDROBE_READ_LIMIT_MS) || 150000;
+const SLOW_AFTER_MS = Number(globalThis.WARDROBE_SLOW_AFTER_MS) || 25000;
+
 async function api(path, options) {
   const response = await apiFetch(path, {
     ...options,
@@ -184,6 +189,7 @@ export function WardrobeImportFlow({ onGarmentApproved, onStarter, away = false 
   // Reads the waiting photos one by one. Only one run at a time. A photo
   // that fails stays in the queue, marked failed, for "Try again".
   const running = useRef(false);
+  const skipRef = useRef(null);
   const runQueue = useCallback(async () => {
     if (running.current) return;
     running.current = true;
@@ -197,13 +203,25 @@ export function WardrobeImportFlow({ onGarmentApproved, onStarter, away = false 
         const waiting = all.filter((photo) => photo.status === "waiting");
         if (!waiting.length) break;
         const photo = waiting[0];
-        setReading({ index: done + 1, total: done + waiting.length });
+        setReading({ index: done + 1, total: done + waiting.length, since: Date.now() });
+        // A read that hangs, or one the person skips, ends here so the next photo gets its turn.
+        let giveUp;
+        const stopped = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error(t("This photo took too long to read. Try again."))), READ_LIMIT_MS);
+          giveUp = (message) => { clearTimeout(timer); reject(new Error(message)); };
+          skipRef.current = () => giveUp(t("You skipped this photo."));
+        });
         try {
-          const result = await api(API, { method: "POST", body: JSON.stringify({ imageDataUrl: photo.imageDataUrl, metadata: { name: photo.name.replace(/\.[^.]+$/, "") } }) });
+          const request = api(API, { method: "POST", body: JSON.stringify({ imageDataUrl: photo.imageDataUrl, metadata: { name: photo.name.replace(/\.[^.]+$/, "") } }) });
+          request.catch(() => {}); // a late failure after a skip is not an error
+          const result = await Promise.race([request, stopped]);
           await dropPhoto(photo.id);
           await addJobs(result, photo.name);
         } catch (requestError) {
           await savePhoto({ ...photo, status: "failed", error: requestError.message });
+        } finally {
+          giveUp?.("");
+          skipRef.current = null;
         }
         done += 1;
       }
@@ -330,10 +348,18 @@ export function WardrobeImportFlow({ onGarmentApproved, onStarter, away = false 
   const reviewStage = reviewJob ? reviewStageFor(reviewJob) : null;
   const progress = 0;
   const hasImportActivity = Boolean(jobs.length || notice || setupRequired || reading || failed.length);
+  // After a while, offer a way out of a photo that does not finish.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    setSlow(false);
+    if (!reading) return undefined;
+    const timer = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [reading?.since]);
   const readingText = reading ? (reading.total > 1 ? t("Reading photo {n} of {total}…", { n: reading.index, total: reading.total }) : t("Reading your photo…")) : "";
   const garmentReady = jobs.filter((job) => reviewStageFor(job) === "garment").length;
   const failedNote = failed.length > 0 && !reading && <div className="import-reading import-reading--failed" role="alert"><WarningCircle size={22} aria-hidden="true" /><div><strong>{tn(failed.length, "{n} photo was not read", "{n} photos were not read")}</strong><p>{failed[failed.length - 1].error}</p><div className="import-actions"><button className="import-button import-button--primary" type="button" onClick={retryFailed}><ArrowCounterClockwise size={14} /> {t("Try again")}</button><button className="import-button" type="button" onClick={removeFailed}>{t("Remove them")}</button></div></div></div>;
-  const readingNote = reading && <div className="import-reading" role="status"><SpinnerGap size={22} className="import-spinner" aria-hidden="true" /><div><strong>{readingText}</strong><p>{t("The AI is finding each piece. You can leave: photos not read yet are saved and carry on when you open the app again.")}</p></div></div>;
+  const readingNote = reading && <div className="import-reading" role="status"><SpinnerGap size={22} className="import-spinner" aria-hidden="true" /><div><strong>{readingText}</strong><p>{t("The AI is finding each piece. A photo can take up to a minute. You can leave: photos not read yet are saved and carry on when you open the app again.")}</p>{slow && <div className="import-actions"><button className="import-button" onClick={() => skipRef.current?.()}>{t("Skip this photo")}</button></div>}</div></div>;
 
   return (
     <>
