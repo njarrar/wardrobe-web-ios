@@ -401,4 +401,5 @@ export const AR = {
   "Key saved in the Keychain on this device ({hint})": "المفتاح محفوظ في سلسلة المفاتيح على هذا الجهاز ({hint})",
   "Could not open iCloud.": "تعذر فتح iCloud.",
   "iCloud needs the iPhone or iPad app.": "يحتاج iCloud إلى تطبيق iPhone أو iPad.",
+  "Checking iCloud…": "جارٍ التحقق من iCloud…",
 };

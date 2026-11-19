@@ -24,6 +24,19 @@ function jsonHelpers(store) {
       if (!bytes) return fallback;
       try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { return fallback; }
     },
+    // Every copy iCloud holds of a file, the current one first. More than
+    // one means two devices saved at about the same time.
+    async readVersions(name) {
+      const copies = store.readCopies ? await store.readCopies(name) : [await store.readBytes(name)];
+      const parsed = [];
+      for (const bytes of copies) {
+        if (!bytes) continue;
+        try { parsed.push(JSON.parse(new TextDecoder().decode(bytes))); } catch { /* skip a broken copy */ }
+      }
+      parsed.clash = copies.length > 1;
+      return parsed;
+    },
+    async settle(name) { await store.settleCopies?.(name); },
     writeJson(name, value) {
       return store.writeBytes(name, new TextEncoder().encode(JSON.stringify(value)));
     },
@@ -35,8 +48,13 @@ export function createMemoryStore({ kind = "device" } = {}) {
   const files = new Map();
   const secrets = new Map();
   const urls = new Map();
+  // Tests put extra copies here to stand in for an iCloud clash.
+  const clashes = new Map();
   const store = {
     kind,
+    clashes,
+    async readCopies(path) { return [files.get(path) || null, ...(clashes.get(path) || [])]; },
+    async settleCopies(path) { clashes.delete(path); },
     async readBytes(path) { return files.get(path) || null; },
     async writeBytes(path, bytes) {
       files.set(path, bytes);
@@ -113,10 +131,28 @@ export async function createNativeStore() {
   const capacitor = globalThis.Capacitor;
   const plugin = capacitor?.registerPlugin?.("CloudStore");
   if (!plugin) throw new Error("iCloud needs the iPhone or iPad app.");
+  // Waits until iCloud has listed the closet's files, so a new device
+  // never mistakes "not here yet" for "empty".
   const info = await plugin.info();
   const store = {
     kind: info.icloud ? "icloud" : "device",
     root: info.root,
+    async readCopies(path) {
+      const result = await plugin.read({ path, conflicts: true });
+      if (result.missing) return [null];
+      return [fromBase64(result.data), ...(result.conflicts || []).map(fromBase64)];
+    },
+    async settleCopies(path) { await plugin.settle({ path }); },
+    // Asks iCloud to bring a picture down. Takes the link the page used.
+    async fetchFile(url) {
+      const text = decodeURIComponent(String(url).split(/[?#]/, 1)[0]);
+      const at = text.indexOf(info.root);
+      if (at === -1) return false;
+      const path = text.slice(at + info.root.length).replace(/^\/+/, "");
+      return Boolean((await plugin.download({ path })).ready);
+    },
+    // Calls back when iCloud brings changes from another device.
+    onChange(listener) { plugin.addListener?.("changed", listener); },
     async readBytes(path) {
       const result = await plugin.read({ path });
       return result.missing ? null : fromBase64(result.data);

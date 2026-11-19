@@ -9,7 +9,8 @@ import "./styles.css";
 import "./glass.css";
 import "./extras.css";
 import { applyLanguage } from "./i18n.js";
-import { setClosetMode, startLocalMode } from "./local/mode.js";
+import { announceChange, closetMode, localApi, setClosetMode, startLocalMode } from "./local/mode.js";
+import { t } from "./i18n.js";
 import packageInfo from "../package.json";
 
 applyLanguage();
@@ -20,6 +21,32 @@ function render() {
       <App />
     </React.StrictMode>,
   );
+}
+
+// Coming back to the app: the closet may have changed on another device.
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") announceChange(300); });
+
+// A picture that is still in iCloud fails to load at first. Ask iCloud for
+// it and try again, a few times.
+document.addEventListener("error", (event) => {
+  const image = event.target;
+  const store = localApi()?.store;
+  if (!(image instanceof HTMLImageElement) || !store?.fetchFile) return;
+  const tries = Number(image.dataset.cloudTries || 0);
+  if (tries >= 3) return;
+  image.dataset.cloudTries = String(tries + 1);
+  const link = image.currentSrc || image.src;
+  store.fetchFile(link).then((ready) => {
+    if (ready && image.isConnected) image.src = `${link.split("#")[0]}#${tries + 1}`;
+  }).catch(() => {});
+}, true);
+
+// On a new device iCloud needs a moment to list the closet. Say so.
+if (closetMode() === "local") {
+  const wait = document.createElement("p");
+  wait.className = "cloud-wait";
+  wait.textContent = t("Checking iCloud…");
+  document.getElementById("root").append(wait);
 }
 
 // An iCloud closet opens its files first; if that fails, the app falls back

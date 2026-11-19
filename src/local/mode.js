@@ -43,6 +43,15 @@ export async function nativeFetch(input, init = {}) {
   return new Response(body, { status: result.status, headers: result.headers || {} });
 }
 
+// Sent when the closet may have changed behind the app's back: iCloud
+// synced, or the app came back to the front.
+export const CLOSET_CHANGED_EVENT = "wardrobe:closet-changed";
+let announceTimer = null;
+export function announceChange(delay = 1500) {
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => window.dispatchEvent(new Event(CLOSET_CHANGED_EVENT)), delay);
+}
+
 async function deviceCutout(pngBytes) {
   const { cutOutPng } = await import("../cutout.js");
   return cutOutPng(pngBytes);
@@ -54,5 +63,7 @@ export async function startLocalMode({ version } = {}) {
   const native = globalThis.Capacitor?.isNativePlatform?.();
   const store = native ? await createNativeStore() : await createWebStore();
   api = createLocalApi({ store, version, aiFetch: native ? nativeFetch : null, cutout: native ? deviceCutout : null });
+  // iCloud brought changes from another device: have the screens reload.
+  store.onChange?.(() => announceChange());
   return api;
 }

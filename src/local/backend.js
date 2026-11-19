@@ -19,6 +19,7 @@ import {
 import { normalizePlan } from "../../shared/style.mjs";
 import { AiError, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, sortCloset, styleOutfits } from "../../shared/ai.mjs";
 import { cropDetectedItem, decodePng, encodePng, frameTransparentGarment, resize } from "../../shared/pixels.mjs";
+import { mergePlans, mergeRecords, mergeRemoved, stampChanges, trimRemoved } from "../../shared/merge.mjs";
 import { fromBase64, toBase64 } from "./store.js";
 
 const ASSET_ROOT = "/api/import/assets";
@@ -75,22 +76,56 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
   // One change at a time, so two quick edits never undo each other.
   const serially = (task) => { const next = queue.then(task, task); queue = next.catch(() => {}); return next; };
 
-  const items = () => store.readJson("items.json", []);
-  const outfits = () => store.readJson("outfits.json", []);
+  // Reads a file. When iCloud holds more than one copy (two devices saved
+  // at about the same time), joins them, saves the result and tells iCloud
+  // the clash is settled.
+  async function load(name, fallback, join) {
+    const versions = store.readVersions ? await store.readVersions(name) : [];
+    if (!versions.clash) return versions.length ? versions[0] : fallback;
+    if (!versions.length) return fallback;
+    const joined = await join(versions);
+    await store.writeJson(name, joined);
+    await store.settle(name);
+    return joined;
+  }
+  const removed = async () => {
+    const value = await load("removed.json", {}, (versions) => ({ items: mergeRemoved(versions.map((entry) => entry?.items)), outfits: mergeRemoved(versions.map((entry) => entry?.outfits)) }));
+    return { items: value?.items || {}, outfits: value?.outfits || {} };
+  };
+  const items = () => load("items.json", [], async (versions) => mergeRecords(versions, (await removed()).items));
+  const outfits = () => load("outfits.json", [], async (versions) => mergeRecords(versions, (await removed()).outfits));
+  const plan = () => load("plan.json", {}, mergePlans);
   const jobs = () => store.readJson("jobs.json", {});
   const aiSettings = async () => { try { return JSON.parse((await store.getSecret(AI_SECRET)) || "{}"); } catch { return {}; } };
   // Only tests pass env (to point the AI at a stand-in); the app passes none.
   const noEnv = env;
   const currentAi = async () => ({ ...resolveAi(await aiSettings(), noEnv), ...(aiFetch ? { fetch: aiFetch } : {}) });
 
+  // Saves a changed list: stamps what changed, and notes what was removed.
+  async function saveList(kind, before, after) {
+    const now = new Date().toISOString();
+    const { list, removed: gone } = stampChanges(before, after, now);
+    await store.writeJson(`${kind}.json`, list);
+    if (gone.length) {
+      const notes = await removed();
+      for (const id of gone) notes[kind][id] = now;
+      await store.writeJson("removed.json", { items: trimRemoved(notes.items), outfits: trimRemoved(notes.outfits) });
+    }
+    return list;
+  }
   const editItems = (change) => serially(async () => {
-    const result = await change(await items());
-    if (result.items) await store.writeJson("items.json", result.items);
+    const before = await items();
+    const result = await change(before);
+    if (result.items) {
+      const saved = await saveList("items", before, result.items);
+      if (result.value && typeof result.value === "object" && result.value.id) return saved.find((record) => record.id === result.value.id) || result.value;
+    }
     return result.value;
   });
   const editOutfits = (change) => serially(async () => {
-    const result = await change(await outfits());
-    if (result.outfits) await store.writeJson("outfits.json", result.outfits);
+    const before = await outfits();
+    const result = await change(before);
+    if (result.outfits) await saveList("outfits", before, result.outfits);
     return result.value;
   });
   const editJobs = (change) => serially(async () => {
@@ -150,7 +185,7 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
       return json(200, publicAiSettings(next, noEnv));
     }
 
-    if (pathname === "/api/import/plan" && method === "GET") return json(200, normalizePlan(await store.readJson("plan.json", {})));
+    if (pathname === "/api/import/plan" && method === "GET") return json(200, normalizePlan(await plan()));
     if (pathname === "/api/import/plan" && method === "PUT") {
       const plan = normalizePlan(readBody(options));
       await serially(() => store.writeJson("plan.json", plan));
