@@ -1,5 +1,6 @@
 import { apiFetch } from "./api.js";
 import { dayString } from "../shared/style.mjs";
+import { t } from "./i18n.js";
 
 export async function sendJson(path, method, payload, failure) {
   const response = await apiFetch(path, {
@@ -13,11 +14,11 @@ export async function sendJson(path, method, payload, failure) {
 }
 
 export function patchItem(id, changes) {
-  return sendJson(`/api/import/wardrobe/${encodeURIComponent(id)}`, "PATCH", changes, "Could not save your changes.");
+  return sendJson(`/api/import/wardrobe/${encodeURIComponent(id)}`, "PATCH", changes, t("Could not save your changes."));
 }
 
 export function patchOutfit(id, changes) {
-  return sendJson(`/api/import/outfits/${encodeURIComponent(id)}`, "PATCH", changes, "Could not save the outfit.");
+  return sendJson(`/api/import/outfits/${encodeURIComponent(id)}`, "PATCH", changes, t("Could not save the outfit."));
 }
 
 // Logs (or with undo, takes back) a day an outfit was worn, on the outfit and

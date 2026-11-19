@@ -5,6 +5,7 @@
 import {
   MAX_STYLE_COUNT,
   applyOutfitEdit,
+  canMakeOutfit,
   checkPng,
   garmentFileName,
   newPieceRecord,
@@ -77,24 +78,30 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
   const serially = (task) => { const next = queue.then(task, task); queue = next.catch(() => {}); return next; };
 
   // Reads a file. When iCloud holds more than one copy (two devices saved
-  // at about the same time), joins them, saves the result and tells iCloud
-  // the clash is settled.
-  async function load(name, fallback, join) {
+  // at about the same time), joins them inside the write queue, saves the
+  // result and tells iCloud the clash is settled so concurrent edits never race.
+  async function resolveClash(name, fallback, join) {
     const versions = store.readVersions ? await store.readVersions(name) : [];
-    if (!versions.clash) return versions.length ? versions[0] : fallback;
     if (!versions.length) return fallback;
+    if (!versions.clash) return versions[0];
     const joined = await join(versions);
     await store.writeJson(name, joined);
     await store.settle(name);
     return joined;
   }
-  const removed = async () => {
-    const value = await load("removed.json", {}, (versions) => ({ items: mergeRemoved(versions.map((entry) => entry?.items)), outfits: mergeRemoved(versions.map((entry) => entry?.outfits)) }));
+  async function load(name, fallback, join, { insideQueue = false } = {}) {
+    const versions = store.readVersions ? await store.readVersions(name) : [];
+    if (!versions.clash) return versions.length ? versions[0] : fallback;
+    if (insideQueue) return resolveClash(name, fallback, join);
+    return serially(() => resolveClash(name, fallback, join));
+  }
+  const removed = async (insideQueue = false) => {
+    const value = await load("removed.json", {}, (versions) => ({ items: mergeRemoved(versions.map((entry) => entry?.items)), outfits: mergeRemoved(versions.map((entry) => entry?.outfits)) }), { insideQueue });
     return { items: value?.items || {}, outfits: value?.outfits || {} };
   };
-  const items = () => load("items.json", [], async (versions) => mergeRecords(versions, (await removed()).items));
-  const outfits = () => load("outfits.json", [], async (versions) => mergeRecords(versions, (await removed()).outfits));
-  const plan = () => load("plan.json", {}, mergePlans);
+  const items = (insideQueue = false) => load("items.json", [], async (versions) => mergeRecords(versions, (await removed(true)).items), { insideQueue });
+  const outfits = (insideQueue = false) => load("outfits.json", [], async (versions) => mergeRecords(versions, (await removed(true)).outfits), { insideQueue });
+  const plan = (insideQueue = false) => load("plan.json", {}, mergePlans, { insideQueue });
   const jobs = () => store.readJson("jobs.json", {});
   const aiSettings = async () => { try { return JSON.parse((await store.getSecret(AI_SECRET)) || "{}"); } catch { return {}; } };
   // Only tests pass env (to point the AI at a stand-in); the app passes none.
@@ -107,14 +114,14 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
     const { list, removed: gone } = stampChanges(before, after, now);
     await store.writeJson(`${kind}.json`, list);
     if (gone.length) {
-      const notes = await removed();
+      const notes = await removed(true);
       for (const id of gone) notes[kind][id] = now;
       await store.writeJson("removed.json", { items: trimRemoved(notes.items), outfits: trimRemoved(notes.outfits) });
     }
     return list;
   }
   const editItems = (change) => serially(async () => {
-    const before = await items();
+    const before = await items(true);
     const result = await change(before);
     if (result.items) {
       const saved = await saveList("items", before, result.items);
@@ -123,7 +130,7 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
     return result.value;
   });
   const editOutfits = (change) => serially(async () => {
-    const before = await outfits();
+    const before = await outfits(true);
     const result = await change(before);
     if (result.outfits) await saveList("outfits", before, result.outfits);
     return result.value;
@@ -187,9 +194,12 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
 
     if (pathname === "/api/import/plan" && method === "GET") return json(200, normalizePlan(await plan()));
     if (pathname === "/api/import/plan" && method === "PUT") {
-      const plan = normalizePlan(readBody(options));
-      await serially(() => store.writeJson("plan.json", plan));
-      return json(200, plan);
+      const nextPlan = normalizePlan(readBody(options));
+      await serially(async () => {
+        await plan(true);
+        await store.writeJson("plan.json", nextPlan);
+      });
+      return json(200, nextPlan);
     }
 
     if (pathname === "/api/import/wardrobe/sort" && method === "POST") {
@@ -222,8 +232,8 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
       const count = Math.max(1, Math.min(MAX_STYLE_COUNT, Math.round(Number(input.count) || 4)));
       const notes = typeof input.notes === "string" ? input.notes.trim().slice(0, 500) : "";
       const all = await items();
-      if (!all.some((item) => item.part === "upperbody") || !all.some((item) => item.part === "lowerbody")) {
-        throw new HttpError(409, "Add at least one top and one bottom before styling outfits.");
+      if (!canMakeOutfit(all)) {
+        throw new HttpError(409, "Add a one-piece, or at least one top and one bottom, before styling outfits.");
       }
       const created = await styleOutfits(await currentAi(), { items: all, outfits: await outfits(), count, notes, ...styleOptions(input) });
       await editOutfits((list) => ({ outfits: [...list, ...created] }));
@@ -232,11 +242,12 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
     const outfitMatch = pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
     if (outfitMatch && method === "PATCH") {
       const input = readBody(options);
+      const closet = input.swap ? await items() : null;
       const updated = await editOutfits((list) => {
         const index = list.findIndex((outfit) => outfit.id === outfitMatch[1]);
         if (index === -1) return { value: null };
         const next = [...list];
-        next[index] = applyOutfitEdit(list[index], input);
+        next[index] = applyOutfitEdit(list[index], input, closet);
         return { outfits: next, value: next[index] };
       });
       return updated ? json(200, updated) : json(404, { error: "Outfit not found" });

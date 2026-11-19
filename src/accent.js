@@ -1,7 +1,8 @@
-// The app's accent color: the tint on buttons, marks and today's date.
-// Kept on this device. "rust" is the color the app ships with.
+// The app's accent color and appearance (auto, light, dark). Kept on this
+// device. "rust" and "auto" are what the app ships with.
 
 const KEY = "wardrobe-accent";
+const THEME_KEY = "wardrobe-theme";
 
 // [light mode, dark mode]
 export const ACCENTS = [
@@ -14,8 +15,24 @@ export const ACCENTS = [
   { id: "ink", label: "Ink", colors: ["#3a3a3a", "#d4d2cc"] },
 ];
 
+export const THEMES = [
+  { id: "auto", label: "Auto" },
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+];
+
 export function accent() {
   try { const saved = localStorage.getItem(KEY); return ACCENTS.some((entry) => entry.id === saved) ? saved : "rust"; } catch { return "rust"; }
+}
+
+export function theme() {
+  try { const saved = localStorage.getItem(THEME_KEY); return THEMES.some((entry) => entry.id === saved) ? saved : "auto"; } catch { return "auto"; }
+}
+
+function isDarkNow(mode = theme()) {
+  if (mode === "dark") return true;
+  if (mode === "light") return false;
+  return Boolean(window.matchMedia?.("(prefers-color-scheme: dark)")?.matches);
 }
 
 function rgba(hex, alpha) {
@@ -25,20 +42,34 @@ function rgba(hex, alpha) {
 
 let watching = false;
 
+export function applyTheme(mode = theme()) {
+  const root = document.documentElement;
+  if (mode === "light" || mode === "dark") root.dataset.theme = mode;
+  else delete root.dataset.theme;
+  applyAccent(accent(), mode);
+}
+
+export function setTheme(mode) {
+  const next = THEMES.some((entry) => entry.id === mode) ? mode : "auto";
+  try { if (next === "auto") localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, next); } catch { /* storage unavailable */ }
+  applyTheme(next);
+}
+
 // Sets the CSS colors for the chosen accent, in light and dark mode.
-export function applyAccent(id = accent()) {
+export function applyAccent(id = accent(), mode = theme()) {
   const entry = ACCENTS.find((option) => option.id === id) || ACCENTS[0];
-  const dark = window.matchMedia?.("(prefers-color-scheme: dark)");
+  const darkQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+  const dark = isDarkNow(mode);
   const style = document.documentElement.style;
   if (entry.id === "rust") {
     for (const name of ["--accent", "--accent-soft", "--focus"]) style.removeProperty(name);
   } else {
-    const color = entry.colors[dark?.matches ? 1 : 0];
+    const color = entry.colors[dark ? 1 : 0];
     style.setProperty("--accent", color);
-    style.setProperty("--accent-soft", rgba(color, dark?.matches ? 0.16 : 0.12));
-    style.setProperty("--focus", `0 0 0 3px ${rgba(color, dark?.matches ? 0.4 : 0.35)}`);
+    style.setProperty("--accent-soft", rgba(color, dark ? 0.16 : 0.12));
+    style.setProperty("--focus", `0 0 0 3px ${rgba(color, dark ? 0.4 : 0.35)}`);
   }
-  if (!watching && dark?.addEventListener) { watching = true; dark.addEventListener("change", () => applyAccent()); }
+  if (!watching && darkQuery?.addEventListener) { watching = true; darkQuery.addEventListener("change", () => applyAccent()); }
 }
 
 export function setAccent(id) {

@@ -4,6 +4,7 @@
 // background from a Queue so requests return right away.
 import {
   MAX_STYLE_COUNT,
+  canMakeOutfit,
   styleOptions,
   checkPng,
   garmentFileName,
@@ -305,6 +306,7 @@ async function handleApi(request, env) {
     const updated = [];
     for (const { id, ...fields } of todo.length ? await sortCloset(ai, todo) : []) {
       const record = all.find((item) => item.id === id);
+      if (!record) continue;
       const next = { ...record, ...fields };
       await env.DB.prepare("UPDATE items SET data = ? WHERE id = ?").bind(JSON.stringify(next), id).run();
       updated.push(next);
@@ -324,8 +326,8 @@ async function handleApi(request, env) {
     const count = Math.max(1, Math.min(MAX_STYLE_COUNT, Math.round(Number(input.count) || 4)));
     const notes = typeof input.notes === "string" ? input.notes.trim().slice(0, 500) : "";
     const items = await listItems(env);
-    if (!items.some((item) => item.part === "upperbody") || !items.some((item) => item.part === "lowerbody")) {
-      throw new HttpError(409, "Add at least one top and one bottom before styling outfits.");
+    if (!canMakeOutfit(items)) {
+      throw new HttpError(409, "Add a one-piece, or at least one top and one bottom, before styling outfits.");
     }
     const created = await styleOutfits(await currentAi(env), { items, outfits: await listOutfits(env), count, notes, ...styleOptions(input) });
     for (const outfit of created) await saveOutfit(env, outfit);
@@ -371,7 +373,9 @@ async function handleApi(request, env) {
   if (outfitMatch && method === "PATCH") {
     const row = await env.DB.prepare("SELECT data FROM outfits WHERE id = ?").bind(outfitMatch[1]).first();
     if (!row) return json(404, { error: "Outfit not found" });
-    const next = applyOutfitEdit(JSON.parse(row.data), await readJson(request, 64 * 1024));
+    const input = await readJson(request, 64 * 1024);
+    const items = input.swap ? await listItems(env) : null;
+    const next = applyOutfitEdit(JSON.parse(row.data), input, items);
     await saveOutfit(env, next);
     const fileName = typeof next.image === "string" ? next.image.split("/").pop() : null;
     return json(200, { ...next, image: fileName ? `${OUTFIT_ASSET_ROOT}/${fileName}` : null });

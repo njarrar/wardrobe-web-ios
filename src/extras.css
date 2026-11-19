@@ -44,6 +44,7 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 [dir="rtl"] .sort-select svg { left: auto; right: 14px; }
 [dir="rtl"] .outfit-viewer .viewer-icon-close { right: auto; left: 14px; }
 [dir="rtl"] .plan-day.is-trip::after, [dir="rtl"] .plan-day.is-repeat::before { right: auto; left: 5px; }
+[dir="rtl"] .plan-nav svg { transform: scaleX(-1); }
 [dir="rtl"] .import-tray__actions { transform: translateX(-8px); }
 [dir="rtl"] .forgotten__list, [dir="rtl"] .gallery-grid { direction: rtl; }
 [dir="rtl"] .sort-select select { padding: 0 38px 0 18px; }
@@ -80,11 +81,46 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 /* Dark mode: black and navy clothes vanish on a near-black tile, so the
    backing behind every piece picture is a mid grey. */
 @media (prefers-color-scheme: dark) {
-  :root { --tile: radial-gradient(120% 90% at 50% 20%, #55555c 0%, #3f3f45 100%); }
-  .gallery-item__media, .viewer-art, .outfit-card > .outfit-collage, div.outfit-viewer__photo,
-  .today-card__piece, .forgotten__media, .plan-pieces--large img, .packing-list img, .outfit-viewer__pieces img, .outfit-builder__items img,
-  .starter-piece img, .import-editor__preview, .import-card__image { background: var(--tile); }
+  :root:not([data-theme="light"]) { --tile: radial-gradient(120% 90% at 50% 20%, #55555c 0%, #3f3f45 100%); }
+  :root:not([data-theme="light"]) .gallery-item__media,
+  :root:not([data-theme="light"]) .viewer-art,
+  :root:not([data-theme="light"]) .flat-lay,
+  :root:not([data-theme="light"]) .outfit-card > .outfit-collage,
+  :root:not([data-theme="light"]) div.outfit-viewer__photo,
+  :root:not([data-theme="light"]) .today-card__piece,
+  :root:not([data-theme="light"]) .forgotten__media,
+  :root:not([data-theme="light"]) .plan-pieces--large img,
+  :root:not([data-theme="light"]) .packing-list img,
+  :root:not([data-theme="light"]) .outfit-piece-row__thumb,
+  :root:not([data-theme="light"]) .outfit-swap-tray__list button span,
+  :root:not([data-theme="light"]) .swap-drawer__list button span,
+  :root:not([data-theme="light"]) .piece-read__row span,
+  :root:not([data-theme="light"]) .insights-row img,
+  :root:not([data-theme="light"]) .outfit-builder__items img,
+  :root:not([data-theme="light"]) .starter-piece img,
+  :root:not([data-theme="light"]) .import-editor__preview,
+  :root:not([data-theme="light"]) .import-card__image { background: var(--tile); }
 }
+
+:root[data-theme="dark"] { --tile: radial-gradient(120% 90% at 50% 20%, #55555c 0%, #3f3f45 100%); }
+:root[data-theme="dark"] .gallery-item__media,
+:root[data-theme="dark"] .viewer-art,
+:root[data-theme="dark"] .flat-lay,
+:root[data-theme="dark"] .outfit-card > .outfit-collage,
+:root[data-theme="dark"] div.outfit-viewer__photo,
+:root[data-theme="dark"] .today-card__piece,
+:root[data-theme="dark"] .forgotten__media,
+:root[data-theme="dark"] .plan-pieces--large img,
+:root[data-theme="dark"] .packing-list img,
+:root[data-theme="dark"] .outfit-piece-row__thumb,
+:root[data-theme="dark"] .outfit-swap-tray__list button span,
+:root[data-theme="dark"] .swap-drawer__list button span,
+:root[data-theme="dark"] .piece-read__row span,
+:root[data-theme="dark"] .insights-row img,
+:root[data-theme="dark"] .outfit-builder__items img,
+:root[data-theme="dark"] .starter-piece img,
+:root[data-theme="dark"] .import-editor__preview,
+:root[data-theme="dark"] .import-card__image { background: var(--tile); }
 
 .cloud-wait { margin: 40vh 24px 0; text-align: center; color: var(--muted); font-size: 16px; }
 
@@ -112,22 +148,89 @@ html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3 { letter-spacing: 0; 
 .import-reading--failed p { color: inherit; }
 .import-reading .import-actions { margin-top: 12px; justify-content: flex-start; }
 
-/* The read side of a piece's page. */
-.piece-read { display: grid; gap: 18px; margin-top: 14px; }
-.piece-read h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
+/* The read side of a piece's page: bento attribute tiles, warmth dots and pairing note. */
+.piece-read { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 14px; }
+.piece-read h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 13px; font-weight: 620; color: var(--muted); letter-spacing: 0; }
 .piece-read__colors { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .piece-read__colors span { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); }
 .piece-read__colors em { padding: 3px 10px; border-radius: var(--radius-pill); background: var(--surface-2); color: var(--ink-soft); font-size: 12.5px; font-style: normal; }
-.piece-read__note p { margin: 0 0 4px; font-size: 15px; line-height: 1.45; }
+.piece-read__note {
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.piece-read__note h3 { color: var(--accent); margin-bottom: 6px; }
+.piece-read__note p { margin: 0 0 4px; font-size: 14.5px; line-height: 1.5; color: var(--ink); }
+.piece-read__note p:last-child { margin-bottom: 0; }
 .piece-read__row { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .piece-read__row::-webkit-scrollbar { display: none; }
 .piece-read__row button { flex: none; width: 84px; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: start; cursor: pointer; }
-.piece-read__row span { display: grid; place-items: center; height: 84px; border-radius: 16px; background: var(--paper); }
+.piece-read__row span { display: grid; place-items: center; height: 84px; border-radius: 16px; background: var(--paper); border: 1px solid var(--line); }
 .piece-read__row img { width: 80%; height: 80%; object-fit: contain; }
 .piece-read__row small { display: block; margin-top: 4px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.piece-read__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin: 0; }
-.piece-read__facts dt { font-size: 12px; color: var(--muted); }
-.piece-read__facts dd { margin: 1px 0 0; font-size: 15px; text-transform: capitalize; }
+.piece-read__facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.piece-read__tile {
+  padding: 11px 13px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.piece-read__facts dt { font-size: 11.5px; font-weight: 560; color: var(--muted); }
+.piece-read__facts dd { margin: 4px 0 0; font-size: 14.5px; font-weight: 600; text-transform: capitalize; color: var(--ink); }
+.bento-color { display: inline-flex; align-items: center; gap: 7px; }
+.bento-color__dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line-strong); flex: none; }
+.bento-warmth { display: flex; flex-direction: column; gap: 3px; }
+.bento-warmth small { font-size: 12px; font-weight: 520; color: var(--muted); text-transform: none; }
+.warmth-dots { display: inline-flex; gap: 5px; }
+.warmth-dots span { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+.warmth-dots span.is-on { background: var(--accent); }
+.piece-read__style { width: 100%; justify-content: center; }
+
+/* Collapsible Closet filter toggle pill */
+.filter-toggle { position: relative; flex: none; }
+.filter-toggle.is-on { border-color: var(--accent); color: var(--accent); }
+.filter-toggle__badge {
+  position: absolute; top: -4px; inset-inline-end: -4px;
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px;
+  background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 700;
+  display: grid; place-items: center;
+}
+
+/* Closet Insights & CPW Analytics sheet */
+.insights-sheet { max-height: min(90vh, 920px); overflow-y: auto; }
+.insights-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.insights-kpi {
+  display: grid; gap: 2px; padding: 13px 14px; border-radius: 16px;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.insights-kpi span { font-size: 12px; color: var(--muted); font-weight: 560; }
+.insights-kpi strong { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.insights-kpi small { font-size: 12px; color: var(--muted); }
+.insights-section { margin-top: 20px; display: grid; gap: 10px; }
+.insights-section h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 15px; font-weight: 640; }
+.insights-palette-bar {
+  display: flex; gap: 3px; height: 12px; border-radius: 999px; overflow: hidden;
+  background: var(--surface-2);
+}
+.insights-palette-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px;
+  font-size: 13px;
+}
+.insights-palette-list li { display: flex; align-items: center; gap: 7px; }
+.insights-palette-list strong { margin-inline-start: auto; color: var(--muted); font-weight: 600; }
+.insights-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--line-strong); flex: none; }
+.insights-rows { display: grid; gap: 8px; }
+.insights-row {
+  display: flex; align-items: center; gap: 12px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--bg);
+  color: var(--ink); font: inherit; text-align: start; cursor: pointer;
+}
+.insights-row img { width: 46px; height: 46px; padding: 4px; border-radius: 10px; object-fit: contain; background: var(--surface-2); flex: none; }
+.insights-row__body { min-width: 0; display: grid; gap: 2px; }
+.insights-row__body strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insights-row__body small { font-size: 12.5px; color: var(--muted); }
 
 /* Wear count on closet tiles, and the accent picker. */
 .gallery-item__worn {

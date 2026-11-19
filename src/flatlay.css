@@ -1,0 +1,214 @@
+/* Anatomical flat-lay outfit collage shared across Home, Outfits cards,
+   Outfit detail and Build-Your-Own preview. */
+
+.flat-lay {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, auto);
+  gap: 8px;
+  padding: 16px 14px;
+  border-radius: var(--radius-lg);
+  background: radial-gradient(115% 88% at 50% 18%, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--line);
+}
+
+.flat-lay--card {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  padding: 12px 10px;
+  gap: 4px;
+  border-radius: var(--radius);
+  align-content: center;
+}
+
+.flat-lay--detail {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  padding: 20px 18px;
+  border: 0;
+  border-radius: 0;
+  align-content: center;
+}
+
+.flat-lay__piece {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 1;
+}
+
+/* Anatomical slot placement: upper torso (coat + top) on row 1,
+   lower torso (bottom + accessory) on row 2, shoes anchored at foot. */
+.flat-lay__slot--top {
+  grid-column: 3 / span 8;
+  grid-row: 1;
+  aspect-ratio: 1.08;
+}
+.flat-lay.has-layer .flat-lay__slot--layer {
+  grid-column: 1 / span 6;
+  grid-row: 1;
+  aspect-ratio: 0.92;
+}
+.flat-lay.has-layer .flat-lay__slot--top {
+  grid-column: 7 / span 6;
+  grid-row: 1;
+  aspect-ratio: 0.96;
+}
+.flat-lay.has-onepiece .flat-lay__slot--onepiece {
+  grid-column: 3 / span 8;
+  grid-row: 1 / span 2;
+  aspect-ratio: 0.68;
+}
+.flat-lay.has-onepiece.has-layer .flat-lay__slot--layer {
+  grid-column: 1 / span 5;
+  grid-row: 1;
+}
+.flat-lay.has-onepiece.has-layer .flat-lay__slot--onepiece {
+  grid-column: 6 / span 7;
+  grid-row: 1 / span 2;
+}
+.flat-lay__slot--bottom {
+  grid-column: 3 / span 8;
+  grid-row: 2;
+  aspect-ratio: 1.05;
+}
+.flat-lay.has-accessory .flat-lay__slot--bottom {
+  grid-column: 2 / span 7;
+  grid-row: 2;
+}
+.flat-lay__slot--accessory {
+  grid-column: 9 / span 4;
+  grid-row: 2;
+  align-self: center;
+  aspect-ratio: 1;
+}
+.flat-lay.has-onepiece:not(.has-bottom) .flat-lay__slot--accessory {
+  grid-column: 9 / span 4;
+  grid-row: 1;
+  align-self: end;
+}
+.flat-lay__slot--shoes {
+  grid-column: 4 / span 6;
+  grid-row: 3;
+  aspect-ratio: 1.85;
+}
+.flat-lay.has-onepiece:not(.has-bottom) .flat-lay__slot--shoes {
+  grid-row: 3;
+}
+.flat-lay__slot--extra {
+  grid-column: span 4;
+}
+
+/* 1-piece fallback */
+.flat-lay--count-1 .flat-lay__piece {
+  grid-column: 2 / span 10;
+  grid-row: 1;
+  aspect-ratio: 0.9;
+}
+
+/* Compact sizing for cards so nothing overflows the 4:5 frame */
+.flat-lay--card .flat-lay__slot--top,
+.flat-lay--card .flat-lay__slot--bottom { aspect-ratio: 1.15; }
+.flat-lay--card .flat-lay__slot--shoes { aspect-ratio: 2.1; }
+.flat-lay--card .flat-lay__open img { width: 96%; height: 96%; }
+
+.flat-lay__open {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  transition: transform 240ms var(--ease), box-shadow 180ms ease;
+}
+span.flat-lay__open { cursor: default; }
+button.flat-lay__open:active { transform: scale(0.97); }
+.flat-lay__open img {
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+  min-height: 0;
+  filter: drop-shadow(0 10px 14px rgba(22, 21, 20, 0.14));
+}
+
+.flat-lay__lock {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  z-index: 2;
+}
+.flat-lay__lock svg {
+  padding: 6px;
+  box-sizing: content-box;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+.flat-lay__lock[aria-pressed="true"] svg {
+  background: var(--ink);
+  color: var(--on-ink, var(--bg));
+}
+
+.flat-lay__swap {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-end: 0;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  z-index: 2;
+}
+.flat-lay__swap svg {
+  padding: 6px;
+  box-sizing: content-box;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+.flat-lay__swap.is-active svg {
+  background: var(--accent);
+  color: #fff;
+}
+
+.flat-lay__piece.is-locked .flat-lay__open {
+  box-shadow: inset 0 0 0 2px var(--ink);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.flat-lay__piece.is-swapping .flat-lay__open {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Home: keep the whole outfit and its buttons on one phone screen. */
+.flat-lay--hero { padding: 12px 14px; gap: 6px; }
+.flat-lay--hero .flat-lay__slot--top,
+.flat-lay--hero .flat-lay__slot--bottom { grid-column: 4 / span 6; aspect-ratio: 1.4; }
+.flat-lay--hero.has-accessory .flat-lay__slot--bottom { grid-column: 3 / span 6; }
+.flat-lay--hero.has-accessory .flat-lay__slot--accessory { grid-column: 9 / span 3; }
+.flat-lay--hero.has-layer .flat-lay__slot--layer { grid-column: 2 / span 5; aspect-ratio: 1.15; }
+.flat-lay--hero.has-layer .flat-lay__slot--top { grid-column: 7 / span 5; aspect-ratio: 1.15; }
+.flat-lay--hero.has-onepiece .flat-lay__slot--onepiece { grid-column: 4 / span 6; aspect-ratio: 0.68; }
+.flat-lay--hero.has-onepiece.has-layer .flat-lay__slot--layer { grid-column: 1 / span 4; }
+.flat-lay--hero.has-onepiece.has-layer .flat-lay__slot--onepiece { grid-column: 5 / span 6; }
+.flat-lay--hero .flat-lay__slot--shoes { grid-column: 5 / span 4; aspect-ratio: 1.6; }
+.flat-lay--hero.flat-lay--count-1 .flat-lay__piece { grid-column: 4 / span 6; }

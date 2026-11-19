@@ -219,22 +219,33 @@ public class CloudStorePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func read(_ call: CAPPluginCall) {
         work.async {
             guard let url = self.fileURL(call) else { return }
-            guard self.waitForDownload(url) else { call.resolve(["missing": true]); return }
-            var result: Data?
-            var failure: NSError?
-            NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &failure) { readURL in
-                result = try? Data(contentsOf: readURL)
-            }
-            guard let result else { call.reject("Could not read \(url.lastPathComponent)"); return }
-            // Other copies of this file that iCloud kept after two devices
-            // saved at about the same time. The app joins them.
-            var conflicts: [String] = []
-            if self.usesICloud, call.getBool("conflicts") == true, let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) {
-                for version in versions {
-                    if let data = try? Data(contentsOf: version.url) { conflicts.append(data.base64EncodedString()) }
+            // Wait for iCloud download off the serial `work` queue so slow image
+            // transfers never stall JSON reads and writes across the app.
+            let readFile = {
+                var result: Data?
+                var failure: NSError?
+                NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &failure) { readURL in
+                    result = try? Data(contentsOf: readURL)
                 }
+                guard let result else { call.reject("Could not read \(url.lastPathComponent)"); return }
+                // Other copies of this file that iCloud kept after two devices
+                // saved at about the same time. The app joins them.
+                var conflicts: [String] = []
+                if self.usesICloud, call.getBool("conflicts") == true, let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) {
+                    for version in versions {
+                        if let data = try? Data(contentsOf: version.url) { conflicts.append(data.base64EncodedString()) }
+                    }
+                }
+                call.resolve(["data": result.base64EncodedString(), "conflicts": conflicts])
             }
-            call.resolve(["data": result.base64EncodedString(), "conflicts": conflicts])
+            if FileManager.default.fileExists(atPath: url.path) {
+                readFile()
+                return
+            }
+            DispatchQueue.global(qos: .utility).async {
+                guard self.waitForDownload(url) else { call.resolve(["missing": true]); return }
+                self.work.async(execute: readFile)
+            }
         }
     }
 

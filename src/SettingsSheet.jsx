@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, CloudCheck, CloudSun, HardDrives, MapPin, SignOut, SpinnerGap, Translate, WarningCircle, X, Palette } from "@phosphor-icons/react";
-import { ACCENTS, accent, setAccent } from "./accent.js";
+import { CheckCircle, CloudCheck, CloudSun, HardDrives, MapPin, Moon, Palette, SignOut, SpinnerGap, Translate, WarningCircle, X } from "@phosphor-icons/react";
+import { ACCENTS, THEMES, accent, setAccent, setTheme, theme } from "./accent.js";
 import { AiSettings } from "./AiSettings.jsx";
 import { accessToken, connectionLabel, forgetConnection, isNativeApp, serverUrl, testConnection } from "./api.js";
 import { LANGUAGES, language, setLanguage, t, tn } from "./i18n.js";
+import { useSheetDrag } from "./useSheetDrag.js";
 import { deviceLocation, findCity } from "./weather.js";
 import { canUseLocalMode, isLocalMode, localApi, setClosetMode } from "./local/mode.js";
 
@@ -39,6 +40,8 @@ export function SettingsSheet({ onClose, pieces, weather }) {
 
   const config = status.config || {};
   const [chosenAccent, setChosenAccent] = useState(accent);
+  const [chosenTheme, setChosenTheme] = useState(theme);
+  const { handleProps, sheetStyle } = useSheetDrag(onClose);
   const aiChanged = (ai) => setStatus((current) => ({
     ...current,
     config: { ...current.config, ready: ai.ready, provider: ai.provider, providerName: ai.providers.find((entry) => entry.id === ai.provider)?.name },
@@ -48,9 +51,9 @@ export function SettingsSheet({ onClose, pieces, weather }) {
 
   return (
     <div className="viewer-overlay sheet-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <span className="sheet-grabber" aria-hidden="true" />
-        <header className="settings-sheet__header">
+      <section className="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" style={sheetStyle}>
+        <span className="sheet-grabber" aria-hidden="true" {...handleProps} />
+        <header className="settings-sheet__header" {...handleProps}>
           <div>
             <p className="eyebrow">{t("Settings")}</p>
             <h2 id="settings-title">{t("Your wardrobe")}</h2>
@@ -89,6 +92,23 @@ export function SettingsSheet({ onClose, pieces, weather }) {
               <button key={entry.id} type="button" lang={entry.id} className={language() === entry.id ? "active" : ""} aria-pressed={language() === entry.id}
                 onClick={() => { if (language() !== entry.id) { setLanguage(entry.id); window.location.reload(); } }}>
                 {entry.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <h3><Moon size={16} aria-hidden="true" /> {t("Appearance")}</h3>
+          <div className="segmented" role="group" aria-label={t("Appearance")}>
+            {THEMES.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={chosenTheme === entry.id ? "active" : ""}
+                aria-pressed={chosenTheme === entry.id}
+                onClick={() => { setTheme(entry.id); setChosenTheme(entry.id); }}
+              >
+                {t(entry.label)}
               </button>
             ))}
           </div>

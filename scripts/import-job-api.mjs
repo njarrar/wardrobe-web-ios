@@ -4,6 +4,7 @@ import path from "node:path";
 import sharp from "sharp";
 import {
   MAX_STYLE_COUNT,
+  canMakeOutfit,
   styleOptions,
   checkPng,
   garmentFileName,
@@ -417,8 +418,8 @@ export function createWardrobeApi(options = {}) {
         const count = Math.max(1, Math.min(MAX_STYLE_COUNT, Math.round(Number(input.count) || 4)));
         const notes = typeof input.notes === "string" ? input.notes.trim().slice(0, 500) : "";
         const items = await loadImported();
-        if (!items.some((item) => item.part === "upperbody") || !items.some((item) => item.part === "lowerbody")) {
-          throw Object.assign(new Error("Add at least one top and one bottom before styling outfits."), { status: 409 });
+        if (!canMakeOutfit(items)) {
+          throw Object.assign(new Error("Add a one-piece, or at least one top and one bottom, before styling outfits."), { status: 409 });
         }
         const ai = await currentAi();
         const existing = await loadOutfitRecords();
@@ -427,14 +428,15 @@ export function createWardrobeApi(options = {}) {
         return json(res, 201, { outfits: created.map(outfitForClient) });
       }
       const outfitMatch = url.pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
-      // Rename an outfit or change its occasions or note. The pieces stay as they are.
+      // Rename an outfit, change its occasions/note/favorite, or swap a piece.
       if (outfitMatch && req.method === "PATCH") {
         const id = outfitMatch[1];
         const input = await body(req, 64 * 1024);
+        const items = input.swap ? await loadImported() : null;
         const updated = await updateOutfits((outfits) => {
           const index = outfits.findIndex((outfit) => outfit.id === id);
           if (index === -1) return { value: null };
-          const next = applyOutfitEdit(outfits[index], input);
+          const next = applyOutfitEdit(outfits[index], input, items);
           return { outfits: outfits.map((outfit, i) => (i === index ? next : outfit)), value: next };
         });
         if (!updated) return json(res, 404, { error: "Outfit not found" });

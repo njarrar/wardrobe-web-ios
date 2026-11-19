@@ -1,6 +1,7 @@
 // Copies a closet from the server into the iCloud closet: pieces, pictures,
 // outfits and the plan. The server keeps its copy; nothing is deleted.
 import { apiFetch } from "../api.js";
+import { mergePlans, stampChanges } from "../../shared/merge.mjs";
 import { storePath } from "./backend.js";
 import { createNativeStore, createWebStore } from "./store.js";
 
@@ -49,11 +50,18 @@ export async function copyServerToLocal(onProgress = () => {}) {
   }
   // Nothing is written to the closet lists unless every picture came over.
   if (failed) return { pieces: items.length, outfits: outfits.length, kind: store.kind, failed };
+  const now = new Date().toISOString();
   const existing = await store.readJson("items.json", []);
   const ids = new Set(items.map((item) => item.id));
-  await store.writeJson("items.json", [...existing.filter((item) => !ids.has(item.id)), ...items]);
+  const mergedItems = stampChanges(existing, [...existing.filter((item) => !ids.has(item.id)), ...items], now).list;
+  await store.writeJson("items.json", mergedItems);
+  const existingOutfits = await store.readJson("outfits.json", []);
   const outfitIds = new Set(outfits.map((outfit) => outfit.id));
-  await store.writeJson("outfits.json", [...(await store.readJson("outfits.json", [])).filter((outfit) => !outfitIds.has(outfit.id)), ...outfits]);
-  if (plan) await store.writeJson("plan.json", plan);
+  const mergedOutfits = stampChanges(existingOutfits, [...existingOutfits.filter((outfit) => !outfitIds.has(outfit.id)), ...outfits], now).list;
+  await store.writeJson("outfits.json", mergedOutfits);
+  if (plan) {
+    const existingPlan = await store.readJson("plan.json", null);
+    await store.writeJson("plan.json", existingPlan ? mergePlans([existingPlan, plan]) : plan);
+  }
   return { pieces: items.length, outfits: outfits.length, kind: store.kind, failed: 0 };
 }

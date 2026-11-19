@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowsDownUp, CalendarBlank, Camera, Check, ClockCounterClockwise, CoatHanger, GearSix, House, MagicWand, MagnifyingGlass, PencilSimple, Plus, Sparkle, SpinnerGap, Trash, TShirt, X } from "@phosphor-icons/react";
+import { ArrowsDownUp, CalendarBlank, Camera, ChartBar, Check, ClockCounterClockwise, CoatHanger, GearSix, House, MagicWand, MagnifyingGlass, PencilSimple, Plus, SlidersHorizontal, Sparkle, SpinnerGap, Trash, TShirt, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
 import { ConnectScreen } from "./ConnectScreen.jsx";
 import { SettingsSheet } from "./SettingsSheet.jsx";
+import { InsightsSheet } from "./InsightsSheet.jsx";
 import { AiConsentPrompt } from "./AiConsentPrompt.jsx";
 import { AUTH_EVENT, apiFetch, ensureImageKey, isNativeApp, needsServerUrl } from "./api.js";
 import { CLOSET_CHANGED_EVENT } from "./local/mode.js";
@@ -15,6 +16,7 @@ import { PlanView, usePlan } from "./Plan.jsx";
 import { StarterPicker } from "./StarterPicker.jsx";
 import { PictureTools } from "./PictureTools.jsx";
 import { PieceRead } from "./PiecePage.jsx";
+import { useSheetDrag } from "./useSheetDrag.js";
 import { PATTERNS, PATTERN_LABELS, isModestWear, tileNote } from "../shared/pairing.mjs";
 import { useWeather } from "./weather.js";
 import { askAiConsent, useAiSetup } from "./ai-setup.js";
@@ -441,7 +443,7 @@ function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sampleSta
           <span>{t("Warmth")}</span>
           <select value={draft.warmth || ""} onChange={(event) => setDraft((current) => ({ ...current, warmth: event.target.value ? Number(event.target.value) : "" }))}>
             <option value="">{t("Not set")}</option>
-            {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} {["very light", "light", "medium", "warm", "very warm"][value - 1]}</option>)}
+            {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} {t(["very light", "light", "medium", "warm", "very warm"][value - 1])}</option>)}
           </select>
         </label>
         <label className="field">
@@ -506,7 +508,7 @@ function WearStats({ item }) {
   );
 }
 
-function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, onPicture }) {
+function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, onPicture, onStyleWith }) {
   // The page opens to read. Edit turns the fields on.
   const [editing, setEditing] = useState(false);
   useEffect(() => { setEditing(false); }, [item.id]);
@@ -562,6 +564,7 @@ function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, on
     if (isDirty) nudgeUnsaved();
     else onClose();
   }, [isDirty, nudgeUnsaved, onClose]);
+  const { handleProps, sheetStyle } = useSheetDrag(requestClose);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -603,7 +606,7 @@ function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, on
     setSampling(null);
     try {
       await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean), price: draft.price === "" ? null : Number(draft.price), kind: draft.kind.trim().toLowerCase() || null, warmth: draft.warmth || null, formality: draft.formality || null, pattern: draft.pattern || null, seasons: draft.seasons });
-      setSampleStatus("Changes saved.");
+      setSampleStatus(t("Changes saved."));
       setEditing(false);
     } catch (error) {
       setSampleStatus(error.message);
@@ -620,13 +623,13 @@ function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, on
     if (!sampling || !samplingCanvasRef.current) return;
     const color = sampleImageColor(event.currentTarget, samplingCanvasRef.current, event);
     if (!color) {
-      setSampleStatus("That spot is see-through. Tap right on the garment.");
+      setSampleStatus(t("That spot is see-through. Tap right on the garment."));
       return;
     }
     const targetField = sampling === "secondary" ? "secondaryColor" : "color";
     setDraft((current) => ({ ...current, [targetField]: color }));
     setPalette((current) => [color, ...current.filter((existing) => existing.toLowerCase() !== color.toLowerCase())].slice(0, 5));
-    setSampleStatus(`Sampled ${color} as the ${sampling} color.`);
+    setSampleStatus(t("Sampled {color} as the {field} color.", { color, field: t(sampling === "secondary" ? "secondary color" : "primary color") }));
     setSampling(null);
   };
 
@@ -652,8 +655,8 @@ function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, on
   return (
     <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
     <div className="viewer-entry">
-    <aside className={`viewer${editing ? " editing" : " reading"}${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label={t("Selected wardrobe item")}>
-      <span className="sheet-grabber" aria-hidden="true" />
+    <aside className={`viewer${editing ? " editing" : " reading"}${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label={t("Selected wardrobe item")} style={sheetStyle}>
+      <span className="sheet-grabber" aria-hidden="true" {...handleProps} />
       <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label={t("Close viewer")} ref={closeButtonRef}>
         <X size={24} weight="light" aria-hidden="true" />
       </button>
@@ -669,7 +672,7 @@ function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, on
             quality={82}
             priority
           />
-          <div className="viewer-heading modeled-heading">
+          <div className="viewer-heading modeled-heading" {...handleProps}>
             <div>
               <h2>{draft.name || t(TYPE_MAP[draft.part]?.singular || t("Wardrobe item"))}</h2>
             </div>
@@ -678,7 +681,7 @@ function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, on
         </div>
       ) : (
         <>
-          <div className="viewer-heading">
+          <div className="viewer-heading" {...handleProps}>
             <div>
               <h2>{draft.name || t(TYPE_MAP[draft.part]?.singular || t("Wardrobe item"))}</h2>
             </div>
@@ -697,7 +700,7 @@ function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, on
         </div>
         {!editing && (
           <>
-            <PieceRead item={item} items={items} category={t(TYPE_MAP[item.part]?.label || "")} onOpen={onOpen} />
+            <PieceRead item={item} items={items} category={t(TYPE_MAP[item.part]?.label || "")} onOpen={onOpen} onStyleWith={onStyleWith} />
             <div className="viewer-actions">
               <span className="action-spacer" />
               <button className="secondary-button" type="button" onClick={() => setEditing(true)}>
@@ -764,6 +767,10 @@ function Wardrobe({ onConnectionFailed }) {
     try { return localStorage.getItem("wardrobe-sort") || "category"; } catch { return "category"; }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [homeLockId, setHomeLockId] = useState(null);
+  const [outfitsFilter, setOutfitsFilter] = useState(null);
   const [outfits, setOutfits] = useState(null);
   const [outfitsError, setOutfitsError] = useState("");
   const [openOutfitId, setOpenOutfitId] = useState(null);
@@ -854,7 +861,7 @@ function Wardrobe({ onConnectionFailed }) {
   const sortCloset = async () => {
     if (!(await askAiConsent(setup))) return;
     setSorting(true); setError("");
-    try { mergeItems((await sendJson("/api/import/wardrobe/sort", "POST", {}, "Could not sort your closet.")).items || []); }
+    try { mergeItems((await sendJson("/api/import/wardrobe/sort", "POST", {}, t("Could not sort your closet."))).items || []); }
     catch (requestError) { setError(requestError.message); }
     finally { setSorting(false); }
   };
@@ -973,6 +980,11 @@ function Wardrobe({ onConnectionFailed }) {
             <button className="icon-button topbar__add" type="button" onClick={() => window.dispatchEvent(new Event(ADD_CLOTHES_EVENT))} aria-label={t("Add clothes from a photo")}>
               <Camera size={20} aria-hidden="true" />
             </button>
+            {items.length > 0 && (
+              <button className="icon-button" type="button" onClick={() => setInsightsOpen(true)} aria-label={t("Closet insights")}>
+                <ChartBar size={20} aria-hidden="true" />
+              </button>
+            )}
             <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label={t("Settings and connection")}>
               <GearSix size={20} aria-hidden="true" />
             </button>
@@ -996,6 +1008,19 @@ function Wardrobe({ onConnectionFailed }) {
                     </button>
                   )}
                 </label>
+                {(familiesInCloset.length > 1 || groupsInCloset.length > 0 || (unsorted > 0 && setup?.ready)) && (
+                  <button
+                    type="button"
+                    className={`icon-button filter-toggle${filtersOpen || colorFilter || group ? " is-on" : ""}`}
+                    aria-expanded={filtersOpen}
+                    aria-label={t("Filters")}
+                    title={t("Filters")}
+                    onClick={() => setFiltersOpen((current) => !current)}
+                  >
+                    <SlidersHorizontal size={18} aria-hidden="true" />
+                    {(colorFilter || group) && <span className="filter-toggle__badge">{(colorFilter ? 1 : 0) + (group ? 1 : 0)}</span>}
+                  </button>
+                )}
                 <label className="sort-select">
                   <ArrowsDownUp size={16} aria-hidden="true" />
                   <span className="visually-hidden">{t("Sort by")}</span>
@@ -1020,7 +1045,7 @@ function Wardrobe({ onConnectionFailed }) {
                 ))}
               </nav>
 
-              {familiesInCloset.length > 1 && (
+              {(filtersOpen || colorFilter) && familiesInCloset.length > 1 && (
                 <div className="color-filter" role="group" aria-label={t("Filter by color")}>
                   {familiesInCloset.map((family) => (
                     <button
@@ -1043,9 +1068,9 @@ function Wardrobe({ onConnectionFailed }) {
                 </div>
               )}
 
-              {(groupsInCloset.length > 0 || (unsorted > 0 && setup?.ready)) && (
+              {(filtersOpen || group || (unsorted > 0 && setup?.ready)) && (groupsInCloset.length > 0 || (unsorted > 0 && setup?.ready)) && (
                 <div className="group-filter" role="group" aria-label={t("Smart groups")}>
-                  {groupsInCloset.map((entry) => (
+                  {(filtersOpen || group) && groupsInCloset.map((entry) => (
                     <button key={entry.id} type="button" className={group === entry.id ? "active" : ""} aria-pressed={group === entry.id} onClick={() => setGroup((current) => (current === entry.id ? null : entry.id))}>
                       {t(entry.label)} <span className="chip-count">{items.filter(entry.test).length}</span>
                     </button>
@@ -1064,7 +1089,19 @@ function Wardrobe({ onConnectionFailed }) {
 
         {error && <p className="status error">{error}</p>}
         {showingHome && (
-          <HomeView items={items} outfits={outfits} setOutfits={setOutfits} plan={plan} weather={weather} onWorn={onWorn} onOpenPiece={setSelectedId} onGoToPlan={() => setView("plan")} />
+          <HomeView
+            items={items}
+            outfits={outfits}
+            setOutfits={setOutfits}
+            plan={plan}
+            weather={weather}
+            onWorn={onWorn}
+            onOpenPiece={setSelectedId}
+            onGoToPlan={() => setView("plan")}
+            onGoToFavorites={() => { setOutfitsFilter("favorites"); setView("outfits"); }}
+            initialLockId={homeLockId}
+            onConsumeInitialLock={() => setHomeLockId(null)}
+          />
         )}
 
         {showingOutfits && (
@@ -1078,11 +1115,13 @@ function Wardrobe({ onConnectionFailed }) {
             openId={openOutfitId}
             setOpenId={setOpenOutfitId}
             onSelectGarment={setSelectedId}
+            initialFilter={outfitsFilter}
+            onConsumeFilter={() => setOutfitsFilter(null)}
           />
         )}
 
         {showingPlan && (
-          <PlanView items={items} outfits={outfits} plan={plan} savePlan={savePlan} forecast={weather.forecast} planError={planError || outfitsError} onGoToOutfits={() => setView("outfits")} />
+          <PlanView items={items} outfits={outfits} plan={plan} savePlan={savePlan} forecast={weather.forecast} planError={planError || outfitsError} onGoToOutfits={() => setView("outfits")} onWorn={onWorn} />
         )}
 
         {!showingHome && !showingOutfits && !showingPlan && !loading && !error && browsingAll && !!items.length && (
@@ -1130,7 +1169,20 @@ function Wardrobe({ onConnectionFailed }) {
         )}
       </main>
 
-      {selectedItem && <ItemViewer item={selectedItem} items={items} onOpen={setSelectedId} onClose={() => setSelectedId(null)} onSave={saveItem} onDelete={deleteItem} onWear={wearItem} onPicture={(saved) => setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry))} />}
+      {selectedItem && (
+        <ItemViewer
+          item={selectedItem}
+          items={items}
+          onOpen={setSelectedId}
+          onClose={() => setSelectedId(null)}
+          onSave={saveItem}
+          onDelete={deleteItem}
+          onWear={wearItem}
+          onPicture={(saved) => setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry))}
+          onStyleWith={canMakeOutfit(items) ? (id) => { setSelectedId(null); setHomeLockId(id); setView("home"); } : null}
+        />
+      )}
+      {insightsOpen && <InsightsSheet items={items} outfits={outfits} onOpenPiece={setSelectedId} onClose={() => setInsightsOpen(false)} />}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} weather={weather} />}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} onStarter={() => setStarterOpen(true)} away={view !== "closet"} />
       {starterOpen && <StarterPicker onClose={() => setStarterOpen(false)} onAdded={addImportedItem} />}

@@ -307,7 +307,9 @@ export function WardrobeImportFlow({ onGarmentApproved, onStarter, away = false 
   // Saves every finished piece with the details the AI suggested.
   const approveAll = async () => {
     setError("");
-    for (const job of jobs.filter((entry) => reviewStageFor(entry) === "garment")) {
+    const ready = jobs.filter((entry) => reviewStageFor(entry) === "garment");
+    const approvedIds = new Set();
+    for (const job of ready) {
       setBusyId(job.id);
       try {
         const draft = drafts[job.id] || defaultDraft(job);
@@ -315,10 +317,14 @@ export function WardrobeImportFlow({ onGarmentApproved, onStarter, away = false 
         await api(`${API}/${job.id}/metadata`, { method: "PATCH", body: JSON.stringify({ metadata }) });
         const result = await api(`${API}/${job.id}/stages/garment/approve`, { method: "POST" });
         onGarmentApproved?.(result.item);
+        approvedIds.add(job.id);
         setJobs((current) => current.filter((entry) => entry.id !== job.id));
+        setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([id]) => id !== job.id)));
       } catch (requestError) { setError(requestError.message); }
     }
-    setBusyId(null); setSelectedReviewId(null);
+    setBusyId(null);
+    setSelectedReviewId(null);
+    if (approvedIds.size && jobs.every((entry) => approvedIds.has(entry.id))) setOpen(false);
   };
 
   const deleteJob = async (job) => {

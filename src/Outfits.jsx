@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, ClockCounterClockwise, CoatHanger, DeviceMobile, Heart, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
+import { ArrowsLeftRight, Check, ClockCounterClockwise, CoatHanger, DeviceMobile, Heart, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
 import { apiFetch, assetUrl } from "./api.js";
 import { askAiConsent, useAiSetup } from "./ai-setup.js";
 import { COLOR_RULES, COLOR_RULE_IDS, dayString, forgottenPieces, lastWorn, outfitHarmony, wearCount } from "../shared/style.mjs";
+import { tileNote } from "../shared/pairing.mjs";
 import { patchOutfit, sendJson, wearOutfit, wornOn } from "./wear.js";
-import { canMakeOutfit, makeOutfits, outfitTitle } from "../shared/make-outfit.mjs";
+import { canMakeOutfit, isOnePiece, makeOutfits, outfitTitle, swapCandidates } from "../shared/make-outfit.mjs";
+import { FlatLay } from "./FlatLay.jsx";
 import { notMeKeys } from "./Home.jsx";
 import "./outfits.css";
 import "./today.css";
-import { formatDay, t, tn } from "./i18n.js";
+import { formatDay, t } from "./i18n.js";
 
 // The Outfits tab: outfits the AI styles, outfits built by hand, an occasion
-// filter, and a viewer where an outfit can be edited or deleted.
+// filter, anatomical flat-lay cards, and a viewer with single-piece swap.
 
 const PART_ORDER = ["wholebody_up", "upperbody", "lowerbody", "shoes", "accessories_up"];
 const PART_LABELS = {
@@ -38,16 +40,6 @@ function splitOccasions(text) {
 
 function HarmonyBadge({ harmony }) {
   return <span className="harmony-badge" title={t(COLOR_RULES[harmony.rule]?.hint || "")}>{t(COLOR_RULES[harmony.rule]?.label || "")} · {harmony.score}</span>;
-}
-
-// New outfits have no photo; show the garment cutouts together instead.
-function Collage({ pieces }) {
-  const shown = pieces.slice(0, 4);
-  return (
-    <div className={`outfit-collage outfit-collage--${shown.length}`} aria-hidden="true">
-      {shown.map((item) => <img key={item.id} src={assetUrl(item.thumbnail || item.image)} alt="" loading="lazy" />)}
-    </div>
-  );
 }
 
 function StyleForm({ busy, ready, onStyle, onMake, canMake, onCompose, canCompose, forgottenCount }) {
@@ -116,16 +108,66 @@ function StyleForm({ busy, ready, onStyle, onMake, canMake, onCompose, canCompos
   );
 }
 
-// The pieces inside an open outfit. Tapping one opens it in the item editor.
-function PieceList({ pieces, onSelect }) {
+// Rich horizontal piece rows inside an open outfit, with inline single-piece swap.
+function PieceList({ pieces, items, weather, onSelect, onSwap, swappingId, setSwappingId, busy }) {
+  const activePiece = swappingId ? pieces.find((item) => item.id === swappingId) || null : null;
+  const candidates = useMemo(
+    () => (activePiece ? swapCandidates(activePiece, pieces, items, { weather }) : []),
+    [activePiece, pieces, items, weather],
+  );
+
   return (
     <div className="outfit-viewer__pieces">
-      {pieces.map((item) => (
-        <button key={item.id} type="button" onClick={() => onSelect?.(item.id)} disabled={!onSelect}>
-          <img src={assetUrl(item.thumbnail || item.image)} alt="" />
-          <span>{item.name}</span>
-        </button>
-      ))}
+      {pieces.map((item) => {
+        const hint = tileNote(item);
+        const swapping = swappingId === item.id;
+        return (
+          <div className={`outfit-piece-row${swapping ? " is-swapping" : ""}`} key={item.id}>
+            <button type="button" className="outfit-piece-row__open" onClick={() => onSelect?.(item.id)} disabled={!onSelect}>
+              <span className="outfit-piece-row__thumb"><img src={assetUrl(item.thumbnail || item.image)} alt="" /></span>
+              <span className="outfit-piece-row__info">
+                <strong>{item.name}</strong>
+                {hint && <small>{t(hint)}</small>}
+              </span>
+            </button>
+            {onSwap && (
+              <button
+                type="button"
+                className={`icon-button outfit-piece-row__swap${swapping ? " is-active" : ""}`}
+                aria-pressed={swapping}
+                aria-label={t("Swap {name}", { name: item.name })}
+                title={t("Swap {name}", { name: item.name })}
+                disabled={busy}
+                onClick={() => setSwappingId((current) => (current === item.id ? null : item.id))}
+              >
+                <ArrowsLeftRight size={16} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {activePiece && onSwap && (
+        <div className="outfit-swap-tray" role="region" aria-label={t("Swap {name}", { name: activePiece.name })}>
+          <div className="outfit-swap-tray__head">
+            <span>{t("Swap {name}", { name: activePiece.name })}</span>
+            <button type="button" className="icon-button" onClick={() => setSwappingId(null)} aria-label={t("Close")}>
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
+          {candidates.length ? (
+            <div className="outfit-swap-tray__list">
+              {candidates.slice(0, 10).map((candidate) => (
+                <button type="button" key={candidate.id} disabled={busy} onClick={() => onSwap(activePiece.id, candidate.id)}>
+                  <span><img src={assetUrl(candidate.thumbnail || candidate.image)} alt="" loading="lazy" /></span>
+                  <small>{candidate.name}</small>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="outfit-swap-tray__empty">{t("No other pieces in this category yet.")}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -150,7 +192,7 @@ function OutfitFields({ draft, setDraft }) {
   );
 }
 
-// "Build your own": pick two or more pieces, then save them as an outfit.
+// "Build your own": pick two or more pieces (or a one-piece), then save them as an outfit.
 function OutfitBuilder({ items, onClose, onCreated }) {
   const [draft, setDraft] = useState({ name: "", occasion: "", reason: "" });
   const [selectedIds, setSelectedIds] = useState([]);
@@ -160,6 +202,7 @@ function OutfitBuilder({ items, onClose, onCreated }) {
     .map((part) => ({ part, items: items.filter((item) => item.part === part) }))
     .filter((group) => group.items.length), [items]);
   const selected = selectedIds.map((id) => items.find((item) => item.id === id)).filter(Boolean);
+  const canSave = selected.length >= 2 || (selected.length === 1 && isOnePiece(selected[0]));
 
   const toggle = (id) => setSelectedIds((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]));
 
@@ -172,7 +215,7 @@ function OutfitBuilder({ items, onClose, onCreated }) {
         occasion: splitOccasions(draft.occasion),
         reason: draft.reason,
         garmentIds: selectedIds,
-      }, "Could not save the outfit.");
+      }, t("Could not save the outfit."));
       onCreated(value.outfit);
     } catch (requestError) { setError(requestError.message); setSaving(false); }
   };
@@ -185,7 +228,7 @@ function OutfitBuilder({ items, onClose, onCreated }) {
         </button>
         <div className="outfit-viewer__photo">
           {selected.length
-            ? <Collage pieces={selected} />
+            ? <FlatLay pieces={selected} variant="detail" />
             : <p className="outfit-builder__empty"><CoatHanger size={32} weight="light" aria-hidden="true" />{t("Pick at least two pieces")}</p>}
         </div>
         <form className="outfit-viewer__details" onSubmit={submit}>
@@ -193,7 +236,7 @@ function OutfitBuilder({ items, onClose, onCreated }) {
           <OutfitFields draft={draft} setDraft={setDraft} />
           {groups.map((group) => (
             <fieldset className="outfit-builder__group" key={group.part}>
-              <legend>{PART_LABELS[group.part]}</legend>
+              <legend>{t(PART_LABELS[group.part])}</legend>
               <div className="outfit-builder__items">
                 {group.items.map((item) => {
                   const active = selectedIds.includes(item.id);
@@ -211,7 +254,7 @@ function OutfitBuilder({ items, onClose, onCreated }) {
           {error && <p className="status error">{error}</p>}
           <div className="viewer-actions">
             <button type="button" className="secondary-button" onClick={onClose}>{t("Cancel")}</button>
-            <button type="submit" className="primary-button" disabled={saving || selectedIds.length < 2}>
+            <button type="submit" className="primary-button" disabled={saving || !canSave}>
               <Plus size={15} weight="bold" aria-hidden="true" /> {saving ? t("Saving") : t("Save outfit")}
             </button>
           </div>
@@ -221,10 +264,24 @@ function OutfitBuilder({ items, onClose, onCreated }) {
   );
 }
 
-export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weather = null, onWorn, openId, setOpenId, onSelectGarment }) {
+export function OutfitGallery({
+  items,
+  outfits,
+  setOutfits,
+  loadError = "",
+  weather = null,
+  onWorn,
+  openId,
+  setOpenId,
+  onSelectGarment,
+  initialFilter = null,
+  onConsumeFilter = null,
+}) {
   const setup = useAiSetup();
   const [error, setError] = useState("");
   const [wearing, setWearing] = useState(false);
+  const [swapping, setSwapping] = useState(false);
+  const [swappingId, setSwappingId] = useState(null);
   const [building, setBuilding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [styling, setStyling] = useState(false);
@@ -234,7 +291,14 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
 
   const forgotten = useMemo(() => forgottenPieces(items), [items]);
 
-  const closeViewer = () => { setOpenId(null); setEditing(null); };
+  const closeViewer = () => { setOpenId(null); setEditing(null); setSwappingId(null); };
+
+  useEffect(() => {
+    if (initialFilter === "favorites") {
+      setOccasion(FAVORITES);
+      onConsumeFilter?.();
+    }
+  }, [initialFilter, onConsumeFilter]);
 
   useEffect(() => {
     if (!openId && !building) return undefined;
@@ -268,7 +332,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
     if (!(await askAiConsent(setup))) return;
     setStyling(true); setError(""); setNotice("");
     try {
-      const value = await sendJson("/api/import/outfits/generate", "POST", { count, notes, rule, preferIds: useForgotten ? forgotten.map((item) => item.id) : [] }, "Could not style outfits.");
+      const value = await sendJson("/api/import/outfits/generate", "POST", { count, notes, rule, preferIds: useForgotten ? forgotten.map((item) => item.id) : [] }, t("Could not style outfits."));
       const created = value.outfits || [];
       setOutfits((current) => [...(current || []), ...created]);
       if (!created.length) setNotice(t("No new combinations found. Add more pieces and try again."));
@@ -284,7 +348,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
       const made = makeOutfits({ items, outfits: outfits || [], rejected: notMeKeys(), count, weather });
       const created = [];
       for (const outfit of made) {
-        const value = await sendJson("/api/import/outfits", "POST", { name: outfitTitle(outfit.pieces), reason: outfit.why.map(([text, vars]) => t(text, vars)).join(" "), garmentIds: outfit.garmentIds, madeOnPhone: true }, "Could not save the outfit.");
+        const value = await sendJson("/api/import/outfits", "POST", { name: outfitTitle(outfit.pieces), reason: outfit.why.map(([text, vars]) => t(text, vars)).join(" "), garmentIds: outfit.garmentIds, madeOnPhone: true }, t("Could not save the outfit."));
         created.push(value.outfit);
       }
       setOutfits((current) => [...created, ...(current || [])]);
@@ -302,6 +366,16 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
     } catch (requestError) { setError(requestError.message); }
   };
 
+  const swapPieceInOutfit = async (outfit, oldId, newId) => {
+    setSwapping(true); setError("");
+    try {
+      const updated = await patchOutfit(outfit.id, { swap: { from: oldId, to: newId } });
+      setOutfits((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+      setSwappingId(null);
+    } catch (requestError) { setError(requestError.message); }
+    finally { setSwapping(false); }
+  };
+
   const saveEdit = async (id) => {
     setError("");
     try {
@@ -309,7 +383,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
         name: editing.name,
         occasion: splitOccasions(editing.occasion),
         reason: editing.reason,
-      }, "Could not save the outfit.");
+      }, t("Could not save the outfit."));
       setOutfits((current) => current.map((outfit) => (outfit.id === id ? updated : outfit)));
       setEditing(null);
     } catch (requestError) { setError(requestError.message); }
@@ -341,7 +415,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
 
   return (
     <>
-      <StyleForm busy={styling} ready={Boolean(setup?.ready)} onStyle={style} onMake={make} canMake={canMakeOutfit(items)} canCompose={items.length >= 2} onCompose={() => setBuilding(true)} forgottenCount={forgotten.length} />
+      <StyleForm busy={styling} ready={Boolean(setup?.ready)} onStyle={style} onMake={make} canMake={canMakeOutfit(items)} canCompose={canMakeOutfit(items) || items.length >= 2} onCompose={() => setBuilding(true)} forgottenCount={forgotten.length} />
       {(occasions.length > 0 || favorites.length > 0) && (
         <nav className="category-nav outfit-occasions" aria-label={t("Filter outfits by occasion")}>
           <button type="button" className={occasion === "all" ? "active" : ""} aria-pressed={occasion === "all"} onClick={() => setOccasion("all")}>
@@ -366,7 +440,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
       <section className="outfit-grid" aria-label={t("Outfits")}>
         {shown.map((outfit) => (
           <button className="outfit-card" type="button" key={outfit.id} onClick={() => setOpenId(outfit.id)}>
-            {outfit.image ? <img src={assetUrl(outfit.image)} alt="" loading="lazy" /> : <Collage pieces={outfitPieces(outfit, itemsById)} />}
+            {outfit.image ? <img src={assetUrl(outfit.image)} alt="" loading="lazy" /> : <FlatLay pieces={outfitPieces(outfit, itemsById)} variant="card" />}
             {outfit.favorite && <span className="outfit-card__heart" aria-label={t("Favorite")}><Heart size={14} weight="fill" aria-hidden="true" /></span>}
             <span className="outfit-card__name">{outfit.name || outfit.id}</span>
             {outfit.occasion?.length > 0 && <span className="outfit-card__occasion">{outfit.occasion.join(" · ")}</span>}
@@ -391,7 +465,7 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
             </button>
             {open.image
               ? <img className="outfit-viewer__photo" src={assetUrl(open.image)} alt={open.name || t("Outfit")} />
-              : <div className="outfit-viewer__photo"><Collage pieces={openPieces} /></div>}
+              : <div className="outfit-viewer__photo"><FlatLay pieces={openPieces} variant="detail" swappingId={swappingId} /></div>}
             <div className="outfit-viewer__details">
               {editing ? (
                 <form onSubmit={(event) => { event.preventDefault(); saveEdit(open.id); }}>
@@ -419,7 +493,16 @@ export function OutfitGallery({ items, outfits, setOutfits, loadError = "", weat
                   </div>
                 </>
               )}
-              <PieceList pieces={openPieces} onSelect={onSelectGarment && ((id) => { closeViewer(); onSelectGarment(id); })} />
+              <PieceList
+                pieces={openPieces}
+                items={items}
+                weather={weather}
+                swappingId={swappingId}
+                setSwappingId={setSwappingId}
+                busy={swapping}
+                onSwap={(oldId, newId) => swapPieceInOutfit(open, oldId, newId)}
+                onSelect={onSelectGarment && ((id) => { closeViewer(); onSelectGarment(id); })}
+              />
               {!editing && (
                 <div className="outfit-viewer__actions">
                   <button

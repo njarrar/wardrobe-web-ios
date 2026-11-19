@@ -7,7 +7,19 @@ export const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 export const SEASONS = ["spring", "summer", "fall", "winter"];
 export const FORMALITY = ["casual", "smart", "formal"];
 export const PATTERNS = ["solid", "striped", "checked", "dotted", "floral", "printed", "textured"];
+// "dress" and "sundress" count; "dress shirt" and "dress shoes" do not.
+export const ONE_PIECE = /\b\w*dress\b(?![- ]?(shirt|shoe|pant|trouser|sock|boot|watch|belt))|jumpsuit|romper|abaya|thobe|kandura|dishdasha|jalabiya|kaftan/;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+export function isOnePiece(item) {
+  return ONE_PIECE.test(`${item?.kind || ""} ${item?.name || ""}`.toLowerCase());
+}
+
+// Can this closet make at least one outfit (a top + bottom, or a one-piece)?
+export function canMakeOutfit(items = []) {
+  const tops = items.filter((item) => item.part === "upperbody");
+  return tops.some(isOnePiece) || (tops.some((item) => !isOnePiece(item)) && items.some((item) => item.part === "lowerbody"));
+}
 
 export const ANALYZE_PROMPT = "Identify every distinct wearable clothing item visible in this image. A photo may show one isolated garment or a person wearing several items. Return one record per actual item that should enter a wardrobe, at most 8. Ignore the person's body and non-wearable background objects. For each item, include a tight bounding box around only that item using integer coordinates normalized to a 1000 by 1000 image: x and y are the top-left corner, followed by width and height. Boxes may overlap when garments overlap, but each box must focus on one distinct item. Use only these category ids: upperbody (tops), wholebody_up (jackets and outer layers), lowerbody (bottoms), accessories_up (accessories), shoes. Suggest a concise specific name, the primary color as a six-digit hex such as #1f2a44, a genuinely distinct secondary hex color or null, 1-4 useful lowercase detail tags, a short lowercase kind (such as tee, shirt, sweater, hoodie, jeans, chinos, skirt, dress, coat, sneakers, boots, scarf, bag, abaya, thobe, hijab, shemagh, bisht), the seasons it suits, a warmth from 1 (very light) to 5 (very warm), how dressy it is (casual, smart or formal), and its pattern (solid, striped, checked, dotted, floral, printed or textured). Return an empty list when there is no clothing.";
 
@@ -63,18 +75,30 @@ export function styleOptions(input = {}) {
 }
 
 export function buildStylePrompt({ items, outfits = [], count = 4, notes = "", rule = "", preferIds = [] }) {
-  const closet = items.map((item) => ({ id: item.id, name: item.name, category: item.part, color: item.color, secondaryColor: item.secondaryColor || undefined, tags: item.tags }));
+  const closet = items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    category: item.part,
+    color: item.color,
+    ...(item.secondaryColor ? { secondaryColor: item.secondaryColor } : {}),
+    tags: item.tags,
+    ...(item.kind ? { kind: item.kind } : {}),
+    ...(item.seasons?.length ? { seasons: item.seasons } : {}),
+    ...(item.warmth ? { warmth: item.warmth } : {}),
+    ...(item.formality ? { formality: item.formality } : {}),
+    ...(item.pattern ? { pattern: item.pattern } : {}),
+  }));
   const prefer = preferIds.filter((id) => items.some((item) => item.id === id)).slice(0, 30);
   const taken = outfits.map((outfit) => outfit.garmentIds).filter(Array.isArray);
-  return `You are styling outfits from this wardrobe. Every piece is listed as JSON with its id, name, category, colors and tags.
+  return `You are styling outfits from this wardrobe. Every piece is listed as JSON with its id, name, category, colors, tags and optional kind, seasons, warmth (1-5), formality and pattern.
 
-Categories: upperbody = tops, lowerbody = bottoms, wholebody_up = jackets and outer layers, shoes, accessories_up = accessories.
+Categories: upperbody = tops (including dresses, abayas, thobes and jumpsuits), lowerbody = bottoms, wholebody_up = jackets and outer layers, shoes, accessories_up = accessories.
 
 <wardrobe>
 ${JSON.stringify(closet)}
 </wardrobe>
 
-Create ${count} new outfits. Each outfit uses exactly one upperbody piece and one lowerbody piece, and may add one outer layer, one pair of shoes and one accessory. Use only ids from the wardrobe. Do not repeat any of these existing combinations: ${JSON.stringify(taken)}.
+Create ${count} new outfits. Each outfit uses either one upperbody piece plus one lowerbody piece, OR one full-length one-piece (dress, abaya, thobe, jumpsuit) without a separate bottom, and may add one outer layer, one pair of shoes and one accessory. Use only ids from the wardrobe. Do not repeat any of these existing combinations: ${JSON.stringify(taken)}.
 
 Styling rules:
 - Favor tonal or nearby colors for a calm look, and use contrast on purpose with one color in charge.
@@ -91,8 +115,8 @@ The owner asked for: ${notes}
 Give each outfit a short name (two to four words), one to three lowercase occasion tags, the garment ids, and one plain sentence on why it works. If the wardrobe cannot support ${count} distinct outfits, return as many good ones as it can.`;
 }
 
-// Keep only outfits that use real pieces, have a top and a bottom, and do not
-// repeat a combination we already have.
+// Keep only outfits that use real pieces, have a top+bottom (or a one-piece),
+// and do not repeat a combination we already have.
 export function normalizeStyledOutfits(value, items, existing = []) {
   const byId = new Map(items.map((item) => [item.id, item]));
   const seen = new Set(existing.map((outfit) => [...(outfit.garmentIds || [])].sort().join("|")));
@@ -100,8 +124,10 @@ export function normalizeStyledOutfits(value, items, existing = []) {
   const result = [];
   for (const outfit of list) {
     const ids = [...new Set((Array.isArray(outfit?.garmentIds) ? outfit.garmentIds : []).filter((id) => byId.has(id)))];
-    const parts = ids.map((id) => byId.get(id).part);
-    if (!parts.includes("upperbody") || !parts.includes("lowerbody")) continue;
+    const pieces = ids.map((id) => byId.get(id));
+    const parts = pieces.map((piece) => piece.part);
+    const hasOnePiece = pieces.some((piece) => piece.part === "upperbody" && isOnePiece(piece));
+    if (!hasOnePiece && (!parts.includes("upperbody") || !parts.includes("lowerbody"))) continue;
     const key = [...ids].sort().join("|");
     if (seen.has(key)) continue;
     seen.add(key);
@@ -129,7 +155,8 @@ function outfitOccasions(value) {
 export function normalizeManualOutfit(input = {}, items = []) {
   const byId = new Map(items.map((item) => [item.id, item]));
   const ids = [...new Set((Array.isArray(input?.garmentIds) ? input.garmentIds : []).filter((id) => byId.has(id)))];
-  if (ids.length < 2) throw Object.assign(new Error("Pick at least two pieces for an outfit."), { status: 400 });
+  const validOnePiece = ids.length === 1 && isOnePiece(byId.get(ids[0]));
+  if (ids.length < 2 && !validOnePiece) throw Object.assign(new Error("Pick at least two pieces for an outfit."), { status: 400 });
   const name = typeof input.name === "string" && input.name.trim() ? input.name.trim().slice(0, 80) : "My outfit";
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "outfit";
   return {
@@ -145,15 +172,29 @@ export function normalizeManualOutfit(input = {}, items = []) {
   };
 }
 
-// Applies a name, occasion or note change to a saved outfit. Pieces and the
-// id never change here.
-export function applyOutfitEdit(current, input = {}) {
+// Applies a name, occasion, note, favorite, wear or piece-swap change to a saved outfit.
+export function applyOutfitEdit(current, input = {}, items = null) {
   const next = { ...current };
   if (input.wear !== undefined || input.unwear !== undefined) next.wornDates = editWornDates(current.wornDates, input);
   if (typeof input.name === "string" && input.name.trim()) next.name = input.name.trim().slice(0, 80);
   if (input.occasion !== undefined) next.occasion = outfitOccasions(input.occasion);
   if (typeof input.reason === "string") next.reason = input.reason.trim().slice(0, 400);
   if (typeof input.favorite === "boolean") next.favorite = input.favorite;
+  if (input.swap && typeof input.swap === "object" && Array.isArray(items)) {
+    const { from, to } = input.swap;
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const currentIds = Array.isArray(current.garmentIds) ? current.garmentIds : [];
+    // The new piece takes the old one's place, so it must be the same kind of piece.
+    if (typeof from !== "string" || typeof to !== "string" || !currentIds.includes(from) || !byId.has(to) || (byId.has(from) && byId.get(from).part !== byId.get(to).part)) {
+      throw Object.assign(new Error("Pick a valid piece from your closet to swap in."), { status: 400 });
+    }
+    const swapped = [...new Set(currentIds.map((id) => (id === from ? to : id)))];
+    const validOnePiece = swapped.length === 1 && isOnePiece(byId.get(swapped[0]));
+    if (swapped.length < 2 && !validOnePiece) throw Object.assign(new Error("Pick at least two pieces for an outfit."), { status: 400 });
+    next.garmentIds = swapped;
+    // A picture of the old pieces no longer shows this outfit.
+    if (next.image) next.image = null;
+  }
   return next;
 }
 
