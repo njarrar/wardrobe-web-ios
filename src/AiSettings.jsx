@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowSquareOut, Key, SpinnerGap, Trash } from "@phosphor-icons/react";
 import { AI_CHANGED_EVENT, apiFetch } from "./api.js";
+import { isLocalMode } from "./local/mode.js";
 import { t, tn } from "./i18n.js";
 
 const SETTINGS_API = "/api/import/settings/ai";
@@ -17,6 +18,7 @@ async function request(method, body) {
 
 function keyStatus(entry) {
   if (!entry.hasKey) return t("No key yet");
+  if (isLocalMode() && entry.keySource === "app") return t("Key saved in the Keychain on this device ({hint})", { hint: entry.keyHint });
   return entry.keySource === "app" ? t("Key saved ({hint})", { hint: entry.keyHint }) : t("Key set on the server ({hint})", { hint: entry.keyHint });
 }
 

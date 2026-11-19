@@ -156,7 +156,8 @@ async function readError(response, name) {
 }
 
 async function askClaude(ai, { image, text, schema }) {
-  const client = new Anthropic({ apiKey: ai.apiKey, ...(ai.baseURL ? { baseURL: ai.baseURL } : {}) });
+  // ai.fetch: the phone app passes its own fetch when it calls the AI itself.
+  const client = new Anthropic({ apiKey: ai.apiKey, ...(ai.baseURL ? { baseURL: ai.baseURL } : {}), ...(ai.fetch ? { fetch: ai.fetch, dangerouslyAllowBrowser: true } : {}) });
   const content = [];
   if (image) content.push({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } });
   content.push({ type: "text", text });
@@ -179,7 +180,7 @@ async function askOpenAi(ai, { image, text, schema, name }) {
   const content = [];
   if (image) content.push({ type: "image_url", image_url: { url: `data:${image.mediaType};base64,${image.base64}` } });
   content.push({ type: "text", text });
-  const response = await fetch(`${(ai.baseURL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
+  const response = await (ai.fetch || fetch)(`${(ai.baseURL || "https://api.openai.com/v1").replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${ai.apiKey}` },
     body: JSON.stringify({
@@ -207,7 +208,7 @@ async function askGemini(ai, { image, text, schema }) {
   if (image) parts.push({ inline_data: { mime_type: image.mediaType, data: image.base64 } });
   parts.push({ text });
   const base = (ai.baseURL || "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, "");
-  const response = await fetch(`${base}/models/${encodeURIComponent(ai.model)}:generateContent`, {
+  const response = await (ai.fetch || fetch)(`${base}/models/${encodeURIComponent(ai.model)}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": ai.apiKey },
     body: JSON.stringify({

@@ -197,6 +197,32 @@ describe("phone screens", () => {
     }
   });
 
+  test("the serverless closet keeps pieces on the device", async () => {
+    const context = await browser.newContext({ ...devices["iPhone 13"] });
+    const page = await context.newPage();
+    const errors = [];
+    const apiCalls = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/")) apiCalls.push(request.url()); });
+    await page.addInitScript(() => localStorage.setItem("wardrobe-closet-mode", "local"));
+    await page.goto(base);
+    await page.getByRole("button", { name: "Add basics without a photo" }).click();
+    const sheet = page.getByRole("dialog", { name: "Add basics" });
+    await sheet.locator(".starter-piece").nth(10).getByRole("button", { name: "Add" }).click();
+    await sheet.getByRole("button", { name: "Added" }).waitFor();
+    await sheet.getByRole("button", { name: "Close" }).click();
+    await page.locator('[aria-label="View Navy jeans"]').waitFor();
+    await page.reload();
+    await page.locator('[aria-label="View Navy jeans"]').waitFor();
+    await page.waitForFunction(() => [...document.images].some((image) => image.src.startsWith("blob:") && image.complete && image.naturalWidth > 0));
+    await page.getByRole("button", { name: "Settings and connection" }).click();
+    await page.getByRole("dialog").getByText("Where your closet lives").waitFor();
+    await snap(page, "light-10-local-settings");
+    assert.deepEqual(apiCalls, [], "nothing goes to a server");
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
   test("asks before any photo goes to the AI", async () => {
     const withKey = await startServer(dataDir, { ANTHROPIC_API_KEY: "test-key", ANTHROPIC_BASE_URL: "http://127.0.0.1:9" });
     const context = await browser.newContext({ ...devices["iPhone 13"] });
@@ -226,7 +252,7 @@ describe("phone screens", () => {
     const imageUrls = [];
     page.on("request", (request) => { if (request.resourceType() === "image") imageUrls.push(request.url()); });
     await page.addInitScript((server) => {
-      window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios" };
+      window.CapacitorCustomPlatform = { name: "ios" };
       localStorage.setItem("wardrobe-server-url", server);
       localStorage.setItem("wardrobe-token", "s3cret-token");
     }, guarded.base);
@@ -245,7 +271,7 @@ describe("phone screens", () => {
   test("the phone app asks for a server first", async () => {
     const context = await browser.newContext({ ...devices["iPhone 13"] });
     const page = await context.newPage();
-    await page.addInitScript(() => { window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios" }; });
+    await page.addInitScript(() => { window.CapacitorCustomPlatform = { name: "ios" }; });
     await page.goto(base);
     await page.getByLabel("Server address").waitFor();
     await snap(page, "light-5-connect");

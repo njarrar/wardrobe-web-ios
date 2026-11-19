@@ -64,6 +64,20 @@ export async function cutOutOnDevice(item) {
   return frameOnSquare(await loadImage(result.image));
 }
 
+// For the iCloud closet's import step: PNG bytes in, cut PNG bytes out, or
+// null when the phone cannot cut or finds nothing.
+export async function cutOutPng(bytes) {
+  if (!(await canCutOutOnDevice())) return null;
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  const result = await Cutout().cutOut({ image: `data:image/png;base64,${btoa(binary)}` });
+  if (!result?.image) return null;
+  const raw = atob(result.image.split(",")[1] || "");
+  const out = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) out[index] = raw.charCodeAt(index);
+  return out;
+}
+
 export function savePiecePicture(id, imageDataUrl) {
   return sendJson(`/api/import/wardrobe/${encodeURIComponent(id)}/image`, "PUT", { imageDataUrl }, t("Could not save the picture."));
 }

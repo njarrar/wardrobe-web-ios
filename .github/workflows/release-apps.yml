@@ -24,6 +24,11 @@ on:
         type: choice
         options: [completed, draft]
         default: completed
+      mac:
+        description: Mac to build on (try intel when GitHub has no free Apple chip Macs)
+        type: choice
+        options: [macos-15, macos-15-intel]
+        default: macos-15
 
 permissions:
   contents: read
@@ -39,7 +44,7 @@ env:
 jobs:
   ios:
     if: github.event_name == 'release' || inputs.platforms != 'android'
-    runs-on: macos-15
+    runs-on: ${{ inputs.mac || 'macos-15' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

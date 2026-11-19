@@ -1,6 +1,8 @@
 // Talks to the wardrobe server. In the browser the server is the page's own
 // origin; in the iOS app the person enters its address once (for example the
 // Synology NAS on the home network, or a public HTTPS address).
+import { isLocalMode, localApi } from "./local/mode.js";
+
 const SERVER_KEY = "wardrobe-server-url";
 const TOKEN_KEY = "wardrobe-token";
 export const AUTH_EVENT = "wardrobe:auth-required";
@@ -55,11 +57,12 @@ export function forgetConnection({ keepServer = false } = {}) {
 }
 
 export function needsServerUrl() {
-  return isNativeApp() && !serverUrl();
+  return isNativeApp() && !serverUrl() && !isLocalMode();
 }
 
 // A short, human label for where the closet lives.
 export function connectionLabel() {
+  if (isLocalMode()) return localApi().store.kind === "icloud" ? "iCloud" : "This device";
   const base = serverUrl() || (typeof window !== "undefined" ? window.location.origin : "");
   try { return new URL(base).host; } catch { return base; }
 }
@@ -74,6 +77,7 @@ export function apiUrl(path) {
 let images = { params: "", expires: 0 };
 
 export async function ensureImageKey() {
+  if (isLocalMode()) return;
   const token = accessToken();
   if (!token) { images = { params: "", expires: 0 }; return; }
   // Renew once less than two hours are left, so open screens never hold a
@@ -94,11 +98,13 @@ export async function ensureImageKey() {
 
 export function assetUrl(path) {
   if (!path || typeof path !== "string" || !path.startsWith("/api/")) return path;
+  if (isLocalMode()) return localApi().assetUrl(path);
   const url = apiUrl(path);
   return images.params ? `${url}${url.includes("?") ? "&" : "?"}${images.params}` : url;
 }
 
 export async function apiFetch(path, options = {}) {
+  if (isLocalMode()) return localApi().handle(path, options);
   const token = accessToken();
   const response = await fetch(apiUrl(path), {
     ...options,
@@ -122,6 +128,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
 // can say exactly what is wrong instead of failing after a reload.
 // Resolves to { ok, reason?, server?, config? }.
 export async function testConnection({ server = "", token = "" } = {}) {
+  if (isLocalMode() && !server) {
+    const health = await (await apiFetch("/api/health")).json();
+    return { ok: true, server: health, config: await (await apiFetch("/api/import/config")).json() };
+  }
   const base = server ? normalizeServerUrl(server) : "";
   const headers = token.trim() ? { Authorization: `Bearer ${token.trim()}` } : {};
   let health = null;

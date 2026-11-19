@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0 (iCloud closet)
+
+### No server needed
+- **Use iCloud** on the first screen of the iPhone and iPad app. Pieces, pictures, outfits and the plan are saved as files in the app's own iCloud Drive folder and sync to your other Apple devices. Without iCloud Drive they stay on the device.
+- Everything the server does works here too: importing photos, styling, sorting, the plan, wear log, basics and Fix edges.
+- **The AI is called from the phone.** Paste your Claude, ChatGPT or Gemini key in Settings; it is kept in the Keychain and synced by iCloud Keychain. Requests go straight to the AI company through the app's own HTTP.
+- **Cutouts on the phone.** Approving a crop cuts the piece out with Apple's Vision (iOS 17 and later). On older iOS the crop is kept as is.
+
+### Moving
+- **Settings > Where your closet lives.** Copy a closet from your server into iCloud (the server keeps its copy), or switch back to a server. AI keys are not copied; add yours again after the move.
+
+### Under the hood
+- `src/local/` holds the serverless API (`backend.js`, the same routes and shared rules as the servers), the stores (`store.js`: iCloud files, a browser database, or memory for tests) and the move (`migrate.js`).
+- New iOS plugin `CloudStore` (files with `NSFileCoordinator`, iCloud downloads, Keychain). The app now has iCloud entitlements (`App.entitlements`).
+- `shared/ai.mjs` takes an optional `fetch` per call.
+
 ## 2.6.0 (Arabic, weather and picture fixes)
 
 ### Arabic
