@@ -5,6 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
+import { addDays, dayString } from "../shared/style.mjs";
 
 const shade = (hex, amount) => {
   const value = parseInt(hex.slice(1), 16);
@@ -77,12 +78,26 @@ const OUTFITS = [
   ["office-no-tie", "Office, no tie", ["work"], "Sharp but easy: the oxford and chinos with loafers.", ["oxford", "chinos", "loafers", "tote"]],
   ["rainy-day", "Rainy day", ["rain", "work"], "The trench and boots keep you dry, the knit keeps you warm.", ["grey-knit", "trench", "black-trousers", "boots"]],
   ["dinner-out", "Dinner out", ["dinner"], "Dark and simple, with a little color at the neck.", ["navy-tee", "black-trousers", "loafers", "scarf"]],
+  ["navy-and-rust", "Navy and rust", ["weekend"], "Navy leads and the rust scarf sits across the wheel.", ["navy-tee", "chinos", "loafers", "scarf"]],
+  ["quiet-greys", "Quiet greys", ["work"], "Grey and black with white shoes to lift it.", ["grey-knit", "black-trousers", "sneakers"]],
+  ["city-layers", "City layers", ["work", "smart"], "The trench over a crisp oxford, calm and tonal.", ["oxford", "trench", "chinos", "loafers"]],
+  ["denim-day", "Denim day", ["weekend", "casual"], "Indigo on navy, close on the wheel.", ["navy-tee", "jeans", "boots"]],
 ];
+
+// Days ago each sample piece was worn, and what it cost, so the wear log,
+// the Not worn in a while row and cost per wear have something to show.
+const WEAR = {
+  oxford: [[3, 10, 17, 24, 38], 60], "navy-tee": [[1, 6, 13, 20], 18], "stripe-tee": [[5, 26], 35],
+  "grey-knit": [[2, 9, 30], 95], "olive-jacket": [[5, 40], 140], trench: [[640], 210], jeans: [[1, 5, 26], 80],
+  chinos: [[3, 10, 17], 55], "black-trousers": [[2, 9, 30, 44], 70], sneakers: [[1, 2, 5, 26], 110],
+  loafers: [[3, 10, 17], 130], boots: [[250], 160], tote: [[3, 17], 40], scarf: [[], 30],
+};
 
 export async function writeSampleCloset(dataDir) {
   const imported = path.join(dataDir, "imported");
   await mkdir(imported, { recursive: true });
   const records = [];
+  const today = dayString();
   for (const [index, [id, name, part, shape, color, tags]] of PIECES.entries()) {
     const file = `sample-${id}.png`;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">${SHAPES[shape](color)}</svg>`;
@@ -90,7 +105,9 @@ export async function writeSampleCloset(dataDir) {
     records.push({
       id: `import-sample-${id}`, name, part, color, secondaryColor: null, palette: [color], tags,
       image: `/api/import/library/${file}`, thumbnail: `/api/import/library/${file}`,
-      addedAt: new Date(Date.UTC(2026, 9, 1 + index)).toISOString(),
+      addedAt: new Date(Date.UTC(2025, 0, 1 + index)).toISOString(),
+      wornDates: (WEAR[id]?.[0] || []).map((ago) => addDays(today, -ago)).sort(),
+      price: WEAR[id]?.[1] ?? null,
     });
   }
   await writeFile(path.join(dataDir, "library.json"), JSON.stringify(records, null, 2));

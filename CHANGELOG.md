@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.4.0 (Wear and color)
+
+### Closet
+- **Today card.** One saved outfit for today, picked from outfits you have not worn in the last 7 days and leaning on pieces that have sat for a while. **Wear this** logs it; **Shuffle** picks another on the device, with no AI call.
+- **Not worn in a while.** A row of pieces nobody has worn for 60 days or more, longest first. A piece never worn counts from the day it was added.
+- **Wear log.** **Wore today** on a piece, **Wore it today** on an outfit. Logging an outfit logs every piece in it. Tap again to undo.
+- **Cost per wear.** Add what you paid for a piece. Its page shows times worn, last worn and cost per wear.
+
+### Outfits
+- **Color wheel rules.** Pick Auto, Tonal, Neighbors, Opposites or Three-way before styling. The AI gets the rule, the server checks every outfit on the color wheel, drops clashes and puts the asked-for rule first. Black, white, grey, beige, camel, brown and navy count as neutrals.
+- Each outfit shows its rule and a score out of 100.
+- **Use pieces I haven't worn lately** asks the AI to build on the forgotten pieces.
+
+### API
+- `PATCH /api/import/wardrobe/:id` takes `price`, and `wear` or `unwear` with a date like `2026-11-18`.
+- `PATCH /api/import/outfits/:id` takes `wear` and `unwear`.
+- `POST /api/import/outfits/generate` takes `rule` (`tonal`, `neighbors`, `opposites`, `three-way`) and `preferIds`.
+- New `shared/style.mjs` holds the color wheel, wear log and planning logic for the app and both servers.
+
 ## 2.3.0 (Ready for the app stores)
 
 ### Phone apps

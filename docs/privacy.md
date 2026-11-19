@@ -14,8 +14,9 @@ The apps contain no ads, no analytics and no tracking.
 
 ## Where your data goes
 
-- **Your server.** The photos you add, your pieces, your outfits and your
-  settings are saved on the server you connect to. You control that server
+- **Your server.** The photos you add, your pieces, your outfits, the days
+  you wore them, prices you enter and your settings are saved on the server
+  you connect to. You control that server
   and can delete anything on it at any time.
 - **The AI you pick.** To find clothes in a photo and to style outfits, your
   server sends the photo, or the names, colors and tags of your pieces, to the

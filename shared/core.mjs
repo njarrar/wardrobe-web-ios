@@ -1,5 +1,6 @@
 // Logic shared by the local Node server (scripts/import-job-api.mjs) and the
 // Cloudflare Worker (worker/index.js). Nothing here may import Node modules.
+import { editWornDates } from "./style.mjs";
 
 export const PARTS = new Set(["upperbody", "wholebody_up", "lowerbody", "accessories_up", "shoes"]);
 export const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -15,9 +16,27 @@ export const ANALYZE_SCHEMA = { type: "object", additionalProperties: false, pro
 export const STYLE_SCHEMA = { type: "object", additionalProperties: false, properties: { outfits: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, occasion: { type: "array", items: { type: "string" } }, garmentIds: { type: "array", items: { type: "string" } }, reason: { type: "string" } }, required: ["name", "occasion", "garmentIds", "reason"] } } }, required: ["outfits"] };
 
 export const MAX_STYLE_COUNT = 12;
+export const STYLE_RULE_IDS = ["tonal", "neighbors", "opposites", "three-way"];
 
-export function buildStylePrompt({ items, outfits = [], count = 4, notes = "" }) {
+// Wheel rules the person can ask for when styling.
+const RULE_PROMPTS = {
+  tonal: "Keep every outfit tonal: neutrals (black, white, grey, beige, camel, brown, navy) plus at most one color family.",
+  neighbors: "Use neighbor colors: the colored pieces sit next to each other on the color wheel, such as blue with teal, or rust with mustard. Neutrals are always fine.",
+  opposites: "Use opposite colors: two colors from across the color wheel, such as navy with rust or green with burgundy. Let one lead and keep the other small. Neutrals are always fine.",
+  "three-way": "Use three colors spaced evenly around the color wheel, kept soft, with neutrals between them.",
+};
+
+// The optional color rule and long-unworn piece ids sent with a style request.
+export function styleOptions(input = {}) {
+  return {
+    rule: STYLE_RULE_IDS.includes(input.rule) ? input.rule : "",
+    preferIds: Array.isArray(input.preferIds) ? input.preferIds.filter((id) => typeof id === "string" && /^import-[\w-]{1,80}$/.test(id)).slice(0, 30) : [],
+  };
+}
+
+export function buildStylePrompt({ items, outfits = [], count = 4, notes = "", rule = "", preferIds = [] }) {
   const closet = items.map((item) => ({ id: item.id, name: item.name, category: item.part, color: item.color, secondaryColor: item.secondaryColor || undefined, tags: item.tags }));
+  const prefer = preferIds.filter((id) => items.some((item) => item.id === id)).slice(0, 30);
   const taken = outfits.map((outfit) => outfit.garmentIds).filter(Array.isArray);
   return `You are styling outfits from this wardrobe. Every piece is listed as JSON with its id, name, category, colors and tags.
 
@@ -35,7 +54,10 @@ Styling rules:
 - Balance the shapes: pair fuller bottoms with a cleaner top, and keep heavy layers over a simple base.
 - Spread the pieces across outfits instead of leaning on the same easy basics.
 - Cover a useful mix of occasions such as casual, smart casual, work, evening and warm or cold weather.
-${notes ? `
+- Build on the color wheel, not chance. Treat black, white, grey, beige, camel, brown and navy as neutrals.
+${RULE_PROMPTS[rule] ? `- ${RULE_PROMPTS[rule]}
+` : ""}${prefer.length ? `- These pieces have not been worn in a long time. Use as many of them as fit well: ${JSON.stringify(prefer)}.
+` : ""}${notes ? `
 The owner asked for: ${notes}
 ` : ""}
 Give each outfit a short name (two to four words), one to three lowercase occasion tags, the garment ids, and one plain sentence on why it works. If the wardrobe cannot support ${count} distinct outfits, return as many good ones as it can.`;
@@ -97,6 +119,7 @@ export function normalizeManualOutfit(input = {}, items = []) {
 // id never change here.
 export function applyOutfitEdit(current, input = {}) {
   const next = { ...current };
+  if (input.wear !== undefined || input.unwear !== undefined) next.wornDates = editWornDates(current.wornDates, input);
   if (typeof input.name === "string" && input.name.trim()) next.name = input.name.trim().slice(0, 80);
   if (input.occasion !== undefined) next.occasion = outfitOccasions(input.occasion);
   if (typeof input.reason === "string") next.reason = input.reason.trim().slice(0, 400);
@@ -159,6 +182,15 @@ export function normalizeItemEdit(record, value = {}) {
     if (!Array.isArray(input.tags)) throw Object.assign(new Error("tags must be an array"), { status: 400 });
     next.tags = [...new Set(input.tags.filter((tag) => typeof tag === "string").map((tag) => tag.trim().slice(0, 40)).filter(Boolean))].slice(0, 12);
   }
+  if ("price" in input) {
+    if (input.price === null || input.price === "") next.price = null;
+    else {
+      const price = Number(input.price);
+      if (!Number.isFinite(price) || price < 0 || price > 1000000) throw Object.assign(new Error("price must be a number"), { status: 400 });
+      next.price = Math.round(price * 100) / 100;
+    }
+  }
+  if (input.wear !== undefined || input.unwear !== undefined) next.wornDates = editWornDates(record.wornDates, input);
   next.palette = [...new Set([next.color, next.secondaryColor, ...(Array.isArray(record.palette) ? record.palette : [])].filter(Boolean))].slice(0, 5);
   return next;
 }

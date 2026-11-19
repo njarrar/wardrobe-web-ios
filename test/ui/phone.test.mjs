@@ -100,7 +100,7 @@ describe("phone screens", () => {
       page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
 
       await page.goto(base);
-      await page.getByText("White oxford shirt").waitFor();
+      await page.locator('[aria-label="View White oxford shirt"]').waitFor();
       assert.equal(await page.locator('[aria-label^="View "]').count(), PIECES.length);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       assert.ok(overflow <= 0, `page scrolls sideways by ${overflow}px`);
@@ -160,7 +160,7 @@ describe("phone screens", () => {
     }, guarded.base);
     try {
       await page.goto(guarded.base);
-      await page.getByText("White oxford shirt").waitFor();
+      await page.locator('[aria-label="View White oxford shirt"]').waitFor();
       await page.waitForFunction(() => [...document.images].filter((image) => image.src.includes("/api/import/library/")).every((image) => image.complete && image.naturalWidth > 0));
       assert.ok(imageUrls.some((url) => url.includes("/api/import/library/")));
       assert.ok(imageUrls.every((url) => !url.includes("s3cret-token")));

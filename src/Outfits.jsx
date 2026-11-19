@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, CoatHanger, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
+import { Check, ClockCounterClockwise, CoatHanger, MagicWand, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
 import { apiFetch, assetUrl } from "./api.js";
 import { askAiConsent, useAiSetup } from "./ai-setup.js";
+import { COLOR_RULES, COLOR_RULE_IDS, dayString, forgottenPieces, lastWorn, outfitHarmony, wearCount } from "../shared/style.mjs";
+import { sendJson, wearOutfit, wornOn } from "./wear.js";
 import "./outfits.css";
+import "./today.css";
 
 // The Outfits tab: outfits the AI styles, outfits built by hand, an occasion
 // filter, and a viewer where an outfit can be edited or deleted.
@@ -29,15 +32,8 @@ function splitOccasions(text) {
   return text.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean);
 }
 
-async function sendJson(path, method, payload, failure) {
-  const response = await apiFetch(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const value = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(value.error || failure);
-  return value;
+function HarmonyBadge({ harmony }) {
+  return <span className="harmony-badge" title={COLOR_RULES[harmony.rule]?.hint}>{COLOR_RULES[harmony.rule]?.label} · {harmony.score}</span>;
 }
 
 // New outfits have no photo; show the garment cutouts together instead.
@@ -50,11 +46,21 @@ function Collage({ pieces }) {
   );
 }
 
-function StyleForm({ busy, ready, onStyle, onCompose, canCompose }) {
+function StyleForm({ busy, ready, onStyle, onCompose, canCompose, forgottenCount }) {
   const [count, setCount] = useState(4);
   const [notes, setNotes] = useState("");
+  const [rule, setRule] = useState("");
+  const [useForgotten, setUseForgotten] = useState(false);
   return (
-    <form className="outfit-style-form" onSubmit={(event) => { event.preventDefault(); onStyle({ count, notes }); }}>
+    <form className="outfit-style-form" onSubmit={(event) => { event.preventDefault(); onStyle({ count, notes, rule, useForgotten }); }}>
+      <fieldset className="style-rules" disabled={busy}>
+        <legend>Color rule</legend>
+        {[["", "Auto"], ...COLOR_RULE_IDS.map((id) => [id, COLOR_RULES[id].label])].map(([id, label]) => (
+          <button key={id || "auto"} type="button" className={rule === id ? "active" : ""} aria-pressed={rule === id} title={id ? COLOR_RULES[id].hint : "Pick the best rule for each outfit"} onClick={() => setRule(id)}>
+            {label}
+          </button>
+        ))}
+      </fieldset>
       <label>
         <span>Outfits</span>
         <select id="outfit-count" value={count} onChange={(event) => setCount(Number(event.target.value))} disabled={busy}>
@@ -69,6 +75,12 @@ function StyleForm({ busy, ready, onStyle, onCompose, canCompose }) {
         {busy ? <SpinnerGap size={15} className="import-spinner" aria-hidden="true" /> : <MagicWand size={15} aria-hidden="true" />}
         {busy ? "Styling" : "Style new outfits"}
       </button>
+      {forgottenCount > 0 && (
+        <label className="style-forgotten">
+          <input type="checkbox" checked={useForgotten} onChange={(event) => setUseForgotten(event.target.checked)} disabled={busy} />
+          Use pieces I haven't worn lately ({forgottenCount})
+        </label>
+      )}
       {!ready && <p className="outfit-style-form__hint" id="outfit-needs-key">To style outfits, add an AI key in Settings (the gear at the top). You can still build your own.</p>}
       <div className="outfit-style-form__footer">
         <div className="outfit-prompts" aria-label="Ideas">
@@ -200,11 +212,10 @@ function OutfitBuilder({ items, onClose, onCreated }) {
   );
 }
 
-export function OutfitGallery({ items, onSelectGarment }) {
+export function OutfitGallery({ items, outfits, setOutfits, loadError = "", onWorn, openId, setOpenId, onSelectGarment }) {
   const setup = useAiSetup();
-  const [outfits, setOutfits] = useState(null);
   const [error, setError] = useState("");
-  const [openId, setOpenId] = useState(null);
+  const [wearing, setWearing] = useState(false);
   const [building, setBuilding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [styling, setStyling] = useState(false);
@@ -212,15 +223,7 @@ export function OutfitGallery({ items, onSelectGarment }) {
   const [occasion, setOccasion] = useState("all");
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
 
-  useEffect(() => {
-    apiFetch("/api/import/outfits", { cache: "no-store" })
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not load outfits.");
-        return response.json();
-      })
-      .then(setOutfits)
-      .catch((requestError) => setError(requestError.message));
-  }, []);
+  const forgotten = useMemo(() => forgottenPieces(items), [items]);
 
   const closeViewer = () => { setOpenId(null); setEditing(null); };
 
@@ -252,11 +255,11 @@ export function OutfitGallery({ items, onSelectGarment }) {
     if (occasion !== "all" && !occasions.some(([tag]) => tag === occasion)) setOccasion("all");
   }, [occasion, occasions]);
 
-  const style = async ({ count, notes }) => {
+  const style = async ({ count, notes, rule, useForgotten }) => {
     if (!(await askAiConsent(setup))) return;
     setStyling(true); setError(""); setNotice("");
     try {
-      const value = await sendJson("/api/import/outfits/generate", "POST", { count, notes }, "Could not style outfits.");
+      const value = await sendJson("/api/import/outfits/generate", "POST", { count, notes, rule, preferIds: useForgotten ? forgotten.map((item) => item.id) : [] }, "Could not style outfits.");
       const created = value.outfits || [];
       setOutfits((current) => [...(current || []), ...created]);
       if (!created.length) setNotice("No new combinations found. Add more pieces and try again.");
@@ -288,7 +291,14 @@ export function OutfitGallery({ items, onSelectGarment }) {
     } catch (requestError) { setError(requestError.message); }
   };
 
-  if (!outfits) return error ? <p className="status error">{error}</p> : <p className="status">Loading outfits</p>;
+  const toggleWorn = async (outfit) => {
+    setWearing(true); setError("");
+    try { onWorn(await wearOutfit(outfit, { day: dayString(), undo: wornOn(outfit) })); }
+    catch (requestError) { setError(requestError.message); }
+    finally { setWearing(false); }
+  };
+
+  if (!outfits) return loadError ? <p className="status error">{loadError}</p> : <p className="status">Loading outfits</p>;
 
   const shown = occasion === "all" ? outfits : outfits.filter((outfit) => (outfit.occasion || []).includes(occasion));
   const open = outfits.find((outfit) => outfit.id === openId);
@@ -296,7 +306,7 @@ export function OutfitGallery({ items, onSelectGarment }) {
 
   return (
     <>
-      <StyleForm busy={styling} ready={Boolean(setup?.ready)} onStyle={style} canCompose={items.length >= 2} onCompose={() => setBuilding(true)} />
+      <StyleForm busy={styling} ready={Boolean(setup?.ready)} onStyle={style} canCompose={items.length >= 2} onCompose={() => setBuilding(true)} forgottenCount={forgotten.length} />
       {occasions.length > 0 && (
         <nav className="category-nav outfit-occasions" aria-label="Filter outfits by occasion">
           <button type="button" className={occasion === "all" ? "active" : ""} aria-pressed={occasion === "all"} onClick={() => setOccasion("all")}>
@@ -319,6 +329,7 @@ export function OutfitGallery({ items, onSelectGarment }) {
             {outfit.image ? <img src={assetUrl(outfit.image)} alt="" loading="lazy" /> : <Collage pieces={outfitPieces(outfit, itemsById)} />}
             <span className="outfit-card__name">{outfit.name || outfit.id}</span>
             {outfit.occasion?.length > 0 && <span className="outfit-card__occasion">{outfit.occasion.join(" · ")}</span>}
+            <span className="outfit-card__harmony"><HarmonyBadge harmony={outfitHarmony(outfit, itemsById)} /></span>
           </button>
         ))}
       </section>
@@ -354,7 +365,14 @@ export function OutfitGallery({ items, onSelectGarment }) {
                 <>
                   <h2>{open.name || open.id}</h2>
                   {open.occasion?.length > 0 && <p className="outfit-viewer__occasion">{open.occasion.join(" · ")}</p>}
+                  <p className="outfit-viewer__harmony"><HarmonyBadge harmony={outfitHarmony(open, itemsById)} /> {COLOR_RULES[outfitHarmony(open, itemsById).rule]?.hint}</p>
                   {open.reason && <p>{open.reason}</p>}
+                  {wearCount(open) > 0 && <p className="outfit-viewer__worn">Worn {wearCount(open)} {wearCount(open) === 1 ? "time" : "times"} · last {new Date(`${lastWorn(open)}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>}
+                  <div className="wear-actions">
+                    <button type="button" className={wornOn(open) ? "secondary-button" : "primary-button"} onClick={() => toggleWorn(open)} disabled={wearing}>
+                      {wornOn(open) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> Undo, not worn today</> : <><Check size={15} weight="bold" aria-hidden="true" /> Wore it today</>}
+                    </button>
+                  </div>
                 </>
               )}
               <PieceList pieces={openPieces} onSelect={onSelectGarment && ((id) => { closeViewer(); onSelectGarment(id); })} />

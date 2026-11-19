@@ -121,6 +121,19 @@ describe("wardrobe api without a token", () => {
     assert.equal((await fetch(`${ctx.base}/api/import/outfits/no-such-outfit`, { method: "PATCH", body: "{}" })).status, 404);
   });
 
+  test("logs the days an outfit and its pieces were worn", async () => {
+    const [outfit] = JSON.parse(await readFile(path.join(ctx.dataDir, "outfits.json"), "utf8")).outfits;
+    const patch = (url, value) => fetch(`${ctx.base}${url}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+    const worn = await (await patch(`/api/import/outfits/${outfit.id}`, { wear: "2026-11-18" })).json();
+    assert.deepEqual(worn.wornDates, ["2026-11-18"]);
+    const piece = await (await patch("/api/import/wardrobe/import-a", { wear: "2026-11-18", price: 45 })).json();
+    assert.deepEqual(piece.wornDates, ["2026-11-18"]);
+    assert.equal(piece.price, 45);
+    assert.equal((await patch("/api/import/wardrobe/import-a", { wear: "yesterday" })).status, 400);
+    const undone = await (await patch(`/api/import/outfits/${outfit.id}`, { unwear: "2026-11-18" })).json();
+    assert.deepEqual(undone.wornDates, []);
+  });
+
   test("reports health without a token", async () => {
     const response = await fetch(`${ctx.base}/api/health`);
     assert.equal(response.status, 200);
@@ -276,11 +289,22 @@ describe("importing and styling with Claude", () => {
     assert.deepEqual(outfits[0].occasion, ["casual"]);
     assert.equal(outfits[0].image, null);
     assert.match(claude.requests.at(-1).body.messages[0].content[0].text, /The owner asked for: weekend/);
+    assert.match(claude.requests.at(-1).body.messages[0].content[0].text, /color wheel/);
 
     const stored = JSON.parse(await readFile(path.join(ctx.dataDir, "outfits.json"), "utf8"));
     assert.equal(stored.outfits.length, 1);
     assert.equal((await fetch(`${ctx.base}/api/import/outfits/${outfits[0].id}`, { method: "DELETE" })).status, 200);
     assert.deepEqual(await (await fetch(`${ctx.base}/api/import/outfits`)).json(), []);
+  });
+
+  test("passes the color rule and forgotten pieces to the AI", async () => {
+    const [first] = await (await fetch(`${ctx.base}/api/import/wardrobe`)).json();
+    await post("/api/import/outfits/generate", { count: 1, rule: "tonal", preferIds: [first.id] });
+    const text = claude.requests.at(-1).body.messages[0].content[0].text;
+    assert.match(text, /Keep every outfit tonal/);
+    assert.match(text, new RegExp(first.id));
+    const { outfits } = JSON.parse(await readFile(path.join(ctx.dataDir, "outfits.json"), "utf8"));
+    for (const outfit of outfits) await fetch(`${ctx.base}/api/import/outfits/${outfit.id}`, { method: "DELETE" });
   });
 
   test("the same combination is not styled twice", async () => {

@@ -4,6 +4,7 @@
 // background from a Queue so requests return right away.
 import {
   MAX_STYLE_COUNT,
+  styleOptions,
   applyOutfitEdit,
   normalizeItemEdit,
   normalizeManualOutfit,
@@ -296,7 +297,7 @@ async function handleApi(request, env) {
     if (!items.some((item) => item.part === "upperbody") || !items.some((item) => item.part === "lowerbody")) {
       throw new HttpError(409, "Add at least one top and one bottom before styling outfits.");
     }
-    const created = await styleOutfits(await currentAi(env), { items, outfits: await listOutfits(env), count, notes });
+    const created = await styleOutfits(await currentAi(env), { items, outfits: await listOutfits(env), count, notes, ...styleOptions(input) });
     for (const outfit of created) await saveOutfit(env, outfit);
     return json(201, { outfits: created });
   }
