@@ -3,9 +3,13 @@
 <plist version="1.0">
 <dict>
 	<!-- Wardrobe does not track people and runs no ads or analytics.
-	     Photos go only to the server the person connects to. Weather, when
-	     turned on, sends a rough location straight to Open-Meteo for one
-	     forecast and nothing is kept, so it is not collected data. -->
+	     In server mode, photos go only to the server the person connects to.
+	     In iCloud mode, closet data stays in the user's private iCloud Drive
+	     container and photos or item details are sent directly to the AI
+	     provider the person chooses (Claude, ChatGPT, or Gemini) using their
+	     own API key, only after explicit in-app consent. Weather, when turned
+	     on, sends a rough location straight to Open-Meteo for one forecast
+	     and nothing is kept, so it is not collected data. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
@@ -13,6 +17,23 @@
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
