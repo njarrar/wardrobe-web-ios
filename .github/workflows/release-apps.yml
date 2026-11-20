@@ -103,7 +103,8 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          /usr/libexec/PlistBuddy -c "Add :teamID string $APPLE_TEAM_ID" ios/ExportOptions.plist
+          /usr/libexec/PlistBuddy -c "Set :teamID $APPLE_TEAM_ID" ios/ExportOptions.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :teamID string $APPLE_TEAM_ID" ios/ExportOptions.plist
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/Wardrobe.xcarchive" \
             -exportOptionsPlist ios/ExportOptions.plist \

@@ -1,10 +1,15 @@
 # Wardrobe — web app + API in one container. Built for Synology Container
-# Manager (DSM 7.2+), but runs on any Docker host (amd64 or arm64).
+# Manager (DSM 7.2+), and runs on any Docker host (amd64 or arm64).
 #
 #   docker compose up -d --build
 #
-# All closet data (library.json, outfits.json, photos, cutouts and the
-# background-removal model cache) lives in the /data volume.
+# All closet data (library.json, outfits.json, plan.json, photos, cutouts and
+# the background-removal model cache) lives in the /data volume.
+#
+# Privilege model: by default the entrypoint runs as root briefly to chown
+# /data to PUID:PGID and serve.mjs drops to PUID:PGID before creating files.
+# If your host /data folder is already owned by your user, you can instead run
+# directly as non-root with `docker run --user 1000:1000` (or Compose `user:`).
 
 ARG NODE_VERSION=22
 
@@ -20,7 +25,10 @@ COPY scripts ./scripts
 COPY shared ./shared
 RUN npm run build
 
-# ---- 2. Production dependencies only --------------------------------------
+# ---- 2. Runtime production dependencies only ------------------------------
+# Build-only and mobile-only packages live in devDependencies, so --omit=dev
+# installs only the lean Node server dependencies (sharp, Anthropic SDK, and
+# optional @huggingface/transformers when WITH_CUTOUT=true).
 FROM node:${NODE_VERSION}-bookworm-slim AS deps
 WORKDIR /app
 # Set to "false" for a ~250 MB smaller image without on-device background
@@ -34,7 +42,7 @@ RUN npm ci --omit=dev --no-audit --no-fund \
 # ---- 3. Runtime ------------------------------------------------------------
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 LABEL org.opencontainers.image.title="Wardrobe" \
-      org.opencontainers.image.description="Self-hosted AI wardrobe: web app + API for the iOS app" \
+      org.opencontainers.image.description="Self-hosted AI wardrobe: web app + API for the iOS and Android apps" \
       org.opencontainers.image.licenses="MIT"
 
 ENV NODE_ENV=production \

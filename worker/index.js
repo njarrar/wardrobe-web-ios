@@ -23,6 +23,7 @@ import {
 } from "../shared/core.mjs";
 import { normalizePlan } from "../shared/style.mjs";
 import { AI_IMAGE_EDGE, AiError, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, sortCloset, styleOutfits } from "../shared/ai.mjs";
+import packageInfo from "../package.json" with { type: "json" };
 import { cropDetectedItem, decodePng, encodePng, frameTransparentGarment, resize } from "../shared/pixels.mjs";
 
 const API_ROOT = "/api/import/jobs";
@@ -30,11 +31,26 @@ const ASSET_ROOT = "/api/import/assets";
 const LIBRARY_ASSET_ROOT = "/api/import/library";
 const OUTFIT_ASSET_ROOT = "/api/import/outfits";
 const MAX_BODY = 25 * 1024 * 1024;
+const PROCESSING_LEASE_MS = 2 * 60 * 1000;
+const MAX_QUEUE_ATTEMPTS = 3;
+const AUTH_WINDOW_MS = 60 * 1000;
+const AUTH_MAX_FAILURES = 20;
+const JPEG_MAGIC = [0xff, 0xd8, 0xff];
+
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+};
+
+// Per-isolate brute-force throttle on failed WARDROBE_TOKEN attempts.
+const authFailures = new Map();
 
 class HttpError extends Error {
-  constructor(status, message) {
+  constructor(status, message, headers = {}) {
     super(message);
     this.status = status;
+    this.headers = headers;
   }
 }
 
@@ -54,20 +70,104 @@ function withCors(response, request, env) {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-function json(status, value) {
+function setting(env, name, fallback = "") {
+  return (typeof env?.[name] === "string" && env[name].trim()) || fallback;
+}
+
+// The allowed methods and headers. withCors names the origin, or takes
+// these away when the caller's origin is not allowed.
+function corsHeaders() {
+  return { ...CORS_HEADERS };
+}
+
+function json(status, value, cors = {}, extraHeaders = {}) {
   return new Response(JSON.stringify(value), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...CORS_HEADERS },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      ...SECURITY_HEADERS,
+      ...cors,
+      ...extraHeaders,
+    },
   });
+}
+
+function requireJsonContentType(request) {
+  const contentType = (request.headers.get("content-type") || "").toLowerCase();
+  if (!contentType.startsWith("application/json")) {
+    throw new HttpError(415, "Send request body as application/json");
+  }
 }
 
 async function readJson(request, limit = MAX_BODY) {
   const length = Number(request.headers.get("content-length") || 0);
   if (length > limit) throw new HttpError(413, "Request body too large");
-  const text = await request.text();
-  if (text.length > limit) throw new HttpError(413, "Request body too large");
-  if (!text) return {};
+  if (!request.body) return {};
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limit) {
+        await reader.cancel().catch(() => {});
+        throw new HttpError(413, "Request body too large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  if (!total) return {};
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder().decode(combined);
+  if (!text.trim()) return {};
   try { return JSON.parse(text); } catch { throw new HttpError(400, "Expected a JSON request body"); }
+}
+
+function clientKey(request) {
+  return request.headers.get("cf-connecting-ip")
+    || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || "unknown";
+}
+
+function checkAuthRateLimit(key, now = Date.now()) {
+  const entry = authFailures.get(key);
+  if (!entry) return null;
+  if (now >= entry.resetAt) {
+    authFailures.delete(key);
+    return null;
+  }
+  if (entry.count >= AUTH_MAX_FAILURES) {
+    return Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+  }
+  return null;
+}
+
+function recordAuthFailure(key, now = Date.now()) {
+  if (authFailures.size > 500) {
+    for (const [ip, entry] of authFailures) {
+      if (now >= entry.resetAt) authFailures.delete(ip);
+    }
+  }
+  const entry = authFailures.get(key);
+  if (!entry || now >= entry.resetAt) {
+    authFailures.set(key, { count: 1, resetAt: now + AUTH_WINDOW_MS });
+  } else {
+    entry.count += 1;
+  }
+}
+
+function isJpeg(bytes) {
+  return bytes.length >= JPEG_MAGIC.length && JPEG_MAGIC.every((value, index) => bytes[index] === value);
 }
 
 function decodeDataUrl(input) {
@@ -86,10 +186,6 @@ function toBase64(bytes) {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   return btoa(binary);
-}
-
-function setting(env, name, fallback = "") {
-  return (typeof env[name] === "string" && env[name]) || fallback;
 }
 
 // The AI picked in Settings and the keys pasted there live in the D1
@@ -124,9 +220,9 @@ async function transformImage(env, bytes, transform, format) {
 
 // The AI reads images up to 1568px on the long edge. Cloudflare Images makes
 // a JPEG that size; without the binding (tests), fall back to a small PNG.
-async function imageForAi(env, image, pngBytes) {
+async function imageForAi(env, image, rawBytes) {
   if (env.IMAGES) {
-    const jpeg = await transformImage(env, pngBytes, { width: AI_IMAGE_EDGE, height: AI_IMAGE_EDGE, fit: "scale-down" }, "image/jpeg");
+    const jpeg = await transformImage(env, rawBytes, { width: AI_IMAGE_EDGE, height: AI_IMAGE_EDGE, fit: "scale-down" }, "image/jpeg");
     return { imageBase64: toBase64(jpeg), mediaType: "image/jpeg" };
   }
   const scale = Math.min(1, 1024 / Math.max(image.width, image.height));
@@ -135,7 +231,7 @@ async function imageForAi(env, image, pngBytes) {
 }
 
 async function removeBackground(env, cropBytes) {
-  if (!env.IMAGES) throw new Error("Background removal needs the Cloudflare Images binding. Use the crop as is, or add the binding.");
+  if (!env.IMAGES) throw Object.assign(new Error("Background removal needs the Cloudflare Images binding. Use the crop as is, or add the binding."), { permanent: true });
   return transformImage(env, cropBytes, { segment: "foreground" }, "image/png");
 }
 
@@ -164,6 +260,7 @@ async function saveJob(env, job) {
 }
 
 async function deleteJob(env, id) {
+  const existing = await loadJob(env, id);
   await env.DB.prepare("DELETE FROM jobs WHERE id = ?").bind(id).run();
   let cursor;
   do {
@@ -171,6 +268,14 @@ async function deleteJob(env, id) {
     if (listing.objects.length) await env.BUCKET.delete(listing.objects.map((object) => object.key));
     cursor = listing.truncated ? listing.cursor : undefined;
   } while (cursor);
+  // Clean up shared multi-garment batch original once the last job in the batch is gone.
+  const batchId = existing?.internal?.originalBatchId;
+  if (batchId && batchId !== id) {
+    const remaining = await env.DB.prepare("SELECT COUNT(*) AS count FROM jobs WHERE data LIKE ?").bind(`%${batchId}%`).first().catch(() => null);
+    if (!remaining || Number(remaining.count) === 0) {
+      await env.BUCKET.delete(`jobs/${batchId}/${existing.internal.originalFile || "original.png"}`).catch(() => {});
+    }
+  }
 }
 
 async function listItems(env) {
@@ -224,12 +329,54 @@ async function saveOutfit(env, outfit) {
     ON CONFLICT(id) DO UPDATE SET data = excluded.data`).bind(outfit.id, JSON.stringify(outfit)).run();
 }
 
+// Prunes a deleted garment ID from all outfits, deleting any outfit left with
+// fewer than 2 pieces and clearing deleted outfit IDs from the plan.
+async function pruneDeletedGarment(env, garmentId) {
+  const { results } = await env.DB.prepare("SELECT id, data FROM outfits").all();
+  const statements = [];
+  const removedOutfitIds = new Set();
+  for (const row of results) {
+    const outfit = JSON.parse(row.data);
+    if (!Array.isArray(outfit.garmentIds) || !outfit.garmentIds.includes(garmentId)) continue;
+    const nextIds = outfit.garmentIds.filter((id) => id !== garmentId);
+    if (nextIds.length < 2) {
+      removedOutfitIds.add(outfit.id);
+      statements.push(env.DB.prepare("DELETE FROM outfits WHERE id = ?").bind(outfit.id));
+    } else {
+      const next = { ...outfit, garmentIds: nextIds };
+      statements.push(env.DB.prepare("UPDATE outfits SET data = ? WHERE id = ?").bind(JSON.stringify(next), outfit.id));
+    }
+  }
+  if (statements.length) await env.DB.batch(statements);
+  if (removedOutfitIds.size) {
+    await env.BUCKET.delete([...removedOutfitIds].map((id) => `outfits/${id}.png`)).catch(() => {});
+    const planRow = await env.DB.prepare("SELECT data FROM settings WHERE key = 'plan'").first().catch(() => null);
+    if (planRow) {
+      const plan = normalizePlan(JSON.parse(planRow.data));
+      let changed = false;
+      for (const [day, outfitId] of Object.entries(plan.days)) {
+        if (removedOutfitIds.has(outfitId)) {
+          delete plan.days[day];
+          changed = true;
+        }
+      }
+      if (changed) {
+        await env.DB.prepare("INSERT INTO settings (key, data) VALUES ('plan', ?1) ON CONFLICT(key) DO UPDATE SET data = excluded.data").bind(JSON.stringify(plan)).run();
+      }
+    }
+  }
+}
+
 // ---------- garment cutout (Queue consumer) ----------
 
 export async function makeGarment(env, jobId, keepBackground = false) {
   const current = await loadJob(env, jobId);
-  if (!current || current.stages.garment?.status !== "queued") return;
-  const stage = current.stages.garment;
+  const stage = current?.stages?.garment;
+  if (!current || !stage) return { retry: false };
+  const updatedMs = Date.parse(stage.updatedAt || "");
+  const staleLease = stage.status === "processing" && (!Number.isFinite(updatedMs) || (Date.now() - updatedMs) > PROCESSING_LEASE_MS);
+  if (stage.status !== "queued" && !staleLease) return { retry: false };
+
   Object.assign(stage, { status: "processing", decision: null, error: null, attempts: stage.attempts + 1, updatedAt: new Date().toISOString() });
   await saveJob(env, current);
   const outputName = `garment-${stage.attempts}.png`;
@@ -238,14 +385,22 @@ export async function makeGarment(env, jobId, keepBackground = false) {
     const cut = keepBackground ? crop : await removeBackground(env, crop);
     await putPng(env, `jobs/${current.id}/${outputName}`, encodePng(frameTransparentGarment(decodePng(cut))));
     const fresh = await loadJob(env, current.id);
-    if (!fresh) return;
+    if (!fresh) return { retry: false };
     Object.assign(fresh.stages.garment, { status: "review", assetUrl: `${ASSET_ROOT}/${fresh.id}/${outputName}`, keptBackground: keepBackground, updatedAt: new Date().toISOString() });
     await saveJob(env, fresh);
+    return { retry: false };
   } catch (error) {
+    const transient = !error.permanent && !(error instanceof HttpError && error.status < 500) && stage.attempts < MAX_QUEUE_ATTEMPTS;
     const fresh = await loadJob(env, current.id);
-    if (!fresh) return;
-    Object.assign(fresh.stages.garment, { status: "failed", error: error.message, updatedAt: new Date().toISOString() });
-    await saveJob(env, fresh);
+    if (fresh) {
+      Object.assign(fresh.stages.garment, {
+        status: transient ? "queued" : "failed",
+        error: error.message,
+        updatedAt: new Date().toISOString(),
+      });
+      await saveJob(env, fresh);
+    }
+    return { retry: transient };
   }
 }
 
@@ -261,11 +416,17 @@ async function setupStatus(env) {
   return { ready: ai.ready, hasApiKey: ai.ready, provider: ai.provider, providerName: selected.name, storage: "cloudflare", cutouts: Boolean(env.IMAGES) };
 }
 
-async function serveObject(env, key, cacheControl) {
+async function serveObject(env, key, cacheControl, cors) {
   const object = await env.BUCKET.get(key);
-  if (!object) return json(404, { error: "Not found" });
+  if (!object) return json(404, { error: "Not found" }, cors);
   return new Response(object.body, {
-    headers: { "Content-Type": object.httpMetadata?.contentType || "image/png", "Cache-Control": cacheControl, ETag: object.httpEtag, ...CORS_HEADERS },
+    headers: {
+      "Content-Type": object.httpMetadata?.contentType || "image/png",
+      "Cache-Control": cacheControl,
+      ETag: object.httpEtag,
+      ...SECURITY_HEADERS,
+      ...cors,
+    },
   });
 }
 
@@ -278,61 +439,82 @@ async function authorized(request, url, env) {
   return request.method === "GET" && imageKeyMatches(env.WARDROBE_TOKEN, url);
 }
 
-async function handleApi(request, env) {
+async function handleApi(request, env, cors) {
   const url = new URL(request.url);
   const { pathname } = url;
   const method = request.method;
-  if (method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+  if (method === "OPTIONS") return new Response(null, { status: 204, headers: { ...SECURITY_HEADERS, ...cors } });
   // Open liveness check for the connect screen. The Worker always needs a token.
-  if (pathname === "/api/health" && method === "GET") return json(200, { ok: true, app: "wardrobe", version: "cloudflare", protected: true });
-  if (!env.WARDROBE_TOKEN) return json(503, { error: "Set the WARDROBE_TOKEN secret on this Worker first." });
-  if (!(await authorized(request, url, env))) return json(401, { error: "Wardrobe access token required" });
-  if (pathname === "/api/import/image-key" && method === "GET") return json(200, await newImageKey(env.WARDROBE_TOKEN));
+  if (pathname === "/api/health" && method === "GET") {
+    return json(200, { ok: true, app: "wardrobe", version: setting(env, "WARDROBE_VERSION", packageInfo.version), protected: true }, cors);
+  }
+  if (!env.WARDROBE_TOKEN) return json(503, { error: "Set the WARDROBE_TOKEN secret on this Worker first." }, cors);
+  // Check the token first, so the right token always gets in.
+  if (!(await authorized(request, url, env))) {
+    const ip = clientKey(request);
+    const retryAfter = checkAuthRateLimit(ip);
+    if (retryAfter) {
+      return json(429, { error: "Too many failed authentication attempts. Try again shortly." }, cors, { "Retry-After": String(retryAfter) });
+    }
+    recordAuthFailure(ip);
+    return json(401, { error: "Wardrobe access token required" }, cors);
+  }
+  if (pathname === "/api/import/image-key" && method === "GET") return json(200, await newImageKey(env.WARDROBE_TOKEN), cors);
 
-  if (pathname === "/api/import/wardrobe" && method === "GET") return json(200, await listItems(env));
-  if (pathname === "/api/import/config" && method === "GET") return json(200, await setupStatus(env));
-  if (pathname === "/api/import/outfits" && method === "GET") return json(200, await listOutfits(env));
-  if (pathname === "/api/import/settings/ai" && method === "GET") return json(200, publicAiSettings(await loadAiSettings(env), envReader(env)));
+  if (pathname === "/api/import/wardrobe" && method === "GET") return json(200, await listItems(env), cors);
+  if (pathname === "/api/import/config" && method === "GET") return json(200, await setupStatus(env), cors);
+  if (pathname === "/api/import/outfits" && method === "GET") return json(200, await listOutfits(env), cors);
+  if (pathname === "/api/import/settings/ai" && method === "GET") return json(200, publicAiSettings(await loadAiSettings(env), envReader(env)), cors);
   if (pathname === "/api/import/settings/ai" && method === "PUT") {
-    if (!(request.headers.get("content-type") || "").toLowerCase().startsWith("application/json")) throw new HttpError(415, "Send settings as application/json");
+    requireJsonContentType(request);
     const next = applyAiSettingsEdit(await loadAiSettings(env), await readJson(request, 16 * 1024));
     await saveAiSettings(env, next);
-    return json(200, publicAiSettings(next, envReader(env)));
+    return json(200, publicAiSettings(next, envReader(env)), cors);
   }
 
   if (pathname === "/api/import/plan" && method === "GET") {
     const row = await env.DB.prepare("SELECT data FROM settings WHERE key = 'plan'").first().catch(() => null);
-    return json(200, normalizePlan(row ? JSON.parse(row.data) : {}));
+    return json(200, normalizePlan(row ? JSON.parse(row.data) : {}), cors);
   }
   if (pathname === "/api/import/plan" && method === "PUT") {
+    requireJsonContentType(request);
     const plan = normalizePlan(await readJson(request, 256 * 1024));
     await env.DB.prepare("INSERT INTO settings (key, data) VALUES ('plan', ?1) ON CONFLICT(key) DO UPDATE SET data = excluded.data").bind(JSON.stringify(plan)).run();
-    return json(200, plan);
+    return json(200, plan, cors);
   }
   if (pathname === "/api/import/wardrobe/sort" && method === "POST") {
+    requireJsonContentType(request);
     const input = await readJson(request, 16 * 1024);
     const ai = await currentAi(env);
     const all = await listItems(env);
     const todo = input.all ? all : all.filter((item) => !item.kind || !Array.isArray(item.seasons) || !item.warmth || !item.formality);
+    if (!todo.length) return json(200, { items: [] }, cors);
+    const sorted = await sortCloset(ai, todo);
+    // Re-read current rows before batching updates so concurrent edits are preserved.
+    const freshById = new Map((await listItems(env)).map((item) => [item.id, item]));
+    const statements = [];
     const updated = [];
-    for (const { id, ...fields } of todo.length ? await sortCloset(ai, todo) : []) {
-      const record = all.find((item) => item.id === id);
+    for (const { id, ...fields } of sorted) {
+      const record = freshById.get(id);
       if (!record) continue;
       const next = { ...record, ...fields };
-      await env.DB.prepare("UPDATE items SET data = ? WHERE id = ?").bind(JSON.stringify(next), id).run();
+      statements.push(env.DB.prepare("UPDATE items SET data = ? WHERE id = ?").bind(JSON.stringify(next), id));
       updated.push(next);
     }
-    return json(200, { items: updated });
+    if (statements.length) await env.DB.batch(statements);
+    return json(200, { items: updated }, cors);
   }
 
   // Same rules as the local server: see normalizeManualOutfit and applyOutfitEdit in shared/core.mjs.
   if (pathname === "/api/import/outfits" && method === "POST") {
+    requireJsonContentType(request);
     const created = normalizeManualOutfit(await readJson(request, 64 * 1024), await listItems(env));
     await saveOutfit(env, created);
-    return json(201, { outfit: created });
+    return json(201, { outfit: created }, cors);
   }
 
   if (pathname === "/api/import/outfits/generate" && method === "POST") {
+    requireJsonContentType(request);
     const input = await readJson(request, 64 * 1024);
     const count = Math.max(1, Math.min(MAX_STYLE_COUNT, Math.round(Number(input.count) || 4)));
     const notes = typeof input.notes === "string" ? input.notes.trim().slice(0, 500) : "";
@@ -342,11 +524,12 @@ async function handleApi(request, env) {
     }
     const created = await styleOutfits(await currentAi(env), { items, outfits: await listOutfits(env), count, notes, ...styleOptions(input) });
     for (const outfit of created) await saveOutfit(env, outfit);
-    return json(201, { outfits: created });
+    return json(201, { outfits: created }, cors);
   }
 
   // Used by scripts/upload-to-cloudflare.mjs to copy a local closet up.
   if (pathname === "/api/import/sync/item" && method === "POST") {
+    requireJsonContentType(request);
     const input = await readJson(request);
     const record = input.record;
     if (!record || typeof record.id !== "string" || !/^import-[\w-]{1,80}$/.test(record.id)) throw new HttpError(400, "record.id must look like import-...");
@@ -364,9 +547,10 @@ async function handleApi(request, env) {
       modeledImage,
     }, { name: record.name || "New piece", part: record.part, color: record.color || "#d8d0c2", secondaryColor: record.secondaryColor || null, tags: record.tags || [] });
     await upsertItem(env, clean);
-    return json(200, clean);
+    return json(200, clean, cors);
   }
   if (pathname === "/api/import/sync/outfit" && method === "POST") {
+    requireJsonContentType(request);
     const input = await readJson(request);
     const outfit = input.outfit;
     if (!outfit || typeof outfit.id !== "string" || !/^[\w-]{1,80}$/.test(outfit.id)) throw new HttpError(400, "outfit.id is required");
@@ -377,32 +561,34 @@ async function handleApi(request, env) {
     }
     const stored = { ...outfit, image };
     await saveOutfit(env, stored);
-    return json(200, stored);
+    return json(200, stored, cors);
   }
 
   const outfitMatch = pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
   if (outfitMatch && method === "PATCH") {
+    requireJsonContentType(request);
     const row = await env.DB.prepare("SELECT data FROM outfits WHERE id = ?").bind(outfitMatch[1]).first();
-    if (!row) return json(404, { error: "Outfit not found" });
+    if (!row) return json(404, { error: "Outfit not found" }, cors);
     const input = await readJson(request, 64 * 1024);
     const items = input.swap ? await listItems(env) : null;
     const next = applyOutfitEdit(JSON.parse(row.data), input, items);
     await saveOutfit(env, next);
     const fileName = typeof next.image === "string" ? next.image.split("/").pop() : null;
-    return json(200, { ...next, image: fileName ? `${OUTFIT_ASSET_ROOT}/${fileName}` : null });
+    return json(200, { ...next, image: fileName ? `${OUTFIT_ASSET_ROOT}/${fileName}` : null }, cors);
   }
   if (outfitMatch && method === "DELETE") {
     const id = outfitMatch[1];
     const { meta } = await env.DB.prepare("DELETE FROM outfits WHERE id = ?").bind(id).run();
-    if (!meta.changes) return json(404, { error: "Outfit not found" });
+    if (!meta.changes) return json(404, { error: "Outfit not found" }, cors);
     await env.BUCKET.delete(`outfits/${id}.png`);
-    return json(200, { deleted: true, id });
+    return json(200, { deleted: true, id }, cors);
   }
 
   const outfitAssetMatch = pathname.match(/^\/api\/import\/outfits\/([\w.-]+\.png)$/i);
-  if (outfitAssetMatch && method === "GET") return serveObject(env, `outfits/${outfitAssetMatch[1]}`, "no-cache");
+  if (outfitAssetMatch && method === "GET") return serveObject(env, `outfits/${outfitAssetMatch[1]}`, "private, no-cache", cors);
 
   if (pathname === "/api/import/wardrobe" && method === "POST") {
+    requireJsonContentType(request);
     const input = await readJson(request, 12 * 1024 * 1024);
     const bytes = checkPng(decodeDataUrl(input).bytes);
     const id = `import-${crypto.randomUUID()}`;
@@ -410,13 +596,14 @@ async function handleApi(request, env) {
     await putPng(env, `library/${fileName}`, bytes);
     const record = newPieceRecord(input, id, `${LIBRARY_ASSET_ROOT}/${fileName}`);
     await upsertItem(env, record);
-    return json(201, record);
+    return json(201, record, cors);
   }
   const imageMatch = pathname.match(/^\/api\/import\/wardrobe\/(import-[\w-]{1,80})\/image$/i);
   if (imageMatch && method === "PUT") {
+    requireJsonContentType(request);
     const id = imageMatch[1];
     const row = await env.DB.prepare("SELECT data FROM items WHERE id = ?").bind(id).first();
-    if (!row) return json(404, { error: "Imported wardrobe item not found" });
+    if (!row) return json(404, { error: "Imported wardrobe item not found" }, cors);
     const bytes = checkPng(decodeDataUrl(await readJson(request, 12 * 1024 * 1024)).bytes);
     const fileName = garmentFileName(id);
     await putPng(env, `library/${fileName}`, bytes);
@@ -425,47 +612,58 @@ async function handleApi(request, env) {
     const next = { ...record, image: `${LIBRARY_ASSET_ROOT}/${fileName}`, thumbnail: `${LIBRARY_ASSET_ROOT}/${fileName}` };
     await env.DB.prepare("UPDATE items SET data = ? WHERE id = ?").bind(JSON.stringify(next), id).run();
     if (oldName.startsWith(`${id}-garment`) && oldName !== fileName) await env.BUCKET.delete(`library/${oldName}`);
-    return json(200, next);
+    return json(200, next, cors);
   }
   const itemMatch = pathname.match(/^\/api\/import\/wardrobe\/(import-[\w-]{1,80})$/i);
   if (itemMatch && method === "DELETE") {
     const id = itemMatch[1];
     const row = await env.DB.prepare("SELECT data FROM items WHERE id = ?").bind(id).first();
     const { meta } = await env.DB.prepare("DELETE FROM items WHERE id = ?").bind(id).run();
-    if (!meta.changes) return json(404, { error: "Imported wardrobe item not found" });
+    if (!meta.changes) return json(404, { error: "Imported wardrobe item not found" }, cors);
     const ownImage = row ? String(JSON.parse(row.data).image || "").split("/").pop() : "";
     await env.BUCKET.delete([`library/${id}-garment.png`, `library/${id}-modeled.png`, ...(ownImage.startsWith(`${id}-garment`) ? [`library/${ownImage}`] : [])]);
-    return json(200, { deleted: true, id });
+    await pruneDeletedGarment(env, id);
+    return json(200, { deleted: true, id }, cors);
   }
   if (itemMatch && (method === "PATCH" || method === "PUT")) {
+    requireJsonContentType(request);
     const id = itemMatch[1];
     const input = await readJson(request, 64 * 1024);
     const row = await env.DB.prepare("SELECT data FROM items WHERE id = ?").bind(id).first();
-    if (!row) return json(404, { error: "Imported wardrobe item not found" });
+    if (!row) return json(404, { error: "Imported wardrobe item not found" }, cors);
     const record = normalizeItemEdit(JSON.parse(row.data), input);
     await env.DB.prepare("UPDATE items SET data = ? WHERE id = ?").bind(JSON.stringify(record), id).run();
-    return json(200, record);
+    return json(200, record, cors);
   }
 
   const libraryAssetMatch = pathname.match(/^\/api\/import\/library\/([\w.-]+)$/i);
-  if (libraryAssetMatch && method === "GET") return serveObject(env, `library/${libraryAssetMatch[1]}`, "private, max-age=31536000, immutable");
+  if (libraryAssetMatch && method === "GET") return serveObject(env, `library/${libraryAssetMatch[1]}`, "private, max-age=31536000, immutable", cors);
 
   const assetMatch = pathname.match(/^\/api\/import\/assets\/([a-f0-9-]{36})\/([\w.-]+)$/i);
-  if (assetMatch && method === "GET") return serveObject(env, `jobs/${assetMatch[1]}/${assetMatch[2]}`, "no-store");
+  if (assetMatch && method === "GET") return serveObject(env, `jobs/${assetMatch[1]}/${assetMatch[2]}`, "no-store", cors);
 
   if (pathname === API_ROOT && method === "POST") {
+    requireJsonContentType(request);
     const ai = requireAi(await currentAi(env));
-    const { bytes } = decodeDataUrl(await readJson(request));
+    const { bytes, mime } = decodeDataUrl(await readJson(request));
+    let pngBytes = bytes;
+    if ((mime === "image/jpeg" || isJpeg(bytes)) && env.IMAGES) {
+      pngBytes = await transformImage(env, bytes, { width: 2048, height: 2048, fit: "scale-down" }, "image/png");
+    }
     let image;
-    try { image = decodePng(bytes); } catch { throw new HttpError(400, "Send the photo as a PNG. Update the app if you see this."); }
+    try { image = decodePng(pngBytes); } catch { throw new HttpError(400, "Send the photo as a PNG or JPEG. Update the app if you see this."); }
     const normalizedBytes = encodePng(image);
-    const detected = await detectClothing(ai, await imageForAi(env, image, normalizedBytes));
+    const detected = await detectClothing(ai, await imageForAi(env, image, bytes));
     const jobs = [];
+    // Deduplicate original.png per multi-garment upload batch in R2.
+    const originalFile = "original.png";
+    const batchId = detected.length > 1 ? crypto.randomUUID() : null;
+    if (batchId) await putPng(env, `jobs/${batchId}/${originalFile}`, normalizedBytes);
     for (const metadata of detected) {
       const id = crypto.randomUUID();
-      const originalFile = "original.png";
+      const ownerId = batchId || id;
       const cropFile = "crop.png";
-      await putPng(env, `jobs/${id}/${originalFile}`, normalizedBytes);
+      if (!batchId) await putPng(env, `jobs/${id}/${originalFile}`, normalizedBytes);
       await putPng(env, `jobs/${id}/${cropFile}`, encodePng(cropDetectedItem(image, metadata.boundingBox)));
       const now = new Date().toISOString();
       const job = {
@@ -475,39 +673,40 @@ async function handleApi(request, env) {
         stages: { crop: { ...stageState(), status: "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now }, garment: stageState() },
         createdAt: now,
         updatedAt: now,
-        internal: { originalFile, cropFile },
-        originalAssetUrl: `${ASSET_ROOT}/${id}/${originalFile}`,
+        internal: { originalFile, cropFile, ...(batchId ? { originalBatchId: batchId } : {}) },
+        originalAssetUrl: `${ASSET_ROOT}/${ownerId}/${originalFile}`,
       };
       await saveJob(env, job);
       jobs.push(publicJob(job));
     }
-    return json(202, { jobs, noClothingDetected: jobs.length === 0 });
+    return json(202, { jobs, noClothingDetected: jobs.length === 0 }, cors);
   }
 
   if (pathname === API_ROOT && method === "GET") {
     const { results } = await env.DB.prepare("SELECT data FROM jobs ORDER BY created_at").all();
-    const loaded = results.map((row) => JSON.parse(row.data));
-    const hidden = loaded.filter((job) => job.status === "complete" || Object.values(job.stages).some((stage) => stage.status === "rejected"));
-    await Promise.all(hidden.map((job) => deleteJob(env, job.id)));
-    return json(200, loaded.filter((job) => !hidden.includes(job)).map(publicJob));
+    const active = results
+      .map((row) => JSON.parse(row.data))
+      .filter((job) => job.status !== "complete" && !Object.values(job.stages || {}).some((stage) => stage.status === "rejected"));
+    return json(200, active.map(publicJob), cors);
   }
 
   const match = pathname.match(/^\/api\/import\/jobs\/([a-f0-9-]{36})(?:\/(.*))?$/i);
-  if (!match) return json(404, { error: "Not found" });
+  if (!match) return json(404, { error: "Not found" }, cors);
   const job = await loadJob(env, match[1]);
-  if (!job) return json(404, { error: "Job not found" });
+  if (!job) return json(404, { error: "Job not found" }, cors);
   const action = match[2] || "";
-  if (!action && method === "GET") return json(200, publicJob(job));
+  if (!action && method === "GET") return json(200, publicJob(job), cors);
   if (!action && method === "DELETE") {
     await deleteJob(env, job.id);
-    return json(200, { deleted: true, id: job.id });
+    return json(200, { deleted: true, id: job.id }, cors);
   }
   if (action === "metadata" && (method === "PATCH" || method === "PUT")) {
+    requireJsonContentType(request);
     const input = await readJson(request, 64 * 1024);
     if (!input.metadata || typeof input.metadata !== "object" || Array.isArray(input.metadata)) throw new HttpError(400, "metadata must be an object");
     job.metadata = normalizeMetadata({ ...job.metadata, ...input.metadata });
     await saveJob(env, job);
-    return json(200, publicJob(job));
+    return json(200, publicJob(job), cors);
   }
   const stageMatch = action.match(/^stages\/(crop|garment)\/(approve|reject|retry|use-crop)$/);
   if (stageMatch && method === "POST") {
@@ -518,38 +717,39 @@ async function handleApi(request, env) {
       stage.status = "queued";
       await saveJob(env, job);
       await enqueue(env, job.id, decision === "use-crop");
-      return json(202, publicJob(job));
+      return json(202, publicJob(job), cors);
     }
     if (stage.status !== "review") throw new HttpError(409, "Stage is not ready for review");
     if (decision === "reject") {
       await deleteJob(env, job.id);
-      return json(200, publicJob({ ...job, stages: { ...job.stages, [stageName]: { ...stage, status: "rejected", decision: "rejected" } } }));
+      return json(200, publicJob({ ...job, stages: { ...job.stages, [stageName]: { ...stage, status: "rejected", decision: "rejected" } } }), cors);
     }
     Object.assign(stage, { status: "approved", decision: "approved", error: null, updatedAt: new Date().toISOString() });
     if (stageName === "crop") {
       job.stages.garment.status = "queued";
       await saveJob(env, job);
       await enqueue(env, job.id);
-      return json(200, publicJob(job));
+      return json(200, publicJob(job), cors);
     }
     const record = await persistImported(env, job);
     job.status = "complete";
     await deleteJob(env, job.id);
-    return json(200, { ...publicJob(job), item: record });
+    return json(200, { ...publicJob(job), item: record }, cors);
   }
-  return json(404, { error: "Not found" });
+  return json(404, { error: "Not found" }, cors);
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname !== "/api/health" && !url.pathname.startsWith("/api/import/")) return env.ASSETS.fetch(request);
+    const cors = corsHeaders(request, env);
     try {
-      return withCors(await handleApi(request, env), request, env);
+      return withCors(await handleApi(request, env, cors), request, env);
     } catch (error) {
       const status = error instanceof HttpError || error instanceof AiError || (error.status >= 400 && error.status < 500) ? error.status : 500;
       if (status === 500) console.error(error);
-      return withCors(json(status, { error: status === 500 ? "Internal server error" : error.message }), request, env);
+      return withCors(json(status, { error: status === 500 ? "Internal server error" : error.message }, cors, error.headers || {}), request, env);
     }
   },
 
@@ -560,8 +760,14 @@ export default {
         message.ack();
         continue;
       }
-      await makeGarment(env, jobId, keepBackground === true);
-      message.ack();
+      try {
+        const result = await makeGarment(env, jobId, keepBackground === true);
+        if (result?.retry) message.retry({ delaySeconds: 10 });
+        else message.ack();
+      } catch (error) {
+        console.error(error);
+        message.retry({ delaySeconds: 10 });
+      }
     }
   },
 };

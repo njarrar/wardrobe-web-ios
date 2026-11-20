@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
@@ -34,11 +35,67 @@ const LIBRARY_ASSET_ROOT = "/api/import/library";
 const OUTFIT_ASSET_ROOT = "/api/import/outfits";
 export const DEFAULT_CUTOUT_MODEL = "onnx-community/BiRefNet_lite";
 
+const AUTH_WINDOW_MS = 60 * 1000;
+const AUTH_MAX_FAILURES = 30;
+const IMAGE_MIME = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+};
+
+function applySecurityHeaders(res) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+}
+
 function json(res, status, value) {
   res.statusCode = status;
+  applySecurityHeaders(res);
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
   res.end(JSON.stringify(value));
+}
+
+function isLoopbackAddress(address = "") {
+  const value = String(address).trim().toLowerCase();
+  return value === "127.0.0.1"
+    || value === "::1"
+    || value === "::ffff:127.0.0.1"
+    || value.startsWith("127.")
+    || value.startsWith("::ffff:127.");
+}
+
+function isAllowedLoopbackOrigin(origin) {
+  if (!origin) return true;
+  if (origin === "null") return false;
+  try {
+    const parsed = new URL(origin);
+    return (parsed.protocol === "http:" || parsed.protocol === "https:") && isLoopbackHost(parsed.host);
+  } catch {
+    return false;
+  }
+}
+
+// Guards mutating JSON endpoints against cross-site form/text CSRF.
+// `strict: true` rejects every non-application/json request (e.g. AI settings).
+// Otherwise, rejects form/multipart bodies, any browser-originated non-JSON
+// request (Origin or Sec-Fetch-Site present), and explicit non-JSON types.
+function requireJsonContentType(req, { strict = false } = {}) {
+  const raw = String(req.headers["content-type"] || "").trim().toLowerCase();
+  if (raw.startsWith("application/json")) return;
+  if (strict) {
+    throw Object.assign(new Error("Send settings as application/json"), { status: 415 });
+  }
+  if (!raw) return;
+  if (raw.startsWith("application/x-www-form-urlencoded") || raw.startsWith("multipart/form-data")) {
+    throw Object.assign(new Error("Send request body as application/json"), { status: 415 });
+  }
+  const hasBrowserHeaders = Boolean(req.headers.origin || req.headers["sec-fetch-site"]);
+  if (hasBrowserHeaders || !raw.startsWith("text/plain;charset=utf-8")) {
+    throw Object.assign(new Error("Send request body as application/json"), { status: 415 });
+  }
 }
 
 async function body(req, limit = 25 * 1024 * 1024) {
@@ -126,11 +183,22 @@ async function imageForAi(bytes) {
 
 // Local background removal runs a small open model through transformers.js.
 // It is an optional install, so the import falls back to the plain crop when
-// it is missing (see the "use-crop" action).
-let cutoutPipeline = null;
+// it is missing (see the "use-crop" action). Pipelines are keyed by model and
+// serialized behind a 1-slot semaphore so concurrent cutouts cannot OOM a 2 GB NAS.
+const cutoutPipelines = new Map();
+let cutoutLock = Promise.resolve();
+
+function withCutoutSlot(task) {
+  const run = cutoutLock.then(task);
+  cutoutLock = run.catch(() => undefined);
+  return run;
+}
+
 export async function removeBackground(bytes, model, { cacheDir } = {}) {
-  if (!cutoutPipeline) {
-    cutoutPipeline = (async () => {
+  const key = `${model || DEFAULT_CUTOUT_MODEL}::${cacheDir || ""}`;
+  let pipelinePromise = cutoutPipelines.get(key);
+  if (!pipelinePromise) {
+    pipelinePromise = (async () => {
       let transformers;
       try { transformers = await import("@huggingface/transformers"); }
       catch { throw new Error("Background removal is not installed. Run npm install @huggingface/transformers, or use the crop as is."); }
@@ -138,29 +206,65 @@ export async function removeBackground(bytes, model, { cacheDir } = {}) {
         await mkdir(cacheDir, { recursive: true });
         transformers.env.cacheDir = cacheDir;
       }
-      return transformers.pipeline("background-removal", model, { dtype: "fp32" }).then((run) => ({ run, RawImage: transformers.RawImage }));
+      return transformers.pipeline("background-removal", model || DEFAULT_CUTOUT_MODEL, { dtype: "fp32" }).then((run) => ({ run, RawImage: transformers.RawImage }));
     })();
-    cutoutPipeline.catch(() => { cutoutPipeline = null; });
+    cutoutPipelines.set(key, pipelinePromise);
+    pipelinePromise.catch(() => { cutoutPipelines.delete(key); });
   }
-  const { run, RawImage } = await cutoutPipeline;
-  const input = await RawImage.fromBlob(new Blob([bytes], { type: "image/png" }));
-  const output = (await run(input)).rgba();
-  return sharp(Buffer.from(output.data), { raw: { width: output.width, height: output.height, channels: 4 } }).png().toBuffer();
+  return withCutoutSlot(async () => {
+    const { run, RawImage } = await pipelinePromise;
+    const input = await RawImage.fromBlob(new Blob([bytes], { type: "image/png" }));
+    const output = (await run(input)).rgba();
+    return sharp(Buffer.from(output.data), { raw: { width: output.width, height: output.height, channels: 4 } }).png().toBuffer();
+  });
 }
 
 async function atomicJson(file, value, mode) {
   const tmp = `${file}.${randomUUID()}.tmp`;
   await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, mode ? { mode } : undefined);
+  const delays = [40, 100, 200];
   try {
-    await rename(tmp, file);
-  } catch (error) {
-    if (!["EBUSY", "EXDEV", "EPERM"].includes(error.code)) {
-      await rm(tmp, { force: true });
-      throw error;
+    for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+      try {
+        await rename(tmp, file);
+        return;
+      } catch (error) {
+        if ((error.code === "EBUSY" || error.code === "EPERM") && attempt < delays.length) {
+          await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+          continue;
+        }
+        if (!["EBUSY", "EXDEV", "EPERM"].includes(error.code)) throw error;
+        await copyFile(tmp, file);
+        return;
+      }
     }
-    await copyFile(tmp, file);
-    await rm(tmp, { force: true });
+  } finally {
+    await rm(tmp, { force: true }).catch(() => {});
   }
+}
+
+async function serveImageFile(req, res, file, cacheControl) {
+  const info = await stat(file);
+  if (!info.isFile()) throw Object.assign(new Error("Not found"), { code: "ENOENT" });
+  const etag = `"${info.size.toString(16)}-${Math.trunc(info.mtimeMs).toString(16)}"`;
+  applySecurityHeaders(res);
+  res.setHeader("ETag", etag);
+  res.setHeader("Cache-Control", cacheControl);
+  if (req.headers["if-none-match"] === etag) {
+    res.statusCode = 304;
+    return res.end();
+  }
+  const ext = path.extname(file).toLowerCase();
+  res.statusCode = 200;
+  res.setHeader("Content-Type", IMAGE_MIME[ext] || "image/png");
+  res.setHeader("Content-Length", info.size);
+  if (req.method === "HEAD") return res.end();
+  const stream = createReadStream(file);
+  stream.on("error", () => {
+    if (!res.headersSent) res.statusCode = 500;
+    res.end();
+  });
+  stream.pipe(res);
 }
 
 export function createWardrobeApi(options = {}) {
@@ -174,8 +278,33 @@ export function createWardrobeApi(options = {}) {
   let planFile;
   let writeQueue = Promise.resolve();
   const running = new Map();
+  const authFailures = new Map();
   const setting = (name, fallback = "") => options.env?.[name] || process.env[name] || fallback;
   const cutout = options.removeBackground || ((bytes) => removeBackground(bytes, setting("WARDROBE_CUTOUT_MODEL", DEFAULT_CUTOUT_MODEL), { cacheDir: setting("WARDROBE_MODEL_CACHE") || undefined }));
+
+  function checkAuthRateLimit(ip, now = Date.now()) {
+    const entry = authFailures.get(ip);
+    if (!entry) return null;
+    if (now >= entry.resetAt) {
+      authFailures.delete(ip);
+      return null;
+    }
+    return entry.count >= AUTH_MAX_FAILURES ? Math.max(1, Math.ceil((entry.resetAt - now) / 1000)) : null;
+  }
+
+  function recordAuthFailure(ip, now = Date.now()) {
+    if (authFailures.size > 500) {
+      for (const [key, entry] of authFailures) {
+        if (now >= entry.resetAt) authFailures.delete(key);
+      }
+    }
+    const entry = authFailures.get(ip);
+    if (!entry || now >= entry.resetAt) {
+      authFailures.set(ip, { count: 1, resetAt: now + AUTH_WINDOW_MS });
+    } else {
+      entry.count += 1;
+    }
+  }
 
   // The AI picked in Settings and the keys pasted there live in
   // data/settings.json (readable by the server's user only). Keys in .env or
@@ -206,13 +335,26 @@ export function createWardrobeApi(options = {}) {
     await atomicJson(path.join(jobsDir, job.id, "job.json"), job);
   }
 
+  async function removeJobFiles(job) {
+    await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
+    const batchId = job?.internal?.originalBatchId;
+    if (!batchId || batchId === job.id) return;
+    const ids = await readdir(jobsDir).catch(() => []);
+    for (const id of ids) {
+      if (id === batchId) continue;
+      const other = await loadJob(id);
+      if (other?.internal?.originalBatchId === batchId) return;
+    }
+    await rm(path.join(jobsDir, batchId), { recursive: true, force: true });
+  }
+
   async function loadImported() {
     try { return JSON.parse(await readFile(importedFile, "utf8")); }
     catch (error) { if (error.code === "ENOENT") return []; throw error; }
   }
 
-  // Every read-modify-write of library.json and outfits.json runs through this
-  // queue so two changes landing at once cannot drop each other.
+  // Every read-modify-write of library.json, outfits.json and plan.json runs
+  // through this queue so two changes landing at once cannot drop each other.
   function serially(task) {
     const run = writeQueue.then(task);
     writeQueue = run.catch(() => undefined);
@@ -244,6 +386,48 @@ export function createWardrobeApi(options = {}) {
     });
   }
 
+  async function loadPlan() {
+    try { return normalizePlan(JSON.parse(await readFile(planFile, "utf8"))); }
+    catch (error) { if (error.code === "ENOENT") return normalizePlan({}); throw error; }
+  }
+
+  // Removes a deleted garment ID from saved outfits, drops outfits left with
+  // fewer than 2 pieces, and removes those dropped outfit IDs from plan.json.
+  async function pruneDeletedGarment(garmentId) {
+    const removedOutfits = await updateOutfits((outfits) => {
+      let changed = false;
+      const kept = [];
+      const dropped = [];
+      for (const outfit of outfits) {
+        if (!Array.isArray(outfit.garmentIds) || !outfit.garmentIds.includes(garmentId)) {
+          kept.push(outfit);
+          continue;
+        }
+        changed = true;
+        const nextIds = outfit.garmentIds.filter((id) => id !== garmentId);
+        if (nextIds.length < 2) dropped.push(outfit);
+        else kept.push({ ...outfit, garmentIds: nextIds });
+      }
+      return changed ? { outfits: kept, value: dropped } : { value: [] };
+    });
+    if (!removedOutfits?.length) return;
+    await Promise.all(removedOutfits.map((outfit) => (
+      typeof outfit.image === "string" ? rm(path.join(outfitAssetDir, path.basename(outfit.image)), { force: true }) : null
+    )));
+    const droppedIds = new Set(removedOutfits.map((outfit) => outfit.id));
+    await serially(async () => {
+      const plan = await loadPlan();
+      let changed = false;
+      for (const [day, outfitId] of Object.entries(plan.days)) {
+        if (droppedIds.has(outfitId)) {
+          delete plan.days[day];
+          changed = true;
+        }
+      }
+      if (changed) await atomicJson(planFile, plan);
+    });
+  }
+
   // Older outfits may carry a photo in data/outfit-images; new ones are a
   // collage of the garment cutouts drawn by the app.
   function outfitForClient(outfit) {
@@ -253,9 +437,19 @@ export function createWardrobeApi(options = {}) {
 
   // The token comes in the Authorization header; image links use a
   // short-lived image key instead (see imageKeyMatches in shared/core.mjs).
+  // Without a token, only local loopback requests from same-origin / non-cross-site
+  // callers are allowed so another web page cannot drive localhost via CSRF.
   async function authorize(req, url) {
     const token = setting("WARDROBE_TOKEN").trim();
-    if (!token) return isLoopbackHost(req.headers.host);
+    if (!token) {
+      if (!isLoopbackHost(req.headers.host)) return false;
+      const remote = req.socket?.remoteAddress;
+      if (remote && !isLoopbackAddress(remote)) return false;
+      const secFetchSite = String(req.headers["sec-fetch-site"] || "").trim().toLowerCase();
+      if (secFetchSite && secFetchSite !== "same-origin" && secFetchSite !== "none") return false;
+      if (!isAllowedLoopbackOrigin(req.headers.origin)) return false;
+      return true;
+    }
     const header = req.headers.authorization || "";
     const bearer = header.startsWith("Bearer ") ? header.slice(7) : null;
     if (tokensMatch(token, bearer)) return true;
@@ -334,6 +528,7 @@ export function createWardrobeApi(options = {}) {
   // a token is needed, and nothing about the closet itself.
   function health(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
+    applySecurityHeaders(res);
     if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
     res.setHeader("Cache-Control", "no-store");
     return json(res, 200, { ok: true, app: "wardrobe", version: options.version || "dev", protected: Boolean(setting("WARDROBE_TOKEN").trim()) });
@@ -344,11 +539,23 @@ export function createWardrobeApi(options = {}) {
     if (url.pathname === "/api/health") return health(req, res);
     if (!url.pathname.startsWith("/api/import/")) return next();
     applyCors(req, res);
+    applySecurityHeaders(res);
     if (req.method === "OPTIONS") {
       res.statusCode = 204;
       return res.end();
     }
-    if (!(await authorize(req, url))) return json(res, 401, { error: "Wardrobe access token required" });
+    // Check the token first, so the right token always gets in, even from an
+    // address (a reverse proxy) that also sends bad tries.
+    const ip = req.socket?.remoteAddress || "unknown";
+    if (!(await authorize(req, url))) {
+      const retryAfter = checkAuthRateLimit(ip);
+      if (retryAfter) {
+        res.setHeader("Retry-After", String(retryAfter));
+        return json(res, 429, { error: "Too many failed authentication attempts. Try again shortly." });
+      }
+      if (setting("WARDROBE_TOKEN").trim()) recordAuthFailure(ip);
+      return json(res, 401, { error: "Wardrobe access token required" });
+    }
     try {
       if (url.pathname === "/api/import/image-key" && req.method === "GET") {
         const token = setting("WARDROBE_TOKEN").trim();
@@ -367,9 +574,7 @@ export function createWardrobeApi(options = {}) {
       // Asking for JSON makes a browser check with the server first, so a web
       // page on another site cannot change the keys behind your back.
       if (url.pathname === "/api/import/settings/ai" && req.method === "PUT") {
-        if (!String(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) {
-          throw Object.assign(new Error("Send settings as application/json"), { status: 415 });
-        }
+        requireJsonContentType(req, { strict: true });
         const input = await body(req, 16 * 1024);
         const saved = await serially(async () => {
           const next = applyAiSettingsEdit(await loadAiSettings(), input);
@@ -381,16 +586,17 @@ export function createWardrobeApi(options = {}) {
         return json(res, 200, publicAiSettings(saved, setting));
       }
       if (url.pathname === "/api/import/plan" && req.method === "GET") {
-        try { return json(res, 200, normalizePlan(JSON.parse(await readFile(planFile, "utf8")))); }
-        catch (error) { if (error.code !== "ENOENT") throw error; return json(res, 200, normalizePlan({})); }
+        return json(res, 200, await loadPlan());
       }
       if (url.pathname === "/api/import/plan" && req.method === "PUT") {
+        requireJsonContentType(req);
         const plan = normalizePlan(await body(req, 256 * 1024));
         await serially(() => atomicJson(planFile, plan));
         return json(res, 200, plan);
       }
       // Fills in kind, seasons, warmth and dress level from names and tags (no photos).
       if (url.pathname === "/api/import/wardrobe/sort" && req.method === "POST") {
+        requireJsonContentType(req);
         const input = await body(req, 16 * 1024);
         const ai = await currentAi();
         const all = await loadImported();
@@ -413,11 +619,13 @@ export function createWardrobeApi(options = {}) {
       }
       // An outfit built by hand in the app. The pieces must already be in the closet.
       if (url.pathname === "/api/import/outfits" && req.method === "POST") {
+        requireJsonContentType(req);
         const created = normalizeManualOutfit(await body(req, 64 * 1024), await loadImported());
         await updateOutfits((outfits) => ({ outfits: [created, ...outfits] }));
         return json(res, 201, { outfit: outfitForClient(created) });
       }
       if (url.pathname === "/api/import/outfits/generate" && req.method === "POST") {
+        requireJsonContentType(req);
         const input = await body(req, 64 * 1024);
         const count = Math.max(1, Math.min(MAX_STYLE_COUNT, Math.round(Number(input.count) || 4)));
         const notes = typeof input.notes === "string" ? input.notes.trim().slice(0, 500) : "";
@@ -434,6 +642,7 @@ export function createWardrobeApi(options = {}) {
       const outfitMatch = url.pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
       // Rename an outfit, change its occasions/note/favorite, or swap a piece.
       if (outfitMatch && req.method === "PATCH") {
+        requireJsonContentType(req);
         const id = outfitMatch[1];
         const input = await body(req, 64 * 1024);
         const items = input.swap ? await loadImported() : null;
@@ -457,15 +666,13 @@ export function createWardrobeApi(options = {}) {
         return json(res, 200, { deleted: true, id });
       }
       const outfitAssetMatch = url.pathname.match(/^\/api\/import\/outfits\/([\w.-]+\.png)$/i);
-      if (outfitAssetMatch && req.method === "GET") {
+      if (outfitAssetMatch && (req.method === "GET" || req.method === "HEAD")) {
         const file = path.join(outfitAssetDir, path.basename(outfitAssetMatch[1]));
-        await stat(file);
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("Cache-Control", "no-cache");
-        return res.end(await readFile(file));
+        return await serveImageFile(req, res, file, "private, no-cache");
       }
       // A piece with its own PNG: a starter piece drawn in the app, or a phone cutout.
       if (url.pathname === "/api/import/wardrobe" && req.method === "POST") {
+        requireJsonContentType(req);
         const input = await body(req, 12 * 1024 * 1024);
         const bytes = checkPng(decodeImage(input).data);
         const id = `import-${randomUUID()}`;
@@ -478,8 +685,12 @@ export function createWardrobeApi(options = {}) {
       }
       const imageMatch = url.pathname.match(/^\/api\/import\/wardrobe\/(import-[\w-]{1,80})\/image$/i);
       if (imageMatch && req.method === "PUT") {
+        requireJsonContentType(req);
         const id = imageMatch[1];
-        const bytes = checkPng(decodeImage(await body(req, 12 * 1024 * 1024)).data);
+        const input = await body(req, 12 * 1024 * 1024);
+        const exists = (await loadImported()).some((record) => record.id === id);
+        if (!exists) return json(res, 404, { error: "Imported wardrobe item not found" });
+        const bytes = checkPng(decodeImage(input).data);
         const fileName = garmentFileName(id);
         await mkdir(libraryAssetDir, { recursive: true });
         await writeFile(path.join(libraryAssetDir, fileName), bytes);
@@ -510,10 +721,12 @@ export function createWardrobeApi(options = {}) {
           ownImage.startsWith(`${id}-garment`) ? rm(path.join(libraryAssetDir, ownImage), { force: true }) : null,
           rm(path.join(libraryAssetDir, `${id}-garment.png`), { force: true }),
           rm(path.join(libraryAssetDir, `${id}-modeled.png`), { force: true }),
+          pruneDeletedGarment(id),
         ]);
         return json(res, 200, { deleted: true, id });
       }
       if (wardrobeItemMatch && (req.method === "PATCH" || req.method === "PUT")) {
+        requireJsonContentType(req);
         const id = wardrobeItemMatch[1];
         const input = await body(req, 64 * 1024);
         const updated = await updateLibrary((records) => {
@@ -528,39 +741,52 @@ export function createWardrobeApi(options = {}) {
         return json(res, 200, updated);
       }
       const libraryAssetMatch = url.pathname.match(/^\/api\/import\/library\/([\w.-]+)$/i);
-      if (libraryAssetMatch && req.method === "GET") {
+      if (libraryAssetMatch && (req.method === "GET" || req.method === "HEAD")) {
         const file = path.join(libraryAssetDir, path.basename(libraryAssetMatch[1]));
-        await stat(file);
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        return res.end(await readFile(file));
+        return await serveImageFile(req, res, file, "private, max-age=31536000, immutable");
       }
       const assetMatch = url.pathname.match(/^\/api\/import\/assets\/([a-f0-9-]{36})\/([\w.-]+)$/i);
-      if (assetMatch && req.method === "GET") {
+      if (assetMatch && (req.method === "GET" || req.method === "HEAD")) {
         const file = path.join(jobsDir, assetMatch[1], path.basename(assetMatch[2]));
-        await stat(file);
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("Cache-Control", "no-store");
-        return res.end(await readFile(file));
+        return await serveImageFile(req, res, file, "no-store");
       }
       if (url.pathname === API_ROOT && req.method === "POST") {
+        requireJsonContentType(req);
         const ai = requireAi(await currentAi());
         const image = decodeImage(await body(req));
         const normalizedImage = await normalizeImage(image.data);
         const detected = await detectClothing(ai, { imageBase64: await imageForAi(normalizedImage), mediaType: "image/jpeg" });
         const jobs = [];
+        // Share one original.png per multi-garment upload batch instead of duplicating it N times.
+        const originalFile = "original.png";
+        const batchId = detected.length > 1 ? randomUUID() : null;
+        if (batchId) {
+          const batchDir = path.join(jobsDir, batchId);
+          await mkdir(batchDir, { recursive: true });
+          await writeFile(path.join(batchDir, originalFile), normalizedImage);
+        }
         for (const metadata of detected) {
           const id = randomUUID();
-          const dir = path.join(jobsDir, id); await mkdir(dir, { recursive: true });
-          const originalFile = "original.png";
+          const ownerId = batchId || id;
+          const dir = path.join(jobsDir, id);
+          await mkdir(dir, { recursive: true });
           const cropFile = "crop.png";
-          await writeFile(path.join(dir, originalFile), normalizedImage);
+          if (!batchId) await writeFile(path.join(dir, originalFile), normalizedImage);
           await writeFile(path.join(dir, cropFile), await cropDetectedItem(normalizedImage, metadata.boundingBox));
           const now = new Date().toISOString();
           const cropStage = { ...stageState(), status: "review", assetUrl: `${ASSET_ROOT}/${id}/${cropFile}`, updatedAt: now };
-          const job = { id, status: "active", metadata, stages: { crop: cropStage, garment: stageState() }, createdAt: now, updatedAt: now, internal: { originalFile, cropFile } };
-          job.originalAssetUrl = `${ASSET_ROOT}/${id}/${originalFile}`;
-          await saveJob(job); jobs.push(publicJob(job));
+          const job = {
+            id,
+            status: "active",
+            metadata,
+            stages: { crop: cropStage, garment: stageState() },
+            createdAt: now,
+            updatedAt: now,
+            internal: { originalFile, cropFile, ...(batchId ? { originalBatchId: batchId } : {}) },
+          };
+          job.originalAssetUrl = `${ASSET_ROOT}/${ownerId}/${originalFile}`;
+          await saveJob(job);
+          jobs.push(publicJob(job));
         }
         return json(res, 202, { jobs, noClothingDetected: jobs.length === 0 });
       }
@@ -576,10 +802,11 @@ export function createWardrobeApi(options = {}) {
       const action = match[2] || "";
       if (!action && req.method === "GET") return json(res, 200, publicJob(job));
       if (!action && req.method === "DELETE") {
-        await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
+        await removeJobFiles(job);
         return json(res, 200, { deleted: true, id: job.id });
       }
       if (action === "metadata" && (req.method === "PATCH" || req.method === "PUT")) {
+        requireJsonContentType(req);
         const input = await body(req);
         if (!input.metadata || typeof input.metadata !== "object" || Array.isArray(input.metadata)) throw Object.assign(new Error("metadata must be an object"), { status: 400 });
         job.metadata = normalizeMetadata({ ...job.metadata, ...input.metadata }); await saveJob(job);
@@ -598,7 +825,7 @@ export function createWardrobeApi(options = {}) {
         }
         if (stage.status !== "review") throw Object.assign(new Error("Stage is not ready for review"), { status: 409 });
         if (decision === "reject") {
-          await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
+          await removeJobFiles(job);
           return json(res, 200, publicJob({ ...job, stages: { ...job.stages, [stageName]: { ...stage, status: "rejected", decision: "rejected" } } }));
         }
         Object.assign(stage, { status: "approved", decision: "approved", error: null, updatedAt: new Date().toISOString() });
@@ -619,7 +846,7 @@ export function createWardrobeApi(options = {}) {
           await saveJob(job);
           throw error;
         }
-        await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
+        await removeJobFiles(job);
         return json(res, 200, { ...publicJob(job), item: record });
       }
       return json(res, 404, { error: "Not found" });
@@ -650,7 +877,7 @@ export function createWardrobeApi(options = {}) {
       if (job.status === "complete") {
         try {
           await persistImported(job);
-          await rm(path.join(jobsDir, job.id), { recursive: true, force: true });
+          await removeJobFiles(job);
         } catch {
           job.status = "active";
           Object.assign(job.stages.garment, { status: "review", decision: null, error: null });

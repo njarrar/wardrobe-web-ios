@@ -1,16 +1,43 @@
 // Production server: serves the built app from dist/ plus the wardrobe API.
 // Run `npm run build` once, then `npm start`. This is also what the Docker
 // image (and so the Synology NAS container) runs.
-import { createReadStream } from "node:fs";
+import { createReadStream, readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadEnv } from "vite";
 import { createWardrobeApi, isLoopbackHost } from "./import-job-api.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
+
+// Zero-dependency .env reader so runtime images do not need Vite installed.
+function loadDotEnv(dir, mode = "production") {
+  const loaded = {};
+  const files = [".env", ".env.local", `.env.${mode}`, `.env.${mode}.local`];
+  for (const name of files) {
+    let text;
+    try { text = readFileSync(path.join(dir, name), "utf8"); }
+    catch { continue; }
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) continue;
+      const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      if (!match) continue;
+      let [, key, value] = match;
+      value = value.trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        const quote = value[0];
+        value = value.slice(1, -1);
+        if (quote === '"') value = value.replace(/\\n/g, "\n").replace(/\\r/g, "\r").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+      } else {
+        value = value.replace(/\s+#.*$/, "").trim();
+      }
+      loaded[key] = value;
+    }
+  }
+  return loaded;
+}
 
 // In the container the entrypoint starts us as root to fix folder ownership;
 // switch to the NAS user before any file is created.
@@ -24,7 +51,7 @@ if (process.getuid?.() === 0 && process.env.PUID) {
   }
 }
 
-const env = { ...loadEnv("production", root, ""), ...process.env };
+const env = { ...loadDotEnv(root, "production"), ...process.env };
 const host = env.WARDROBE_HOST || "127.0.0.1";
 const port = Number(env.PORT || env.WARDROBE_PORT || 4173);
 const version = await readFile(path.join(root, "package.json"), "utf8").then((text) => JSON.parse(text).version).catch(() => "unknown");
@@ -51,29 +78,80 @@ const TYPES = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-async function sendFile(res, file) {
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' data: blob: https://api.open-meteo.com https://geocoding-api.open-meteo.com",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join("; ");
+
+function setSecurityHeaders(res, isHtml = false) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  if (isHtml) res.setHeader("Content-Security-Policy", CSP);
+}
+
+async function sendFile(req, res, file) {
   const info = await stat(file).catch(() => null);
   if (!info?.isFile()) return false;
+  const ext = path.extname(file).toLowerCase();
   res.statusCode = 200;
-  res.setHeader("Content-Type", TYPES[path.extname(file)] || "application/octet-stream");
+  res.setHeader("Content-Type", TYPES[ext] || "application/octet-stream");
   res.setHeader("Content-Length", info.size);
   res.setHeader("Cache-Control", file.includes(`${path.sep}assets${path.sep}`) ? "public, max-age=31536000, immutable" : "no-cache");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  createReadStream(file).pipe(res);
+  setSecurityHeaders(res, ext === ".html");
+  if (req.method === "HEAD") {
+    res.end();
+    return true;
+  }
+  const stream = createReadStream(file);
+  stream.on("error", () => {
+    if (!res.headersSent) res.statusCode = 500;
+    res.end();
+  });
+  stream.pipe(res);
   return true;
 }
 
 async function serveStatic(req, res) {
   if (req.method !== "GET" && req.method !== "HEAD") {
+    setSecurityHeaders(res);
     res.statusCode = 405;
     return res.end();
   }
   const { pathname } = new URL(req.url, "http://localhost");
   let decoded;
-  try { decoded = decodeURIComponent(pathname); } catch { res.statusCode = 400; return res.end(); }
-  const file = path.normalize(path.join(distDir, decoded));
-  if (file.startsWith(distDir + path.sep) && await sendFile(res, file)) return;
-  if (await sendFile(res, path.join(distDir, "index.html"))) return;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    setSecurityHeaders(res);
+    res.statusCode = 400;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.end("Bad request");
+  }
+  const resolved = path.resolve(distDir, `.${decoded.startsWith("/") ? decoded : `/${decoded}`}`);
+  const insideDist = resolved === distDir || resolved.startsWith(distDir + path.sep);
+  if (!insideDist) {
+    setSecurityHeaders(res);
+    res.statusCode = 403;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.end("Forbidden");
+  }
+  if (resolved !== distDir && await sendFile(req, res, resolved)) return;
+  if (pathname.startsWith("/assets/") || pathname.startsWith("/api/")) {
+    setSecurityHeaders(res);
+    res.statusCode = 404;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    return res.end("Not found");
+  }
+  if (await sendFile(req, res, path.join(distDir, "index.html"))) return;
+  setSecurityHeaders(res);
   res.statusCode = 503;
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.end("The app is not built yet. Run `npm run build`, then `npm start`.");

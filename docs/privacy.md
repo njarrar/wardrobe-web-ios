@@ -1,10 +1,11 @@
 # Wardrobe privacy policy
 
-Last updated: 18 November 2026
+Last updated: 20 November 2026
 
-Wardrobe is a closet app that you connect to your own Wardrobe server: a
-NAS, a computer, or a Cloudflare account that you run. This policy covers the
-Wardrobe apps for iPhone and Android and the Wardrobe web app.
+Wardrobe is a closet app that you either keep privately in your own iCloud Drive
+(on iPhone and iPad) or connect to your own Wardrobe server: a NAS, a computer,
+or a Cloudflare account that you run. This policy covers the Wardrobe apps for
+iPhone and Android and the Wardrobe web app.
 
 ## What we collect
 
@@ -19,16 +20,18 @@ The apps contain no ads, no analytics and no tracking.
   you connect to. You control that server
   and can delete anything on it at any time.
 - **The AI you pick.** To find clothes in a photo and to style outfits, your
-  server sends the photo, or the names, colors and tags of your pieces, to the
-  AI service you choose in Settings: Anthropic (Claude), OpenAI (ChatGPT) or
-  Google (Gemini). It uses the API key you enter, under your own account with
-  that company, and that company's privacy policy applies:
+  server (or, in iCloud mode, your device directly) sends the photo, or the
+  names, colors and tags of your pieces, to the AI service you choose in
+  Settings: Anthropic (Claude), OpenAI (ChatGPT) or Google (Gemini). It uses
+  the API key you enter, under your own account with that company, and that
+  company's privacy policy applies:
   [Anthropic](https://www.anthropic.com/legal/privacy),
   [OpenAI](https://openai.com/policies/privacy-policy),
   [Google](https://policies.google.com/privacy).
   The app asks for your permission before anything is sent to an AI.
 - **On your phone.** The app keeps your server address and access token on
-  the device so it can reconnect. Removing the app removes them.
+  the device (in the iOS Keychain, or private app storage on Android) so it can
+  reconnect. Removing the app removes them.
 - **Weather, only if you turn it on.** The app sends a rough location
   (rounded to about 10 km), or the city you type, straight from your device
   to [Open-Meteo](https://open-meteo.com/en/terms) to get the forecast. It is
@@ -36,7 +39,7 @@ The apps contain no ads, no analytics and no tracking.
   few hours. Turn Weather off in Settings to stop it.
 - **Picture fixes.** The iPhone cutout runs on the device with Apple's
   Vision framework, and the Fix edges brush runs in the app. Only the
-  finished picture goes to your server.
+  finished picture goes to your server or your iCloud Drive folder.
 
 ## iCloud closet
 
@@ -57,7 +60,10 @@ background, and you can type a city instead.
 ## Camera and photos
 
 The app opens the camera or your photo library only when you tap to add
-clothes, and only sends the photos you pick to your server.
+clothes. In server mode, the photos you pick are sent only to your own server
+(and, when you ask it to detect garments, to the AI provider you selected). In
+iCloud mode, photos are saved to your private iCloud Drive folder and sent
+directly to the AI provider you selected only after you grant permission.
 
 ## Children
 

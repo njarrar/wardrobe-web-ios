@@ -1,6 +1,6 @@
 # Builds a multi-arch (amd64 + arm64) image and publishes it to GitHub
 # Container Registry, so a Synology NAS can pull it instead of building:
-#   image: ghcr.io/<owner>/<repo>:latest   (e.g. ghcr.io/njarrar/wardrobe-najeeb)
+#   image: ghcr.io/<owner>/<repo>:latest   (e.g. ghcr.io/njarrar/wardrobe-web-ios:latest)
 # The image is named after the repository because a workflow's GITHUB_TOKEN
 # can only push to a package that belongs to its own repository.
 name: Docker image
