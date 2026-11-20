@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowsClockwise, ArrowsLeftRight, CalendarBlank, Camera, Check, ClockCounterClockwise, Heart, ShieldCheck, ThumbsDown, X } from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowCounterClockwise, ArrowsClockwise, ArrowsLeftRight, CalendarBlank, Camera, Check, ClockCounterClockwise, Heart, ShieldCheck, ThumbsDown, X } from "@phosphor-icons/react";
 import { assetUrl } from "./api.js";
-import { addDays, dayString, daysBetween, lastWorn, OCCASIONS } from "../shared/style.mjs";
+import { addDays, daysBetween, lastWorn, OCCASIONS } from "../shared/style.mjs";
 import { canMakeOutfit, isOnePiece, makeOutfit, outfitKey, outfitTitle, REST_DAYS, swapCandidates } from "../shared/make-outfit.mjs";
 import { FlatLay } from "./FlatLay.jsx";
 import { patchOutfit, sendJson, wearOutfit, wornOn } from "./wear.js";
 import { formatDay, t } from "./i18n.js";
+import { pieceLabel, useToday } from "./color-utils.js";
 import { tap, updateWidget } from "./native.js";
 import "./home.css";
 
@@ -43,7 +44,7 @@ function WeekStrip({ today, activeDay, plan, forecast, onSelectDay, onGoToPlan }
     <section className="week-strip-wrap" aria-label={t("This week")}>
       <div className="week-strip__head">
         <span>{t("This week")}</span>
-        <button type="button" className="week-strip__calendar" onClick={onGoToPlan}>
+        <button type="button" className="week-strip__calendar" onClick={() => onGoToPlan(activeDay)}>
           <CalendarBlank size={14} aria-hidden="true" /> {t("View full calendar")}
         </button>
       </div>
@@ -62,7 +63,7 @@ function WeekStrip({ today, activeDay, plan, forecast, onSelectDay, onGoToPlan }
             >
               <span className="week-strip__name">{formatDay(day, { weekday: "narrow" })}</span>
               <span className="week-strip__date">{Number(day.slice(8))}</span>
-              <span className="week-strip__temp">{weather && Number.isFinite(weather.temperature) ? `${Math.round(weather.temperature)}°` : ""}</span>
+              <span className="week-strip__temp">{weather && Number.isFinite(weather.temperature) ? <bdi>{`${Math.round(weather.temperature)}°`}</bdi> : ""}</span>
               <span className={`week-strip__dot${plan?.days?.[day] ? " is-planned" : ""}`} aria-hidden="true" />
             </button>
           );
@@ -85,7 +86,8 @@ export function HomeView({
   initialLockId = null,
   onConsumeInitialLock = null,
 }) {
-  const today = dayString();
+  const today = useToday();
+  const lastDayRef = useRef(today);
   const [activeDay, setActiveDay] = useState(today);
   const [state, setState] = useState(() => {
     const saved = read(HOME_KEY, null);
@@ -94,10 +96,24 @@ export function HomeView({
   const [rejected, setRejected] = useState(notMeKeys);
   const [swappingId, setSwappingId] = useState(null);
   const [customIds, setCustomIds] = useState(null);
+  const [undoNotMe, setUndoNotMe] = useState(null);
+  const undoTimerRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // At midnight start a fresh day instead of carrying yesterday's shuffles over.
+  useEffect(() => {
+    if (lastDayRef.current === today) return;
+    const yesterday = lastDayRef.current;
+    lastDayRef.current = today;
+    setState({ seed: 0, locked: [] });
+    setCustomIds(null);
+    setSwappingId(null);
+    setActiveDay((current) => (current < today || current === yesterday ? today : current));
+  }, [today]);
+
   useEffect(() => { write(HOME_KEY, { day: today, ...state }); }, [today, state]);
+  useEffect(() => () => clearTimeout(undoTimerRef.current), []);
 
   // Jumping from a piece page ("Style with this") locks that piece on Today.
   useEffect(() => {
@@ -114,13 +130,13 @@ export function HomeView({
   const dayWeather = isToday ? weather?.today : weather?.forecast?.[activeDay] || null;
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const saved = outfits || [];
+  const outfitsLoading = outfits === null;
   const favoriteCount = useMemo(() => saved.filter((outfit) => outfit.favorite).length, [saved]);
   const wornOutfit = isToday ? saved.find((outfit) => wornOn(outfit, today) && (outfit.garmentIds || []).some((id) => itemsById.has(id))) : null;
-  const planned = (!isToday || (!state.seed && !state.locked.length && !customIds))
-    ? saved.find((outfit) => outfit.id === plan?.days?.[activeDay] && usablePlanned(outfit, itemsById))
-    : null;
+  const plannedForDay = saved.find((outfit) => outfit.id === plan?.days?.[activeDay] && usablePlanned(outfit, itemsById));
+  const planned = (!isToday || (!state.seed && !state.locked.length && !customIds)) ? plannedForDay : null;
   const made = useMemo(
-    () => (wornOutfit || planned || customIds ? null : makeOutfit({
+    () => (outfitsLoading || wornOutfit || planned || customIds ? null : makeOutfit({
       items,
       today: activeDay,
       weather: dayWeather,
@@ -130,7 +146,7 @@ export function HomeView({
       dress: OCCASIONS[occasion]?.dress || "",
       rest: plan?.settings?.pieceRest,
     })),
-    [wornOutfit, planned, customIds, items, activeDay, dayWeather, isToday, state, rejected, occasion, plan?.settings?.pieceRest],
+    [outfitsLoading, wornOutfit, planned, customIds, items, activeDay, dayWeather, isToday, state, rejected, occasion, plan?.settings?.pieceRest],
   );
 
   const fixed = wornOutfit || planned;
@@ -217,10 +233,22 @@ export function HomeView({
     setState((current) => ({ ...current, seed: current.seed + 1 }));
   };
   const notMe = () => {
+    const before = { rejected, state };
     const next = [...rejected.filter((entry) => entry !== key), key].slice(-300);
     write(NOT_ME_KEY, next);
     setRejected(next);
     shuffle();
+    clearTimeout(undoTimerRef.current);
+    setUndoNotMe(before);
+    undoTimerRef.current = setTimeout(() => setUndoNotMe(null), 5000);
+  };
+  const undoNotMeSkip = () => {
+    if (!undoNotMe) return;
+    clearTimeout(undoTimerRef.current);
+    write(NOT_ME_KEY, undoNotMe.rejected);
+    setRejected(undoNotMe.rejected);
+    setState(undoNotMe.state);
+    setUndoNotMe(null);
   };
   const toggleLock = (id) => {
     tap("select");
@@ -240,11 +268,14 @@ export function HomeView({
     setSwappingId(null);
   };
 
-  const temperature = dayWeather && Number.isFinite(dayWeather.temperature) ? [
-    `${Math.round(dayWeather.temperature)}°C ${t(dayWeather.label || "")}`.trim(),
-    dayWeather.wind >= 20 && t("Wind {n} km/h", { n: dayWeather.wind }),
-    dayWeather.rainMm >= 1 && t("Rain {n} mm", { n: dayWeather.rainMm }),
-  ].filter(Boolean).join(" · ") : "";
+  const hasTemp = Boolean(dayWeather && Number.isFinite(dayWeather.temperature));
+  const weatherParts = hasTemp ? [
+    dayWeather.label ? t(dayWeather.label) : "",
+    dayWeather.wind >= 20 ? t("Wind {n} km/h", { n: dayWeather.wind }) : "",
+    dayWeather.rainMm >= 1 ? t("Rain {n} mm", { n: dayWeather.rainMm }) : "",
+  ].filter(Boolean) : [];
+  const occasionLabel = OCCASIONS[occasion]?.label;
+  const canReturnToPlanned = Boolean(isToday && plannedForDay && !wornOutfit && (state.seed > 0 || state.locked.length > 0 || customIds));
 
   const heading = isToday
     ? (wornOutfit ? t("You wore this today") : planned ? t("Planned for today") : t("Wear this today"))
@@ -263,13 +294,22 @@ export function HomeView({
               <Heart size={13} weight="fill" aria-hidden="true" /> <span>{favoriteCount}</span>
             </button>
           )}
-          {(temperature || occasion) && <p className="home__weather">{[occasion && t(OCCASIONS[occasion].label), temperature].filter(Boolean).join(" · ")}</p>}
+          {(hasTemp || occasionLabel) && (
+            <p className="home__weather">
+              {occasionLabel && <>{t(occasionLabel)}{hasTemp ? " · " : ""}</>}
+              {hasTemp && <><bdi>{`${Math.round(dayWeather.temperature)}°C`}</bdi>{weatherParts.length > 0 ? ` ${weatherParts.join(" · ")}` : ""}</>}
+            </p>
+          )}
         </div>
       </header>
 
-      {!pieces.length ? (
+      {outfitsLoading ? (
+        <div className="home__loading" aria-hidden="true">
+          <span className="gallery-skeleton" />
+        </div>
+      ) : !pieces.length ? (
         <div className="home__empty glass-card">
-          <p>{canMakeOutfit(items) ? t("No new mix is left for today. Shuffle to start again.") : t("Add a top and a bottom, and your outfit for today shows up here.")}</p>
+          <p>{canMakeOutfit(items) ? t("No new mix is left for today. Tap Start again to see earlier mixes.") : t("Add a top and a bottom, and your outfit for today shows up here.")}</p>
           {canMakeOutfit(items)
             ? <button type="button" className="secondary-button" onClick={() => { write(NOT_ME_KEY, []); setRejected([]); setCustomIds(null); setState({ seed: 0, locked: [] }); }}><ArrowsClockwise size={15} aria-hidden="true" /> {t("Start again")}</button>
             : <button type="button" className="primary-button" onClick={() => window.dispatchEvent(new Event(ADD_CLOTHES_EVENT))}><Camera size={15} aria-hidden="true" /> {t("Add clothes")}</button>}
@@ -301,7 +341,7 @@ export function HomeView({
                   {swapList.slice(0, 10).map((candidate) => (
                     <button type="button" key={candidate.id} onClick={() => applySwap(candidate.id)}>
                       <span><img src={assetUrl(candidate.thumbnail || candidate.image)} alt="" loading="lazy" /></span>
-                      <small>{candidate.name}</small>
+                      <small>{pieceLabel(candidate, t)}</small>
                     </button>
                   ))}
                 </div>
@@ -321,9 +361,15 @@ export function HomeView({
           </div>
           {isToday && !fixed && !customIds && state.locked.length > 0 && <p className="home__hint">{t("Locked pieces stay when you shuffle.")}</p>}
 
+          {canReturnToPlanned && (
+            <button type="button" className="secondary-button back-to-planned" onClick={() => { setCustomIds(null); setSwappingId(null); setState({ seed: 0, locked: [] }); }}>
+              <ArrowCounterClockwise size={14} aria-hidden="true" /> {t("Back to planned")}
+            </button>
+          )}
+
           {isToday ? (
             <div className="home__actions">
-              <button type="button" className={wornOutfit ? "secondary-button home__wear" : "primary-button home__wear"} onClick={wear} disabled={busy}>
+              <button type="button" className={wornOutfit ? "secondary-button home__wear" : "primary-button home__wear"} onClick={wear} disabled={busy} aria-busy={busy}>
                 {wornOutfit ? <><ClockCounterClockwise size={16} aria-hidden="true" /> {t("Undo, not worn")}</> : <><Check size={16} weight="bold" aria-hidden="true" /> {t("Wear this")}</>}
               </button>
               {!wornOutfit && (
@@ -345,12 +391,18 @@ export function HomeView({
               <button type="button" className="secondary-button home__wear" onClick={() => selectDay(today)}>
                 {t("Back to today")}
               </button>
-              <button type="button" className="primary-button" onClick={onGoToPlan}>
+              <button type="button" className="primary-button" onClick={() => onGoToPlan(activeDay)}>
                 <CalendarBlank size={16} aria-hidden="true" /> {t("Edit in Plan")}
               </button>
             </div>
           )}
-          {error && <p className="status error">{error}</p>}
+          {undoNotMe && (
+            <div className="toast-undo" role="status">
+              <span>{t("Skipped this mix")}</span>
+              <button type="button" className="secondary-button" onClick={undoNotMeSkip}>{t("Undo")}</button>
+            </div>
+          )}
+          {error && <p className="status error" role="alert">{error}</p>}
         </>
       )}
 

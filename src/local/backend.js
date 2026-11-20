@@ -13,12 +13,13 @@ import {
   normalizeManualOutfit,
   normalizeMetadata,
   publicJob,
+  randomId,
   sortFields,
   stageState,
   styleOptions,
 } from "../../shared/core.mjs";
 import { normalizePlan } from "../../shared/style.mjs";
-import { AiError, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, sortCloset, styleOutfits } from "../../shared/ai.mjs";
+import { AI_IMAGE_EDGE, AiError, applyAiSettingsEdit, detectClothing, publicAiSettings, requireAi, resolveAi, sortCloset, styleOutfits } from "../../shared/ai.mjs";
 import { cropDetectedItem, decodePng, encodePng, frameTransparentGarment, resize } from "../../shared/pixels.mjs";
 import { mergePlans, mergeRecords, mergeRemoved, stampChanges, trimRemoved } from "../../shared/merge.mjs";
 import { fromBase64, toBase64 } from "./store.js";
@@ -46,13 +47,61 @@ function readBody(options) {
   try { return JSON.parse(body); } catch { throw new HttpError(400, "Expected a JSON request body"); }
 }
 
-function dataUrlBytes(input) {
+function dataUrlPayload(input) {
   const raw = input.imageDataUrl || input.imageBase64;
   if (!raw || typeof raw !== "string") throw new HttpError(400, "imageDataUrl or imageBase64 is required");
   const match = raw.match(/^data:([^;]+);base64,(.+)$/s);
   const bytes = fromBase64(match?.[2] || raw);
   if (!bytes.length) throw new HttpError(400, "Image payload is empty");
-  return bytes;
+  return { bytes, mediaType: (match?.[1] || "image/png").toLowerCase() };
+}
+
+function dataUrlBytes(input) {
+  return dataUrlPayload(input).bytes;
+}
+
+const isPngBytes = (bytes) => bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+
+async function decodeUploadImage(bytes, mediaType) {
+  if (isPngBytes(bytes)) return decodePng(bytes);
+  if (typeof document !== "undefined" && typeof Blob !== "undefined" && typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: mediaType || "image/jpeg" }));
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(bitmap, 0, 0);
+      const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      return { width: bitmap.width, height: bitmap.height, data: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) };
+    } finally {
+      bitmap.close?.();
+    }
+  }
+  throw new HttpError(400, "Send the photo as a PNG.");
+}
+
+// Encodes the resized AI payload as JPEG in browser/WebView to stay well under
+// Anthropic's 5 MB image cap; falls back to PNG in headless/Node tests.
+function encodeForAi(image) {
+  if (typeof document !== "undefined" && typeof ImageData !== "undefined") {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, image.width, image.height);
+      const copy = new Uint8ClampedArray(image.data);
+      ctx.putImageData(new ImageData(copy, image.width, image.height), 0, 0);
+      const url = canvas.toDataURL("image/jpeg", 0.88);
+      const comma = url.indexOf(",");
+      if (comma !== -1 && url.startsWith("data:image/jpeg;base64,")) {
+        return { imageBase64: url.slice(comma + 1), mediaType: "image/jpeg" };
+      }
+    } catch { /* fall back to PNG */ }
+  }
+  return { imageBase64: toBase64(encodePng(image)), mediaType: "image/png" };
 }
 
 // Maps an API picture link to its file in the store.
@@ -76,6 +125,8 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
   let queue = Promise.resolve();
   // One change at a time, so two quick edits never undo each other.
   const serially = (task) => { const next = queue.then(task, task); queue = next.catch(() => {}); return next; };
+  const activeGarments = new Set();
+  let jobsRecovered = false;
 
   // Reads a file. When iCloud holds more than one copy (two devices saved
   // at about the same time), joins them inside the write queue, saves the
@@ -102,7 +153,31 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
   const items = (insideQueue = false) => load("items.json", [], async (versions) => mergeRecords(versions, (await removed(true)).items), { insideQueue });
   const outfits = (insideQueue = false) => load("outfits.json", [], async (versions) => mergeRecords(versions, (await removed(true)).outfits), { insideQueue });
   const plan = (insideQueue = false) => load("plan.json", {}, mergePlans, { insideQueue });
-  const jobs = () => store.readJson("jobs.json", {});
+
+  const rawJobs = () => store.readJson("jobs.json", {});
+  const jobs = async () => {
+    if (!jobsRecovered) {
+      await serially(async () => {
+        if (jobsRecovered) return;
+        jobsRecovered = true;
+        const all = await rawJobs();
+        let changed = false;
+        const now = new Date().toISOString();
+        for (const job of Object.values(all)) {
+          if (job?.stages?.garment?.status === "processing" && !activeGarments.has(job.id)) {
+            Object.assign(job.stages.garment, {
+              status: "failed",
+              error: "Interrupted before finishing. Tap Retry to try again.",
+              updatedAt: now,
+            });
+            changed = true;
+          }
+        }
+        if (changed) await store.writeJson("jobs.json", all);
+      });
+    }
+    return rawJobs();
+  };
   const aiSettings = async () => { try { return JSON.parse((await store.getSecret(AI_SECRET)) || "{}"); } catch { return {}; } };
   // Only tests pass env (to point the AI at a stand-in); the app passes none.
   const noEnv = env;
@@ -136,7 +211,7 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
     return result.value;
   });
   const editJobs = (change) => serially(async () => {
-    const all = await jobs();
+    const all = await rawJobs();
     const value = await change(all);
     await store.writeJson("jobs.json", all);
     return value;
@@ -149,8 +224,9 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
   }
 
   async function makeGarment(jobId, keepBackground) {
-    const job = (await jobs())[jobId];
+    const job = (await rawJobs())[jobId];
     if (!job) return;
+    activeGarments.add(jobId);
     const attempts = job.stages.garment.attempts + 1;
     await editJobs((all) => { if (all[jobId]) Object.assign(all[jobId].stages.garment, { status: "processing", decision: null, error: null, attempts }); });
     const outputName = `garment-${attempts}.png`;
@@ -168,6 +244,8 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
       });
     } catch (error) {
       await editJobs((all) => { if (all[jobId]) Object.assign(all[jobId].stages.garment, { status: "failed", error: error.message, updatedAt: new Date().toISOString() }); });
+    } finally {
+      activeGarments.delete(jobId);
     }
   }
 
@@ -194,18 +272,45 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
 
     if (pathname === "/api/import/plan" && method === "GET") return json(200, normalizePlan(await plan()));
     if (pathname === "/api/import/plan" && method === "PUT") {
-      const nextPlan = normalizePlan(readBody(options));
-      await serially(async () => {
-        await plan(true);
+      const incoming = normalizePlan(readBody(options));
+      const saved = await serially(async () => {
+        const previous = await plan(true);
+        const now = incoming.updatedAt;
+        const removedDays = { ...(previous?.removedDays || {}), ...(incoming.removedDays || {}) };
+        for (const day of Object.keys(previous?.days || {})) {
+          if (!(day in incoming.days)) removedDays[day] = now;
+        }
+        for (const day of Object.keys(incoming.days)) delete removedDays[day];
+        const removedOccasions = { ...(previous?.removedOccasions || {}), ...(incoming.removedOccasions || {}) };
+        for (const day of Object.keys(previous?.occasions || {})) {
+          if (!(day in incoming.occasions)) removedOccasions[day] = now;
+        }
+        for (const day of Object.keys(incoming.occasions)) delete removedOccasions[day];
+        const nextTripIds = new Set(incoming.trips.map((trip) => trip.id));
+        const removedTrips = { ...(previous?.removedTrips || {}), ...(incoming.removedTrips || {}) };
+        for (const trip of Array.isArray(previous?.trips) ? previous.trips : []) {
+          if (trip?.id && !nextTripIds.has(trip.id)) removedTrips[trip.id] = now;
+        }
+        for (const id of nextTripIds) delete removedTrips[id];
+        const trimmedDays = trimRemoved(removedDays);
+        const trimmedTrips = trimRemoved(removedTrips);
+        const trimmedOccasions = trimRemoved(removedOccasions);
+        const nextPlan = {
+          ...incoming,
+          ...(Object.keys(trimmedDays).length ? { removedDays: trimmedDays } : {}),
+          ...(Object.keys(trimmedTrips).length ? { removedTrips: trimmedTrips } : {}),
+          ...(Object.keys(trimmedOccasions).length ? { removedOccasions: trimmedOccasions } : {}),
+        };
         await store.writeJson("plan.json", nextPlan);
+        return nextPlan;
       });
-      return json(200, nextPlan);
+      return json(200, saved);
     }
 
     if (pathname === "/api/import/wardrobe/sort" && method === "POST") {
       const input = readBody(options);
       const all = await items();
-      const todo = input.all ? all : all.filter((item) => !item.kind || !Array.isArray(item.seasons) || !item.warmth || !item.formality);
+      const todo = input.all ? all : all.filter((item) => !item.kind || !Array.isArray(item.seasons) || !item.warmth || !item.formality || !item.pattern);
       const sorted = todo.length ? await sortCloset(await currentAi(), todo) : [];
       const updated = await editItems((records) => {
         const changed = [];
@@ -224,7 +329,7 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
 
     if (pathname === "/api/import/outfits" && method === "POST") {
       const created = normalizeManualOutfit(readBody(options), await items());
-      await editOutfits((list) => ({ outfits: [...list, created] }));
+      await editOutfits((list) => ({ outfits: [created, ...list] }));
       return json(201, { outfit: created });
     }
     if (pathname === "/api/import/outfits/generate" && method === "POST") {
@@ -236,7 +341,7 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
         throw new HttpError(409, "Add a one-piece, or at least one top and one bottom, before styling outfits.");
       }
       const created = await styleOutfits(await currentAi(), { items: all, outfits: await outfits(), count, notes, ...styleOptions(input) });
-      await editOutfits((list) => ({ outfits: [...list, ...created] }));
+      await editOutfits((list) => ({ outfits: [...created, ...list] }));
       return json(201, { outfits: created });
     }
     const outfitMatch = pathname.match(/^\/api\/import\/outfits\/([\w-]{1,80})$/i);
@@ -265,7 +370,7 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
     if (pathname === "/api/import/wardrobe" && method === "POST") {
       const input = readBody(options);
       const bytes = checkPng(dataUrlBytes(input));
-      const id = `import-${crypto.randomUUID()}`;
+      const id = `import-${randomId()}`;
       const name = garmentFileName(id);
       await store.writeBytes(`library/${name}`, bytes);
       const record = newPieceRecord(input, id, `${LIBRARY_ROOT}/${name}`);
@@ -302,6 +407,29 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
         const path = storePath(image);
         if (path) await store.remove(path);
       }
+      // Prune the deleted item from any outfits that reference it, dropping
+      // ghost outfits left with fewer than two pieces.
+      const droppedOutfitImages = [];
+      await editOutfits((list) => {
+        let changed = false;
+        const next = [];
+        for (const outfit of list) {
+          const ids = Array.isArray(outfit.garmentIds) ? outfit.garmentIds : [];
+          if (!ids.includes(removed.id)) {
+            next.push(outfit);
+            continue;
+          }
+          changed = true;
+          const remaining = ids.filter((id) => id !== removed.id);
+          if (remaining.length >= 2) {
+            next.push({ ...outfit, garmentIds: remaining });
+          } else if (outfit.image) {
+            droppedOutfitImages.push(outfit.image);
+          }
+        }
+        return changed ? { outfits: next } : {};
+      });
+      for (const image of droppedOutfitImages) await store.remove(`outfits/${fileName(image)}`);
       return json(200, { deleted: true, id: removed.id });
     }
     if (itemMatch && (method === "PATCH" || method === "PUT")) {
@@ -325,13 +453,19 @@ export function createLocalApi({ store, cutout = null, aiFetch = null, version =
     if (pathname === "/api/import/jobs" && method === "POST") {
       const ai = requireAi(await currentAi());
       let image;
-      try { image = decodePng(dataUrlBytes(readBody(options))); } catch (error) { if (error instanceof HttpError) throw error; throw new HttpError(400, "Send the photo as a PNG."); }
-      const scale = Math.min(1, 1568 / Math.max(image.width, image.height));
+      try {
+        const payload = dataUrlPayload(readBody(options));
+        image = await decodeUploadImage(payload.bytes, payload.mediaType);
+      } catch (error) {
+        if (error instanceof HttpError) throw error;
+        throw new HttpError(400, "Could not read that image.");
+      }
+      const scale = Math.min(1, AI_IMAGE_EDGE / Math.max(image.width, image.height));
       const small = scale < 1 ? resize(image, Math.round(image.width * scale), Math.round(image.height * scale)) : image;
-      const detected = await detectClothing(ai, { imageBase64: toBase64(encodePng(small)), mediaType: "image/png" });
+      const detected = await detectClothing(ai, encodeForAi(small));
       const created = [];
       for (const metadata of detected) {
-        const id = crypto.randomUUID();
+        const id = randomId();
         await store.writeBytes(`jobs/${id}/crop.png`, encodePng(cropDetectedItem(image, metadata.boundingBox)));
         const now = new Date().toISOString();
         const job = {

@@ -1,9 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { ChartBar, CurrencyDollar, Fire, HeartBreak, Sparkle, X } from "@phosphor-icons/react";
 import { assetUrl } from "./api.js";
 import { closetInsights, formatMoney, idleLabel } from "../shared/style.mjs";
 import { humanColorName } from "../shared/pairing.mjs";
 import { useSheetDrag } from "./useSheetDrag.js";
+import { useDialog } from "./dialog.js";
 import { locale, t, tn } from "./i18n.js";
 
 // Closet Insights & Cost-Per-Wear analytics sheet: real numbers computed from
@@ -24,15 +25,8 @@ export function InsightsSheet({ items, outfits = [], onOpenPiece, onClose }) {
     return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 6);
   }, [items]);
 
-  useEffect(() => {
-    const onKeyDown = (event) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKeyDown);
-    document.body.classList.add("viewer-open");
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.classList.remove("viewer-open");
-    };
-  }, [onClose]);
+  const sheetRef = useRef(null);
+  useDialog({ open: true, onClose, containerRef: sheetRef });
 
   const openPiece = (id) => {
     onClose();
@@ -41,7 +35,7 @@ export function InsightsSheet({ items, outfits = [], onOpenPiece, onClose }) {
 
   return (
     <div className="viewer-overlay sheet-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="settings-sheet insights-sheet" role="dialog" aria-modal="true" aria-labelledby="insights-title" style={sheetStyle}>
+      <section ref={sheetRef} className="settings-sheet insights-sheet" role="dialog" aria-modal="true" aria-labelledby="insights-title" style={sheetStyle}>
         <span className="sheet-grabber" aria-hidden="true" {...handleProps} />
         <header className="settings-sheet__header" {...handleProps}>
           <div>

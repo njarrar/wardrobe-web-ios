@@ -48,15 +48,46 @@ export function saveAiConsent(provider, allowed) {
   try { localStorage.setItem(CONSENT_KEY, JSON.stringify(consent)); } catch { /* storage unavailable */ }
 }
 
-// Resolves true once the person allows it, false if they say no. The
-// AiConsentPrompt in App shows the question.
+const pendingConsent = new Map();
+
+// Resolves true once the person allows it, false if they say no (or if no
+// consent prompt is mounted to handle the event). Concurrent calls for the
+// same provider share one pending prompt instead of hanging earlier callers.
 export function askAiConsent(setup) {
   const provider = setup?.provider;
   if (!provider) return Promise.resolve(false);
   if (hasAiConsent(provider)) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: { provider, name: setup.providerName || provider, resolve } }));
+  if (pendingConsent.has(provider)) return pendingConsent.get(provider);
+  if (typeof window === "undefined") return Promise.resolve(false);
+
+  let settle;
+  let claimed = false;
+  const promise = new Promise((resolve) => {
+    settle = (allowed) => {
+      pendingConsent.delete(provider);
+      resolve(Boolean(allowed));
+    };
   });
+  pendingConsent.set(provider, promise);
+
+  const detail = {
+    provider,
+    name: setup.providerName || provider,
+    claim: () => { claimed = true; },
+    resolve: settle,
+  };
+  const event = new CustomEvent(ASK_EVENT, { detail });
+  // Reading event.detail inside a synchronous listener marks the prompt as claimed.
+  Object.defineProperty(event, "detail", {
+    configurable: true,
+    get() {
+      claimed = true;
+      return detail;
+    },
+  });
+  window.dispatchEvent(event);
+  if (!claimed) settle(false);
+  return promise;
 }
 
 export const AI_CONSENT_ASK_EVENT = ASK_EVENT;

@@ -1,32 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle, CloudCheck, CloudSun, HardDrives, MapPin, Moon, Palette, SignOut, SpinnerGap, Translate, WarningCircle, X } from "@phosphor-icons/react";
 import { ACCENTS, THEMES, accent, setAccent, setTheme, theme } from "./accent.js";
 import { AiSettings } from "./AiSettings.jsx";
 import { accessToken, connectionLabel, forgetConnection, isNativeApp, serverUrl, testConnection } from "./api.js";
-import { LANGUAGES, language, setLanguage, t, tn } from "./i18n.js";
+import { LANGUAGES, language, setLanguage, t, tn, useLanguage } from "./i18n.js";
 import { useSheetDrag } from "./useSheetDrag.js";
 import { deviceLocation, findCity } from "./weather.js";
 import { canUseLocalMode, isLocalMode, localApi, setClosetMode } from "./local/mode.js";
+import { useDialog } from "./dialog.js";
 
 // Where the closet lives and how this device is connected to it.
 export function SettingsSheet({ onClose, pieces, weather }) {
+  useLanguage();
   const native = isNativeApp();
   const [status, setStatus] = useState({ state: "checking" });
+  const [confirmAction, setConfirmAction] = useState(null); // "switch" | "forget" | null
+  const sheetRef = useRef(null);
+  const closeRef = useRef(null);
+
+  useDialog({ open: true, onClose, initialFocusRef: closeRef, containerRef: sheetRef });
 
   useEffect(() => {
     let cancelled = false;
     testConnection({ server: serverUrl(), token: accessToken() }).then((result) => {
       if (!cancelled) setStatus({ state: result.ok ? "ok" : "failed", ...result });
     });
-    const onKeyDown = (event) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKeyDown);
-    document.body.classList.add("viewer-open");
-    return () => {
-      cancelled = true;
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.classList.remove("viewer-open");
-    };
-  }, [onClose]);
+    return () => { cancelled = true; };
+  }, []);
 
   const switchServer = async () => {
     await forgetConnection();
@@ -51,14 +51,16 @@ export function SettingsSheet({ onClose, pieces, weather }) {
 
   return (
     <div className="viewer-overlay sheet-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" style={sheetStyle}>
+      <section ref={sheetRef} className="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" style={sheetStyle}>
         <span className="sheet-grabber" aria-hidden="true" {...handleProps} />
         <header className="settings-sheet__header" {...handleProps}>
           <div>
             <p className="eyebrow">{t("Settings")}</p>
             <h2 id="settings-title">{t("Your wardrobe")}</h2>
           </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label={t("Close settings")}><X size={20} aria-hidden="true" /></button>
+          <button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label={t("Close settings")}>
+            <X size={20} aria-hidden="true" />
+          </button>
         </header>
 
         <div className="settings-card">
@@ -89,8 +91,14 @@ export function SettingsSheet({ onClose, pieces, weather }) {
           <h3><Translate size={16} aria-hidden="true" /> {t("Language")}</h3>
           <div className="segmented" role="group" aria-label={t("Language")}>
             {LANGUAGES.map((entry) => (
-              <button key={entry.id} type="button" lang={entry.id} className={language() === entry.id ? "active" : ""} aria-pressed={language() === entry.id}
-                onClick={() => { if (language() !== entry.id) { setLanguage(entry.id); window.location.reload(); } }}>
+              <button
+                key={entry.id}
+                type="button"
+                lang={entry.id}
+                className={language() === entry.id ? "active" : ""}
+                aria-pressed={language() === entry.id}
+                onClick={() => { if (language() !== entry.id) setLanguage(entry.id); }}
+              >
                 {entry.label}
               </button>
             ))}
@@ -118,8 +126,15 @@ export function SettingsSheet({ onClose, pieces, weather }) {
           <h3><Palette size={16} aria-hidden="true" /> {t("Accent color")}</h3>
           <div className="accent-picker" role="group" aria-label={t("Accent color")}>
             {ACCENTS.map((entry) => (
-              <button key={entry.id} type="button" className={chosenAccent === entry.id ? "active" : ""} aria-pressed={chosenAccent === entry.id} aria-label={t(entry.label)} title={t(entry.label)}
-                onClick={() => { setAccent(entry.id); setChosenAccent(entry.id); }}>
+              <button
+                key={entry.id}
+                type="button"
+                className={chosenAccent === entry.id ? "active" : ""}
+                aria-pressed={chosenAccent === entry.id}
+                aria-label={t(entry.label)}
+                title={t(entry.label)}
+                onClick={() => { setAccent(entry.id); setChosenAccent(entry.id); }}
+              >
                 <span style={{ backgroundColor: entry.colors[0] }} aria-hidden="true" />
               </button>
             ))}
@@ -130,41 +145,70 @@ export function SettingsSheet({ onClose, pieces, weather }) {
 
         {weather && <WeatherSettings weather={weather} />}
 
+        {confirmAction && (
+          <div className="confirm-bar" role="alert">
+            <span>
+              {confirmAction === "switch"
+                ? t("Disconnect from this server?")
+                : t("Forget the saved access token?")}
+            </span>
+            <button type="button" className="secondary-button" onClick={() => setConfirmAction(null)}>{t("Cancel")}</button>
+            <button type="button" className="delete-button" onClick={confirmAction === "switch" ? switchServer : signOut}>
+              {confirmAction === "switch" ? t("Switch server") : t("Forget token")}
+            </button>
+          </div>
+        )}
 
         <div className="settings-actions">
           {native && !isLocalMode() && (
-            <button className="secondary-button" type="button" onClick={switchServer}>
+            <button className="secondary-button" type="button" onClick={() => setConfirmAction("switch")}>
               <HardDrives size={16} aria-hidden="true" /> {t("Switch server")}
             </button>
           )}
           {accessToken() && (
-            <button className="secondary-button danger" type="button" onClick={signOut}>
+            <button className="secondary-button danger" type="button" onClick={() => setConfirmAction("forget")}>
               <SignOut size={16} aria-hidden="true" /> {t("Forget token")}
             </button>
           )}
         </div>
 
-        {!isLocalMode() && <p className="settings-note">
-          {native
-            ? t("At home, use your server's address on Wi-Fi (for example http://192.168.1.20:4173). Away from home, use an HTTPS address, such as a Synology DDNS name or Tailscale.")
-            : t("Everything you add is saved on this server. Open the same address in any browser, or connect the phone app to it.")}
-        </p>}
+        {!isLocalMode() && (
+          <p className="settings-note">
+            {native
+              ? t("At home, use your server's address on Wi-Fi (for example http://192.168.1.20:4173). Away from home, use an HTTPS address, such as a Synology DDNS name or Tailscale.")
+              : t("Everything you add is saved on this server. Open the same address in any browser, or connect the phone app to it.")}
+          </p>
+        )}
       </section>
     </div>
   );
 }
 
 // Off, my location, or a typed city. The forecast picks warmer or lighter
-// outfits for Today and the plan.
+// outfits for Home and the plan.
 function WeatherSettings({ weather }) {
   const { settings, setSettings, today, error: loadError } = weather;
   const [city, setCity] = useState(settings.mode === "city" ? settings.place || "" : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const aliveRef = useRef(true);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
+
   const run = async (task) => {
-    setBusy(true); setError("");
-    try { setSettings(await task()); } catch (requestError) { setError(requestError.message); }
-    finally { setBusy(false); }
+    setBusy(true);
+    setError("");
+    try {
+      const next = await task();
+      if (aliveRef.current) setSettings(next);
+    } catch (requestError) {
+      if (aliveRef.current) setError(requestError.message);
+    } finally {
+      if (aliveRef.current) setBusy(false);
+    }
   };
   const useLocation = () => run(async () => ({ mode: "location", ...(await deviceLocation()) }));
   const useCity = (event) => { event.preventDefault(); if (city.trim()) run(async () => ({ mode: "city", ...(await findCity(city)) })); };
@@ -173,15 +217,15 @@ function WeatherSettings({ weather }) {
   return (
     <section className="settings-section">
       <h3><CloudSun size={16} aria-hidden="true" /> {t("Weather")}</h3>
-      <p className="settings-note">{t("Use the forecast for Today and the plan")}</p>
+      <p className="settings-note">{t("Use the forecast for Home and the plan")}</p>
       {settings.mode !== "off" && (
         <p className="weather-now">
           <MapPin size={14} aria-hidden="true" /> {t("Weather for {place}", { place })}
-          {today && <> · {today.low}° / {today.high}°C {t(today.label)}</>}
+          {today && <> · <bdi>{`${today.low}° / ${today.high}°C`}</bdi> {t(today.label)}</>}
         </p>
       )}
       <div className="settings-actions">
-        <button className="secondary-button" type="button" onClick={useLocation} disabled={busy}>
+        <button className="secondary-button" type="button" onClick={useLocation} disabled={busy} aria-busy={busy}>
           {busy ? <SpinnerGap size={16} className="import-spinner" aria-hidden="true" /> : <MapPin size={16} aria-hidden="true" />} {t("Use my location")}
         </button>
         {settings.mode !== "off" && <button className="secondary-button" type="button" onClick={() => setSettings({ mode: "off" })}>{t("Turn off")}</button>}
@@ -191,7 +235,7 @@ function WeatherSettings({ weather }) {
         <input id="weather-city" value={city} onChange={(event) => setCity(event.target.value)} placeholder={t("Type a city")} autoComplete="address-level2" />
         <button className="secondary-button" type="submit" disabled={busy || !city.trim()}>{t("Find")}</button>
       </form>
-      {(error || loadError) && <p className="status error">{error || loadError}</p>}
+      {(error || loadError) && <p className="status error" role="alert">{error || loadError}</p>}
       <p className="settings-note">{t("Forecast from Open-Meteo. Only a rough location (about 10 km) is sent, from this device, and never to us.")}</p>
     </section>
   );
@@ -201,42 +245,89 @@ function WeatherSettings({ weather }) {
 function ClosetPlace({ serverReady }) {
   const local = isLocalMode();
   const [state, setState] = useState({ status: "idle" });
+  const aliveRef = useRef(true);
+  const reloadTimerRef = useRef(null);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      clearTimeout(reloadTimerRef.current);
+    };
+  }, []);
+
+  const moving = state.status === "copying" || state.status === "done";
+
   const move = async () => {
+    if (moving) return;
     setState({ status: "copying", done: 0, total: 0 });
     try {
       const { copyServerToLocal } = await import("./local/migrate.js");
-      const result = await copyServerToLocal((done, total) => setState({ status: "copying", done, total }));
+      const result = await copyServerToLocal((done, total) => {
+        if (aliveRef.current) setState({ status: "copying", done, total });
+      });
+      if (!aliveRef.current) return;
       // Pictures that would not copy: stay here and say so. The person
       // can try again; pictures already copied are not fetched twice.
-      if (result.failed) { setState({ status: "failed", message: tn(result.failed, "{n} picture could not be copied. Check the server and try again.", "{n} pictures could not be copied. Check the server and try again.") }); return; }
+      if (result.failed) {
+        setState({
+          status: "failed",
+          message: tn(result.failed, "{n} picture could not be copied. Check the server and try again.", "{n} pictures could not be copied. Check the server and try again."),
+        });
+        return;
+      }
       setState({ status: "done", pieces: result.pieces });
       setClosetMode("local");
-      setTimeout(() => window.location.reload(), 600);
-    } catch (error) { setState({ status: "failed", message: error.message }); }
+      reloadTimerRef.current = setTimeout(() => {
+        if (aliveRef.current) window.location.reload();
+      }, 600);
+    } catch (error) {
+      if (aliveRef.current) setState({ status: "failed", message: error.message });
+    }
   };
-  const leave = () => { setClosetMode("server"); window.location.reload(); };
+  const leave = () => {
+    if (moving) return;
+    setClosetMode("server");
+    window.location.reload();
+  };
   const kind = local ? localApi().store.kind : null;
 
   return (
     <section className="settings-section">
       <h3><CloudCheck size={16} aria-hidden="true" /> {t("Where your closet lives")}</h3>
       <div className="segmented" role="group" aria-label={t("Where your closet lives")}>
-        <button type="button" className={!local ? "active" : ""} aria-pressed={!local} onClick={local ? leave : undefined}>{t("On a server")}</button>
-        <button type="button" className={local ? "active" : ""} aria-pressed={local} onClick={local ? undefined : serverReady ? move : () => { setClosetMode("local"); window.location.reload(); }}>{t("In iCloud")}</button>
+        <button type="button" className={!local ? "active" : ""} aria-pressed={!local} disabled={moving} onClick={local ? leave : undefined}>
+          {t("On a server")}
+        </button>
+        <button
+          type="button"
+          className={local ? "active" : ""}
+          aria-pressed={local}
+          disabled={moving}
+          onClick={local ? undefined : serverReady ? move : () => { setClosetMode("local"); window.location.reload(); }}
+        >
+          {t("In iCloud")}
+        </button>
       </div>
-      {local && <p className="settings-note">{kind === "icloud" ? t("Saved in your iCloud. It syncs to your other iPhone and iPad signed in to the same Apple Account.") : t("iCloud is off on this device, so the closet is saved here only. Turn on iCloud Drive to sync it.")}</p>}
+      {local && (
+        <p className="settings-note">
+          {kind === "icloud"
+            ? t("Saved in your iCloud. It syncs to your other iPhone and iPad signed in to the same Apple Account.")
+            : t("iCloud is off on this device, so the closet is saved here only. Turn on iCloud Drive to sync it.")}
+        </p>
+      )}
       {local && <p className="settings-note">{t("Your iCloud closet stays where it is, so you can come back to it.")}</p>}
       {!local && serverReady && (
         <>
-          <button className="secondary-button" type="button" onClick={move} disabled={state.status === "copying" || state.status === "done"}>
+          <button className="secondary-button" type="button" onClick={move} disabled={moving} aria-busy={state.status === "copying"}>
             {state.status === "copying" ? <SpinnerGap size={16} className="import-spinner" aria-hidden="true" /> : <CloudCheck size={16} aria-hidden="true" />}
             {state.status === "copying" && state.total ? t("Copying {done} of {total}", { done: state.done, total: state.total }) : t("Copy my closet to iCloud")}
           </button>
           <p className="settings-note">{t("Your server keeps its copy. After the move, add your AI key again: keys stay on the server and are not copied.")}</p>
         </>
       )}
-      {state.status === "done" && <p className="status">{t("Copied {n} pieces. Switching to iCloud…", { n: state.pieces })}</p>}
-      {state.status === "failed" && <p className="status error">{state.message}</p>}
+      {state.status === "done" && <p className="status" role="status">{t("Copied {n} pieces. Switching to iCloud…", { n: state.pieces })}</p>}
+      {state.status === "failed" && <p className="status error" role="alert">{state.message}</p>}
     </section>
   );
 }
