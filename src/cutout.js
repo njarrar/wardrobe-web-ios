@@ -46,8 +46,9 @@ function onWhite(image, edge = 1600) {
 
 // Centers a cut piece on a clear square with a small margin, like imports.
 export function frameOnSquare(source, size = 1200, margin = 0.08) {
-  const width = source.naturalWidth || source.width;
-  const height = source.naturalHeight || source.height;
+  const width = source?.naturalWidth || source?.width || 0;
+  const height = source?.naturalHeight || source?.height || 0;
+  if (width <= 0 || height <= 0) throw new Error(t("Could not open the picture."));
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -64,18 +65,47 @@ export async function cutOutOnDevice(item) {
   return frameOnSquare(await loadImage(result.image));
 }
 
+function bytesToBase64(bytes) {
+  // 8 KB chunks stay safely below JSC's argument stack limit.
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x2000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x2000));
+  }
+  return btoa(binary);
+}
+
+async function prepareBridgeImage(bytes) {
+  if (typeof document !== "undefined" && typeof Blob !== "undefined" && typeof URL !== "undefined" && URL.createObjectURL) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+    try {
+      const image = await loadImage(url);
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) return onWhite(image, 1600);
+    } catch { /* fall back to raw PNG bytes */ }
+    finally { URL.revokeObjectURL(url); }
+  }
+  return `data:image/png;base64,${bytesToBase64(bytes)}`;
+}
+
 // For the iCloud closet's import step: PNG bytes in, cut PNG bytes out, or
 // null when the phone cannot cut or finds nothing.
 export async function cutOutPng(bytes) {
-  if (!(await canCutOutOnDevice())) return null;
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  const result = await Cutout().cutOut({ image: `data:image/png;base64,${btoa(binary)}` });
-  if (!result?.image) return null;
-  const raw = atob(result.image.split(",")[1] || "");
-  const out = new Uint8Array(raw.length);
-  for (let index = 0; index < raw.length; index += 1) out[index] = raw.charCodeAt(index);
-  return out;
+  if (!bytes?.length || !(await canCutOutOnDevice())) return null;
+  const image = await prepareBridgeImage(bytes);
+  const result = await Cutout().cutOut({ image });
+  if (typeof result?.image !== "string") return null;
+  const comma = result.image.indexOf(",");
+  if (comma === -1) return null;
+  const encoded = result.image.slice(comma + 1).trim();
+  if (!encoded) return null;
+  try {
+    const raw = atob(encoded);
+    if (!raw.length) return null;
+    const out = new Uint8Array(raw.length);
+    for (let index = 0; index < raw.length; index += 1) out[index] = raw.charCodeAt(index);
+    return out;
+  } catch {
+    return null;
+  }
 }
 
 export function savePiecePicture(id, imageDataUrl) {

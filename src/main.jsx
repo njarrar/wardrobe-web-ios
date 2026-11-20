@@ -1,17 +1,19 @@
 // Capacitor core first: it adds registerPlugin and the plugin bridge that
 // the iCloud store, Clean cut and native HTTP need on iPhone.
 import "@capacitor/core";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App.jsx";
-import { isNativeApp, loadSavedToken } from "./api.js";
+import { SpinnerGap } from "@phosphor-icons/react";
+// Base styles load before App.jsx, so each screen's own styles win.
 import "./styles.css";
 import "./glass.css";
 import "./extras.css";
-import { applyLanguage } from "./i18n.js";
+import { App } from "./App.jsx";
+import { ErrorBoundary } from "./ErrorBoundary.jsx";
+import { isNativeApp, loadSavedToken } from "./api.js";
+import { applyLanguage, t, useLanguage } from "./i18n.js";
 import { applyTheme } from "./accent.js";
 import { announceChange, closetMode, localApi, setClosetMode, startLocalMode } from "./local/mode.js";
-import { t } from "./i18n.js";
 import packageInfo from "../package.json";
 
 applyLanguage();
@@ -23,16 +25,10 @@ if (isNativeApp()) {
   document.querySelector('meta[name="viewport"]')?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover");
 }
 
-function render() {
-  createRoot(document.getElementById("root")).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  );
-}
-
 // Coming back to the app: the closet may have changed on another device.
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") announceChange(300); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") announceChange(300);
+});
 
 // A picture that is still in iCloud fails to load at first. Ask iCloud for
 // it and try again, a few times.
@@ -49,20 +45,40 @@ document.addEventListener("error", (event) => {
   }).catch(() => {});
 }, true);
 
-// On a new device iCloud needs a moment to list the closet. Say so.
-if (closetMode() === "local") {
-  const wait = document.createElement("p");
-  wait.className = "cloud-wait";
-  wait.textContent = t("Checking iCloud…");
-  document.getElementById("root").append(wait);
+// An iCloud closet opens its files first; if that fails, the app falls back
+// to the connect screen and says why. On a new device iCloud needs a moment
+// to list the closet, so say so while it does.
+function BootGate() {
+  useLanguage();
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    loadSavedToken()
+      .then(() => startLocalMode({ version: packageInfo.version }))
+      .catch((error) => { window.__wardrobeLocalError = error.message; setClosetMode("server"); })
+      .finally(() => { if (alive) setReady(true); });
+    return () => { alive = false; };
+  }, []);
+
+  if (!ready) {
+    if (closetMode() !== "local") return null;
+    return (
+      <p className="cloud-wait" role="status">
+        <SpinnerGap size={18} className="import-spinner" aria-hidden="true" /> {t("Checking iCloud…")}
+      </p>
+    );
+  }
+  return <App />;
 }
 
-// An iCloud closet opens its files first; if that fails, the app falls back
-// to the connect screen and says why.
-loadSavedToken()
-  .then(() => startLocalMode({ version: packageInfo.version }))
-  .catch((error) => { window.__wardrobeLocalError = error.message; setClosetMode("server"); })
-  .finally(render);
+createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <ErrorBoundary>
+      <BootGate />
+    </ErrorBoundary>
+  </React.StrictMode>,
+);
 
 if ("serviceWorker" in navigator && import.meta.env.PROD && !isNativeApp()) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));

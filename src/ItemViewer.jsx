@@ -1,25 +1,33 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ClockCounterClockwise, PencilSimple, Plus, Trash, X } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Check, ClockCounterClockwise, Eyedropper, PencilSimple, Plus, SpinnerGap, Trash, X } from "@phosphor-icons/react";
 import { OptimizedImage } from "./OptimizedImage.jsx";
 import { PieceRead } from "./PiecePage.jsx";
-import { useSheetDrag } from "./useSheetDrag.js";
 import { PATTERNS, PATTERN_LABELS } from "../shared/pairing.mjs";
-import { wornOn } from "./wear.js";
 import { costPerWear, formatMoney, idleLabel, lastWorn, wearCount } from "../shared/style.mjs";
-import { locale, t, tn } from "./i18n.js";
-import { SEASON_LABELS, TYPES, TYPE_MAP } from "./closet-types.js";
-import { buildSamplingCanvas, extractPalette, sampleImageColor } from "./colors.js";
+import { wornOn } from "./wear.js";
+import { formatDay, isRtl, locale, t, tn } from "./i18n.js";
+import { useDialog } from "./dialog.js";
+import { useSheetDrag } from "./useSheetDrag.js";
+import {
+  SEASON_LABELS, TYPE_MAP, TYPES,
+  buildSamplingCanvas, draftFromItem, extractPalette, pieceLabel, sampleImageColor,
+} from "./color-utils.js";
 
 const PictureTools = lazy(() => import("./PictureTools.jsx").then((module) => ({ default: module.PictureTools })));
 
-// The page for one piece: read it, wear it, edit it, delete it.
-export function TagEditor({ tags, onChange }) {
+const WARMTH_LABELS = ["very light", "light", "medium", "warm", "very warm"];
+
+function TagEditor({ tags, onChange }) {
   const [input, setInput] = useState("");
 
-  const addTag = () => {
-    const nextTag = input.trim().replace(/^#/, "");
-    if (!nextTag || tags.some((tag) => tag.toLowerCase() === nextTag.toLowerCase())) return;
-    onChange([...tags, nextTag]);
+  const addTagsFromText = (raw) => {
+    const pieces = String(raw || "").split(/[,،]/).map((entry) => entry.trim().replace(/^#/, "")).filter(Boolean);
+    if (!pieces.length) return;
+    const next = [...tags];
+    for (const piece of pieces) {
+      if (!next.some((tag) => tag.toLowerCase() === piece.toLowerCase())) next.push(piece);
+    }
+    if (next.length !== tags.length) onChange(next);
     setInput("");
   };
 
@@ -40,15 +48,15 @@ export function TagEditor({ tags, onChange }) {
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === ",") {
+            if (event.key === "Enter" || event.key === "," || event.key === "،") {
               event.preventDefault();
-              addTag();
+              addTagsFromText(input);
             }
           }}
           placeholder={t("Add a detail")}
           aria-label={t("Add detail tag")}
         />
-        <button type="button" onClick={addTag} disabled={!input.trim()} aria-label={t("Add detail")}>
+        <button type="button" onClick={() => addTagsFromText(input)} disabled={!input.trim()} aria-label={t("Add detail")}>
           <Plus size={15} weight="regular" aria-hidden="true" />
         </button>
       </div>
@@ -56,12 +64,15 @@ export function TagEditor({ tags, onChange }) {
   );
 }
 
-export function ColorControl({ label, field, value, palette, onChange, sampling, setSampling, optional = false, onClear, onAdd }) {
+function ColorControl({ label, field, value, palette, onChange, sampling, setSampling, optional = false, onClear, onAdd }) {
+  const translatedLabel = t(label);
+  const translatedLower = t(label.toLowerCase());
+
   if (optional && !value) {
     return (
       <div className="color-slot empty-color-slot">
         <div className="color-slot-heading">
-          <span>{t(label)}</span>
+          <span>{translatedLabel}</span>
           <small>{t("Optional")}</small>
         </div>
         <p>{t("No distinct secondary color detected.")}</p>
@@ -73,7 +84,7 @@ export function ColorControl({ label, field, value, palette, onChange, sampling,
   return (
     <div className="color-slot">
       <div className="color-slot-heading">
-        <span>{t(label)}</span>
+        <span>{translatedLabel}</span>
         {optional && <button type="button" onClick={onClear}>{t("Remove")}</button>}
       </div>
       <label className="selected-color-control">
@@ -81,7 +92,7 @@ export function ColorControl({ label, field, value, palette, onChange, sampling,
           type="color"
           value={value || "#9a9286"}
           onChange={(event) => onChange(event.target.value)}
-          aria-label={label}
+          aria-label={translatedLabel}
         />
         <span className="selected-color-copy">
           <small>{t("Selected")}</small>
@@ -92,15 +103,15 @@ export function ColorControl({ label, field, value, palette, onChange, sampling,
         <span>{t("Image suggestions")}</span>
         <small>{t("Tap one to use it")}</small>
       </div>
-      <div className="palette" aria-label={t("{label} suggestions from image", { label })}>
-        {palette.map((color) => (
+      <div className="palette" aria-label={t("{label} suggestions from image", { label: translatedLabel })}>
+        {palette.map((color, idx) => (
           <button
             type="button"
-            key={color}
+            key={`${field}-${idx}-${color}`}
             className={value?.toLowerCase() === color.toLowerCase() ? "active" : ""}
             style={{ backgroundColor: color }}
             onClick={() => onChange(color)}
-            aria-label={`${label}: ${color}`}
+            aria-label={`${translatedLabel}: ${color}`}
             title={color}
           />
         ))}
@@ -108,9 +119,11 @@ export function ColorControl({ label, field, value, palette, onChange, sampling,
       <button
         className={`sample-button${sampling === field ? " active" : ""}`}
         type="button"
-        onClick={() => setSampling((current) => current === field ? null : field)}
+        aria-label={sampling === field ? t("Cancel picking") : t("Pick {label} from image", { label: translatedLower })}
+        onClick={() => setSampling((current) => (current === field ? null : field))}
       >
-        {sampling === field ? t("Cancel picking") : t("Pick {label} from image", { label: label.toLowerCase() })}
+        <Eyedropper size={14} aria-hidden="true" />
+        {sampling === field ? t("Cancel picking") : t("Pick from image")}
       </button>
     </div>
   );
@@ -126,7 +139,7 @@ export function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sa
         <input
           value={draft.name}
           onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-          placeholder={t(TYPE_MAP[draft.part]?.singular || t("Wardrobe item"))}
+          placeholder={t(TYPE_MAP[draft.part]?.singular || "Wardrobe item")}
         />
       </label>
 
@@ -162,7 +175,11 @@ export function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sa
             onAdd={() => setDraft((current) => ({ ...current, secondaryColor: suggestedSecondary }))}
           />
         </div>
-        <p className="color-help" aria-live="polite">{sampling ? t("Click garment to sample") : sampleStatus || t("Primary colors come from the image. A secondary is suggested only when a distinct color has meaningful coverage.")}</p>
+        <p className="color-help" aria-live="polite">
+          {sampling
+            ? t("Tap garment to sample")
+            : sampleStatus || t("Primary colors come from the image. A secondary is suggested only when a distinct color has meaningful coverage.")}
+        </p>
       </fieldset>
 
       <div className="sort-fields">
@@ -174,7 +191,9 @@ export function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sa
           <span>{t("Warmth")}</span>
           <select value={draft.warmth || ""} onChange={(event) => setDraft((current) => ({ ...current, warmth: event.target.value ? Number(event.target.value) : "" }))}>
             <option value="">{t("Not set")}</option>
-            {[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} {t(["very light", "light", "medium", "warm", "very warm"][value - 1])}</option>)}
+            {[1, 2, 3, 4, 5].map((value) => (
+              <option key={value} value={value}>{`${value} ${t(WARMTH_LABELS[value - 1])}`}</option>
+            ))}
           </select>
         </label>
         <label className="field">
@@ -199,7 +218,13 @@ export function ItemEditor({ draft, setDraft, palette, sampling, setSampling, sa
         {Object.entries(SEASON_LABELS).map(([id, label]) => {
           const on = (draft.seasons || []).includes(id);
           return (
-            <button key={id} type="button" className={on ? "active" : ""} aria-pressed={on} onClick={() => setDraft((current) => ({ ...current, seasons: on ? (current.seasons || []).filter((season) => season !== id) : [...(current.seasons || []), id] }))}>
+            <button
+              key={id}
+              type="button"
+              className={on ? "active" : ""}
+              aria-pressed={on}
+              onClick={() => setDraft((current) => ({ ...current, seasons: on ? (current.seasons || []).filter((season) => season !== id) : [...(current.seasons || []), id] }))}
+            >
               {t(label)}
             </button>
           );
@@ -233,27 +258,50 @@ export function WearStats({ item }) {
   return (
     <dl className="wear-stats">
       <div><dt>{t("Worn")}</dt><dd>{tn(wearCount(item), "{n} time", "{n} times")}</dd></div>
-      <div><dt>{t("Last worn")}</dt><dd>{last ? new Date(`${last}T12:00:00`).toLocaleDateString(locale(), { day: "numeric", month: "short" }) : t("Never")}</dd></div>
+      <div><dt>{t("Last worn")}</dt><dd>{last ? formatDay(last, { day: "numeric", month: "short" }) : t("Never")}</dd></div>
       <div><dt>{t("Per wear")}</dt><dd>{perWear === null ? "-" : formatMoney(perWear)}</dd></div>
     </dl>
   );
 }
 
-export function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onWear, onPicture, onStyleWith }) {
+export function ItemViewer({
+  item,
+  items,
+  affectedOutfits = 0,
+  returnOutfitName = "",
+  onOpen,
+  onClose,
+  onSave,
+  onDelete,
+  onWear,
+  onPicture,
+  onStyleWith,
+}) {
   // The page opens to read. Edit turns the fields on.
   const [editing, setEditing] = useState(false);
-  useEffect(() => { setEditing(false); }, [item.id]);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [wearing, setWearing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [savedNotice, setSavedNotice] = useState("");
+
+  const dialogRef = useRef(null);
   const closeButtonRef = useRef(null);
   const imageRef = useRef(null);
   const samplingCanvasRef = useRef(null);
   const shakeTimerRef = useRef(null);
+  const savedTimerRef = useRef(null);
+  const lastItemIdRef = useRef(item.id);
+
   const [sampling, setSampling] = useState(null);
   const [sampleStatus, setSampleStatus] = useState("");
   const [palette, setPalette] = useState(item.palette || []);
-  const [draft, setDraft] = useState({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", pattern: item.pattern || "", seasons: [...(item.seasons || [])] });
+  const [draft, setDraft] = useState(() => draftFromItem(item));
   const [shaking, setShaking] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
-  const type = t(TYPE_MAP[item.part]?.singular || t("Wardrobe item"));
+
+  const type = t(TYPE_MAP[item.part]?.singular || "Wardrobe item");
   const hasModeledImage = Boolean(item.modeledImage);
   const pieceRotation = useMemo(() => {
     const hash = [...item.id].reduce((total, character) => total + character.charCodeAt(0), 0);
@@ -269,7 +317,11 @@ export function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onW
       secondaryColor: draft.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(draft.tags),
       price: draft.price === "" || draft.price === null ? null : Number(draft.price),
-      kind: draft.kind.trim().toLowerCase(), warmth: draft.warmth || null, formality: draft.formality || null, pattern: draft.pattern || null, seasons: [...draft.seasons].sort(),
+      kind: draft.kind.trim().toLowerCase(),
+      warmth: draft.warmth || null,
+      formality: draft.formality || null,
+      pattern: draft.pattern || null,
+      seasons: [...draft.seasons].sort(),
     }) !== JSON.stringify({
       name: (item.name || "").trim(),
       part: item.part,
@@ -277,9 +329,42 @@ export function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onW
       secondaryColor: item.secondaryColor?.toLowerCase() || null,
       tags: normalizedTags(item.tags || []),
       price: item.price ?? null,
-      kind: item.kind || "", warmth: item.warmth || null, formality: item.formality || null, pattern: item.pattern || null, seasons: [...(item.seasons || [])].sort(),
+      kind: item.kind || "",
+      warmth: item.warmth || null,
+      formality: item.formality || null,
+      pattern: item.pattern || null,
+      seasons: [...(item.seasons || [])].sort(),
     });
   }, [draft, item]);
+
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+
+  // Reset draft when switching to a different item, or when clean on background reload (#102).
+  useEffect(() => {
+    const switchedItem = lastItemIdRef.current !== item.id;
+    lastItemIdRef.current = item.id;
+    if (switchedItem) {
+      setEditing(false);
+      setConfirmingDelete(false);
+      setModalError("");
+      setSavedNotice("");
+      setSampling(null);
+      setSampleStatus("");
+      setPalette(item.palette || []);
+      setDraft(draftFromItem(item));
+      return;
+    }
+    if (!isDirtyRef.current) {
+      setPalette(item.palette || []);
+      setDraft(draftFromItem(item));
+    }
+  }, [item]);
+
+  useEffect(() => () => {
+    clearTimeout(shakeTimerRef.current);
+    clearTimeout(savedTimerRef.current);
+  }, []);
 
   const nudgeUnsaved = useCallback(() => {
     setCloseBlocked(true);
@@ -292,62 +377,105 @@ export function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onW
   }, []);
 
   const requestClose = useCallback(() => {
-    if (isDirty) nudgeUnsaved();
+    if (editing && isDirty) nudgeUnsaved();
     else onClose();
-  }, [isDirty, nudgeUnsaved, onClose]);
+  }, [editing, isDirty, nudgeUnsaved, onClose]);
+
+  const handleEscape = useCallback(() => {
+    if (sampling) setSampling(null);
+    else if (confirmingDelete) setConfirmingDelete(false);
+    else requestClose();
+  }, [sampling, confirmingDelete, requestClose]);
+
+  // Initial focus + focus trap + nested-safe Escape stack (#046, #047, #050).
+  useDialog({
+    open: true,
+    onClose: handleEscape,
+    initialFocusRef: closeButtonRef,
+    containerRef: dialogRef,
+  });
   const { handleProps, sheetStyle } = useSheetDrag(requestClose);
-
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        if (sampling) setSampling(null);
-        else requestClose();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    document.body.classList.add("viewer-open");
-    closeButtonRef.current?.focus({ preventScroll: true });
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.classList.remove("viewer-open");
-      clearTimeout(shakeTimerRef.current);
-    };
-  }, [requestClose, sampling]);
 
   useEffect(() => {
     if (!isDirty) setCloseBlocked(false);
   }, [isDirty]);
 
-  useEffect(() => {
-    setSampling(null);
-    setSampleStatus("");
-    setPalette(item.palette || []);
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", pattern: item.pattern || "", seasons: [...(item.seasons || [])] });
-  }, [item]);
-
   const cancelEditing = () => {
-    setDraft({ name: item.name || "", part: item.part, color: item.color || "#9a9286", secondaryColor: item.secondaryColor || null, tags: [...(item.tags || [])], price: item.price ?? "", kind: item.kind || "", warmth: item.warmth || "", formality: item.formality || "", pattern: item.pattern || "", seasons: [...(item.seasons || [])] });
+    setDraft(draftFromItem(item));
     setSampling(null);
     setSampleStatus("");
+    setModalError("");
+    setConfirmingDelete(false);
     setEditing(false);
   };
 
-  const saveEditing = async () => {
+  const saveEditing = async (event) => {
+    event?.preventDefault();
+    if (saving) return;
     setSampling(null);
+    setModalError("");
+    const rawPrice = draft.price === "" || draft.price === null ? null : Number(draft.price);
+    if (rawPrice !== null && (!Number.isFinite(rawPrice) || rawPrice < 0)) {
+      setModalError(t("Enter a valid price of 0 or more."));
+      return;
+    }
+    setSaving(true);
     try {
-      await onSave({ ...item, ...draft, name: draft.name.trim(), tags: draft.tags.map((tag) => tag.trim()).filter(Boolean), price: draft.price === "" ? null : Number(draft.price), kind: draft.kind.trim().toLowerCase() || null, warmth: draft.warmth || null, formality: draft.formality || null, pattern: draft.pattern || null, seasons: draft.seasons });
-      setSampleStatus(t("Changes saved."));
+      await onSave({
+        ...item,
+        ...draft,
+        name: draft.name.trim(),
+        tags: draft.tags.map((tag) => tag.trim()).filter(Boolean),
+        price: rawPrice,
+        kind: draft.kind.trim().toLowerCase() || null,
+        warmth: draft.warmth || null,
+        formality: draft.formality || null,
+        pattern: draft.pattern || null,
+        seasons: draft.seasons,
+      });
       setEditing(false);
+      setConfirmingDelete(false);
+      setSavedNotice(t("Changes saved."));
+      clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSavedNotice(""), 3000);
     } catch (error) {
-      setSampleStatus(error.message);
+      setModalError(error.message || t("Could not save your changes."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    setModalError("");
+    try {
+      await onDelete(item.id);
+    } catch (error) {
+      setModalError(error.message || t("Could not delete the item."));
+      setDeleting(false);
+    }
+  };
+
+  const handleWear = async () => {
+    if (wearing) return;
+    setWearing(true);
+    setModalError("");
+    try {
+      await onWear(item.id, wornOn(item));
+    } catch (error) {
+      setModalError(error.message || t("Could not save your changes."));
+    } finally {
+      setWearing(false);
     }
   };
 
   const handleImageLoad = (event) => {
     samplingCanvasRef.current = buildSamplingCanvas(event.currentTarget);
     const extracted = extractPalette(event.currentTarget);
-    setPalette([...new Set([...(item.palette || []), ...extracted])].slice(0, 5));
+    if (extracted.length) {
+      setPalette([...new Set([...(item.palette || []), ...extracted])].slice(0, 5));
+    }
   };
 
   const handleImageClick = (event) => {
@@ -360,9 +488,14 @@ export function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onW
     const targetField = sampling === "secondary" ? "secondaryColor" : "color";
     setDraft((current) => ({ ...current, [targetField]: color }));
     setPalette((current) => [color, ...current.filter((existing) => existing.toLowerCase() !== color.toLowerCase())].slice(0, 5));
-    setSampleStatus(t("Sampled {color} as the {field} color.", { color, field: t(sampling === "secondary" ? "secondary color" : "primary color") }));
+    setSampleStatus(t("Sampled {color} as the {label}.", {
+      color,
+      label: t(sampling === "secondary" ? "secondary color" : "primary color"),
+    }));
     setSampling(null);
   };
+
+  const displayName = draft.name.trim() || pieceLabel({ ...item, part: draft.part }, t);
 
   const garmentArtwork = (
     <div
@@ -379,92 +512,137 @@ export function ItemViewer({ item, items, onOpen, onClose, onSave, onDelete, onW
         onLoad={handleImageLoad}
         onClick={handleImageClick}
       />
-      {sampling && <span className="sample-hint">{t("Click garment to sample")}</span>}
+      {sampling && <span className="sample-hint">{t("Tap garment to sample")}</span>}
     </div>
   );
 
   return (
     <div className="viewer-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
-    <div className="viewer-entry">
-    <aside className={`viewer${editing ? " editing" : " reading"}${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`} role="dialog" aria-modal="true" aria-label={t("Selected wardrobe item")} style={sheetStyle}>
-      <span className="sheet-grabber" aria-hidden="true" {...handleProps} />
-      <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label={t("Close viewer")} ref={closeButtonRef}>
-        <X size={24} weight="light" aria-hidden="true" />
-      </button>
-
-      {hasModeledImage ? (
-        <div className="modeled-hero">
-          <OptimizedImage
-            className="modeled-hero-photo"
-            src={item.modeledImage}
-            alt={`${draft.name || type} worn by a model`}
-            sizes="(max-width: 860px) 100vw, 520px"
-            breakpoints={[320, 480, 640, 800, 1040, 1280]}
-            quality={82}
-            priority
-          />
-          <div className="viewer-heading modeled-heading" {...handleProps}>
-            <div>
-              <h2>{draft.name || t(TYPE_MAP[draft.part]?.singular || t("Wardrobe item"))}</h2>
-            </div>
-          </div>
-          {garmentArtwork}
-        </div>
-      ) : (
-        <>
-          <div className="viewer-heading" {...handleProps}>
-            <div>
-              <h2>{draft.name || t(TYPE_MAP[draft.part]?.singular || t("Wardrobe item"))}</h2>
-            </div>
-          </div>
-          {garmentArtwork}
-        </>
-      )}
-
-      <div className="viewer-details editing">
-        <WearStats item={item} />
-        <p className="wear-idle">{idleLabel(item, undefined, t, locale())}</p>
-        <div className="wear-actions">
-          <button className={wornOn(item) ? "secondary-button" : "primary-button"} type="button" onClick={() => onWear(item.id, wornOn(item))}>
-            {wornOn(item) ? <><ClockCounterClockwise size={15} aria-hidden="true" /> {t("Undo, not worn today")}</> : <><Check size={15} weight="bold" aria-hidden="true" /> {t("Wore today")}</>}
+      <div className="viewer-entry">
+        <aside
+          ref={dialogRef}
+          className={`viewer${editing ? " editing" : " reading"}${hasModeledImage ? " has-modeled-image" : ""}${shaking ? " shake" : ""}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("Selected wardrobe item")}
+          style={sheetStyle}
+        >
+          <span className="sheet-grabber" aria-hidden="true" {...handleProps} />
+          <button className="viewer-icon-close" type="button" onClick={requestClose} aria-label={t("Close viewer")} ref={closeButtonRef}>
+            <X size={24} weight="light" aria-hidden="true" />
           </button>
-        </div>
-        {!editing && (
-          <>
-            <PieceRead item={item} items={items} category={t(TYPE_MAP[item.part]?.label || "")} onOpen={onOpen} onStyleWith={onStyleWith} />
-            <div className="viewer-actions">
-              <span className="action-spacer" />
-              <button className="secondary-button" type="button" onClick={() => setEditing(true)}>
-                <PencilSimple size={15} aria-hidden="true" /> {t("Edit")}
+
+          {returnOutfitName && (
+            <button type="button" className="secondary-button viewer-back-pill" onClick={requestClose}>
+              {isRtl() ? <ArrowRight size={14} aria-hidden="true" /> : <ArrowLeft size={14} aria-hidden="true" />}
+              {t("Back to {name}", { name: returnOutfitName })}
+            </button>
+          )}
+
+          {hasModeledImage ? (
+            <div className="modeled-hero">
+              <OptimizedImage
+                className="modeled-hero-photo"
+                src={item.modeledImage}
+                alt={t("{name} worn by a model", { name: displayName })}
+                sizes="(max-width: 860px) 100vw, 520px"
+                breakpoints={[320, 480, 640, 800, 1040, 1280]}
+                quality={82}
+                priority
+              />
+              <div className="viewer-heading modeled-heading" {...handleProps}>
+                <div>
+                  <h2>{displayName}</h2>
+                </div>
+              </div>
+              {garmentArtwork}
+            </div>
+          ) : (
+            <>
+              <div className="viewer-heading" {...handleProps}>
+                <div>
+                  <h2>{displayName}</h2>
+                </div>
+              </div>
+              {garmentArtwork}
+            </>
+          )}
+
+          <div className={`viewer-details${editing ? " editing" : ""}`}>
+            <WearStats item={item} />
+            <p className="wear-idle">{idleLabel(item, undefined, t, locale())}</p>
+            <div className="wear-actions">
+              <button
+                className={wornOn(item) ? "secondary-button" : "primary-button"}
+                type="button"
+                disabled={wearing}
+                aria-busy={wearing}
+                onClick={handleWear}
+              >
+                {wornOn(item)
+                  ? <><ClockCounterClockwise size={15} aria-hidden="true" /> {t("Undo, not worn today")}</>
+                  : <><Check size={15} weight="bold" aria-hidden="true" /> {t("Wore today")}</>}
               </button>
             </div>
-          </>
-        )}
-        {editing && onPicture && <Suspense fallback={null}><PictureTools item={item} onSaved={onPicture} /></Suspense>}
-        {editing && <ItemEditor
-          draft={draft}
-          setDraft={setDraft}
-          palette={palette}
-          sampling={sampling}
-          setSampling={setSampling}
-          sampleStatus={sampleStatus}
-        />}
 
-        {closeBlocked && <p className="unsaved-notice" role="status">{t("Save or cancel changes before closing.")}</p>}
+            {savedNotice && <p className="status" role="status">{savedNotice}</p>}
+            {modalError && <p className="status error" role="alert">{modalError}</p>}
 
-        {editing && <div className="viewer-actions">
-          <button className="delete-button" type="button" onClick={() => onDelete(item.id)}>
-            <Trash size={15} weight="regular" aria-hidden="true" /> {t("Delete")}
-          </button>
-          <span className="action-spacer" />
-          <button className="secondary-button" type="button" onClick={cancelEditing}>{t("Cancel")}</button>
-          <button className="primary-button" type="button" onClick={saveEditing}>
-            <Check size={15} weight="bold" aria-hidden="true" /> {t("Save")}
-          </button>
-        </div>}
+            {!editing && (
+              <>
+                <PieceRead item={item} items={items} category={t(TYPE_MAP[item.part]?.label || "")} onOpen={onOpen} onStyleWith={onStyleWith} />
+                <div className="viewer-actions">
+                  <span className="action-spacer" />
+                  <button className="secondary-button" type="button" onClick={() => { setModalError(""); setSavedNotice(""); setEditing(true); }}>
+                    <PencilSimple size={15} aria-hidden="true" /> {t("Edit")}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {editing && onPicture && <Suspense fallback={null}><PictureTools item={item} onSaved={onPicture} /></Suspense>}
+            {editing && (
+              <form onSubmit={saveEditing}>
+                <ItemEditor
+                  draft={draft}
+                  setDraft={setDraft}
+                  palette={palette}
+                  sampling={sampling}
+                  setSampling={setSampling}
+                  sampleStatus={sampleStatus}
+                />
+
+                {closeBlocked && <p className="unsaved-notice" role="status">{t("Save or cancel changes before closing.")}</p>}
+
+                {confirmingDelete && (
+                  <div className="confirm-bar" role="alert">
+                    <span>
+                      {affectedOutfits > 0
+                        ? tn(affectedOutfits, "Used in {n} outfit. Delete anyway?", "Used in {n} outfits. Delete anyway?")
+                        : t("Delete this piece?")}
+                    </span>
+                    <button type="button" className="secondary-button" onClick={() => setConfirmingDelete(false)} disabled={deleting}>{t("Cancel")}</button>
+                    <button type="button" className="delete-button" onClick={confirmDelete} disabled={deleting} aria-busy={deleting}>
+                      {deleting ? <SpinnerGap size={14} className="import-spinner" aria-hidden="true" /> : <Trash size={14} aria-hidden="true" />} {t("Delete")}
+                    </button>
+                  </div>
+                )}
+
+                <div className="viewer-actions">
+                  <button className="delete-button" type="button" onClick={() => setConfirmingDelete(true)} disabled={saving || deleting}>
+                    <Trash size={15} weight="regular" aria-hidden="true" /> {t("Delete")}
+                  </button>
+                  <span className="action-spacer" />
+                  <button className="secondary-button" type="button" onClick={cancelEditing} disabled={saving || deleting}>{t("Cancel")}</button>
+                  <button className="primary-button" type="submit" disabled={saving || deleting} aria-busy={saving}>
+                    {saving ? <SpinnerGap size={15} className="import-spinner" aria-hidden="true" /> : <Check size={15} weight="bold" aria-hidden="true" />} {saving ? t("Saving") : t("Save")}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </aside>
       </div>
-    </aside>
-    </div>
     </div>
   );
 }
