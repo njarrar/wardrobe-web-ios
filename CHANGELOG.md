@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.4.0 (review fixes, swap one piece, closet numbers)
+
+Fixes
+- **One-piece closets.** A closet of dresses, abayas or thobes with no separate bottom can now get AI outfits and hand-built outfits. The AI is also told each piece's kind, seasons, warmth, dress level and pattern.
+- **iCloud.** When two devices clash, the plan keeps each day's occasion from both. Joining clashing copies now waits its turn in the save queue. A slow iCloud download no longer holds up every other read and save. Moving a closet from the server keeps the plan already on the phone and stamps each record.
+- **Plan.** A kept day now counts when the next day avoids the same top.
+- Home shows a planned outfit even after one of its extras was deleted.
+- "Add all to my closet" clears its drafts and closes when nothing is left.
+- The Worker skips a sort answer for a piece that does not exist. The server answers 400, not 500, to a broken web address.
+- Arabic: 47 more lines, and the Plan arrows point the right way.
+
+New
+- **Swap one piece.** On Home and in a saved outfit, swap one piece for another of the same kind. The rest of the outfit stays.
+- **Body layout.** Outfits are laid out as worn: layer and top, then bottom, then shoes.
+- **Week strip.** Tap a day on Home to see its outfit, weather and occasion.
+- **Closet numbers.** A new sheet (the chart button) with pieces worn in 60 days, closet value, cost per wear, colors, most worn and not worn lately.
+- **Plan.** Pin a day so "Start over" keeps it. Log what you wore on a past day.
+- **Closet.** Color and group filters sit behind one Filters button.
+- **Settings.** Appearance: Auto, Light or Dark. Pull a sheet down to close it.
+- Piece page: color name, warmth dots, and "Style with this".
+
 ## 3.3.2 (a used-up AI limit is said in plain words)
 
 - When your AI key has used up its plan (for example Gemini's free 20 reads a day), the app now says so in one line, with how long to wait. Before, it showed the AI's raw answer.

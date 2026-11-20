@@ -353,7 +353,9 @@ export function planDays({ outfits = [], items = [], start, length = 30, setting
     if (keep[day] && usable.some((outfit) => outfit.id === keep[day])) {
       days[day] = keep[day];
       lastUsed.set(keep[day], day);
-      for (const id of outfitsById.get(keep[day]).garmentIds) touch(id, day);
+      const keptOutfit = outfitsById.get(keep[day]);
+      for (const id of keptOutfit.garmentIds) touch(id, day);
+      previousTop = keptOutfit.garmentIds.map((id) => itemsById.get(id)).find((piece) => piece?.part === "upperbody")?.id || null;
       continue;
     }
     const work = options.workDays.includes(parseDay(day).getDay());
@@ -428,9 +430,11 @@ export function normalizePlan(value = {}) {
   for (const [day, id] of Object.entries(input.occasions && typeof input.occasions === "object" ? input.occasions : {})) {
     if (isDay(day) && OCCASIONS[id]) occasions[day] = id;
   }
+  const lockedDays = [...new Set((Array.isArray(input.lockedDays) ? input.lockedDays : []).filter((day) => isDay(day) && days[day]))].sort().slice(-400);
   return {
     days: Object.fromEntries(kept.map((day) => [day, days[day]])),
     occasions: Object.fromEntries(Object.keys(occasions).sort().slice(-400).map((day) => [day, occasions[day]])),
+    lockedDays,
     settings: { workDays, restDays, mixForgotten: settings.mixForgotten !== false, pieceRest: Number.isInteger(settings.pieceRest) && settings.pieceRest >= 0 && settings.pieceRest <= 14 ? settings.pieceRest : DEFAULT_PLAN_SETTINGS.pieceRest },
     trips,
     updatedAt: new Date().toISOString(),
@@ -444,4 +448,64 @@ export function wornByDay(outfits = [], items = []) {
   for (const outfit of outfits) for (const day of outfit.wornDates || []) at(day).outfitIds.push(outfit.id);
   for (const item of items) for (const day of item.wornDates || []) at(day).pieceIds.push(item.id);
   return days;
+}
+
+// Closet summary metrics for the Insights sheet: value, average cost per wear,
+// utilization in the last N days, most worn heroes, best value, and pieces
+// that haven't been worn in a while.
+export function closetInsights(items = [], { today = dayString(), days = 60 } = {}) {
+  const totalPieces = items.length;
+  let totalWears = 0;
+  let totalValue = 0;
+  let pricedCount = 0;
+  let cpwSum = 0;
+  let wornRecentlyCount = 0;
+  const byPart = {};
+
+  for (const item of items) {
+    const wears = wearCount(item);
+    totalWears += wears;
+    const price = Number(item?.price);
+    if (Number.isFinite(price) && price > 0) {
+      totalValue += price;
+      pricedCount += 1;
+      cpwSum += price / Math.max(1, wears);
+    }
+    const last = lastWorn(item);
+    if (last && daysBetween(last, today) <= days) wornRecentlyCount += 1;
+    const part = item?.part || "upperbody";
+    byPart[part] = (byPart[part] || 0) + 1;
+  }
+
+  const mostWorn = [...items]
+    .map((item) => ({ item, wears: wearCount(item) }))
+    .filter(({ wears }) => wears > 0)
+    .sort((a, b) => b.wears - a.wears || a.item.name.localeCompare(b.item.name))
+    .slice(0, 5);
+
+  const bestValue = [...items]
+    .map((item) => ({ item, cpw: costPerWear(item), wears: wearCount(item) }))
+    .filter(({ cpw, wears }) => cpw !== null && wears > 0)
+    .sort((a, b) => a.cpw - b.cpw || b.wears - a.wears)
+    .slice(0, 5);
+
+  const needsLove = [...items]
+    .map((item) => ({ item, wears: wearCount(item), idle: idleDays(item, today) }))
+    .filter(({ wears, idle }) => wears === 0 || (idle !== null && idle >= days))
+    .sort((a, b) => (a.wears - b.wears) || ((b.idle ?? 999) - (a.idle ?? 999)))
+    .slice(0, 5);
+
+  return {
+    totalPieces,
+    totalWears,
+    totalValue: Math.round(totalValue * 100) / 100,
+    pricedCount,
+    avgCostPerWear: pricedCount ? Math.round((cpwSum / pricedCount) * 100) / 100 : null,
+    wornRecentlyCount,
+    utilizationPct: totalPieces ? Math.round((wornRecentlyCount / totalPieces) * 100) : 0,
+    mostWorn,
+    bestValue,
+    needsLove,
+    byPart,
+  };
 }

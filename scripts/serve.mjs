@@ -69,7 +69,9 @@ async function serveStatic(req, res) {
     return res.end();
   }
   const { pathname } = new URL(req.url, "http://localhost");
-  const file = path.normalize(path.join(distDir, decodeURIComponent(pathname)));
+  let decoded;
+  try { decoded = decodeURIComponent(pathname); } catch { res.statusCode = 400; return res.end(); }
+  const file = path.normalize(path.join(distDir, decoded));
   if (file.startsWith(distDir + path.sep) && await sendFile(res, file)) return;
   if (await sendFile(res, path.join(distDir, "index.html"))) return;
   res.statusCode = 503;

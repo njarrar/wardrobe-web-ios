@@ -43,16 +43,18 @@ export function mergeRecords(versions = [], removed = {}) {
   return [...byId.values()].filter((record) => !(record.id in removed) || time(record.updatedAt) > time(removed[record.id]));
 }
 
-// Joins plans: days and trips from every copy, with the newest copy's
-// choice winning where two copies planned the same day.
+// Joins plans: days, occasions, locked days and trips from every copy, with
+// the newest copy's choice winning where two copies planned the same day.
 export function mergePlans(versions = []) {
   const plans = versions.filter((plan) => plan && typeof plan === "object").sort((a, b) => time(a.updatedAt).localeCompare(time(b.updatedAt)));
   if (!plans.length) return {};
   const newest = plans[plans.length - 1];
   const days = Object.assign({}, ...plans.map((plan) => plan.days || {}));
+  const occasions = Object.assign({}, ...plans.map((plan) => plan.occasions || {}));
+  const locked = [...new Set(plans.flatMap((plan) => (Array.isArray(plan.lockedDays) ? plan.lockedDays : [])))].sort();
   const trips = new Map();
   for (const plan of plans) for (const trip of Array.isArray(plan.trips) ? plan.trips : []) trips.set(trip.id, trip);
-  return { ...newest, days, trips: [...trips.values()] };
+  return { ...newest, days, occasions, ...(locked.length ? { lockedDays: locked } : {}), trips: [...trips.values()] };
 }
 
 // Drops notes about removed records after 90 days, so the file stays small.

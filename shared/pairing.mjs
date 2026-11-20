@@ -18,13 +18,31 @@ const HUES = [[15, "red"], [45, "orange"], [70, "yellow"], [165, "green"], [200,
 // "blue" for #2f5fd0. Neutrals have no place on the wheel, so they give "".
 export function colorName(hex) {
   if (isNeutral(hex)) return "";
-  const { hue } = hexToHsl(hex);
-  return HUES.find(([limit]) => hue < limit)[1];
+  const hsl = hexToHsl(hex);
+  if (!hsl) return "";
+  return (HUES.find(([limit]) => hsl.hue < limit) || HUES[0])[1];
 }
 
 function nameAt(hue) {
   const turn = ((hue % 360) + 360) % 360;
-  return HUES.find(([limit]) => turn < limit)[1];
+  return (HUES.find(([limit]) => turn < limit) || HUES[0])[1];
+}
+
+// Human-friendly color name for display (covers both neutrals and chromatic hues).
+export function humanColorName(hex) {
+  const hsl = hexToHsl(hex);
+  if (!hsl) return "";
+  const { hue, sat, light } = hsl;
+  if (light < 0.16) return "Black";
+  if (light > 0.9) return "White";
+  if (sat < 0.16) return light > 0.74 ? "Off-white" : "Grey";
+  if (hue >= 18 && hue < 55 && (sat < 0.5 || light < 0.42)) {
+    if (light < 0.36) return "Brown";
+    return light > 0.68 ? "Beige" : "Camel";
+  }
+  if (hue >= 200 && hue < 245 && light < 0.36) return "Navy";
+  const name = colorName(hex);
+  return name ? name[0].toUpperCase() + name.slice(1) : "Neutral";
 }
 
 // Up to three plain lines about how to wear a piece, as [text, values] pairs

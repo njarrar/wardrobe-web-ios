@@ -3,19 +3,16 @@
 // color, weather, how dressy the pieces are and how long they have rested.
 // Pure functions, so they run in the browser, Node and the Worker.
 
+import { canMakeOutfit, isOnePiece } from "./core.mjs";
 import { colorHarmony, COLOR_RULES, dayString, daysBetween, feelsLike, idleDays, isNeutral, isWetDay, itemWarmth, lastWorn, targetWarmth, weatherFit } from "./style.mjs";
 
-// "dress" and "sundress" count; "dress shirt" and "dress shoes" do not.
-const ONE_PIECE = /\b\w*dress\b(?![- ]?(shirt|shoe|pant|trouser|sock|boot|watch|belt))|jumpsuit|romper|abaya|thobe|kandura|dishdasha|jalabiya|kaftan/;
 const DRESSY = { casual: 0, smart: 1, formal: 2 };
 const SEASON_BY_MONTH = ["winter", "winter", "spring", "spring", "spring", "summer", "summer", "summer", "fall", "fall", "fall", "winter"];
 
 // A piece worn in the last REST_DAYS days sits this one out when it can.
 export const REST_DAYS = 2;
 
-export function isOnePiece(item) {
-  return ONE_PIECE.test(`${item?.kind || ""} ${item?.name || ""}`.toLowerCase());
-}
+export { canMakeOutfit, isOnePiece };
 
 // The same pieces always give the same key, in any order.
 export function outfitKey(ids) {
@@ -84,12 +81,6 @@ function reasons(pieces, { harmony, weather, today }) {
     if (fresh) why.push(["{name}: not worn yet.", { name: fresh.name }]);
   }
   return why.slice(0, 3);
-}
-
-// Can this closet make an outfit at all?
-export function canMakeOutfit(items = []) {
-  const tops = items.filter((item) => item.part === "upperbody");
-  return tops.some(isOnePiece) || (tops.some((item) => !isOnePiece(item)) && items.some((item) => item.part === "lowerbody"));
 }
 
 // One outfit for today. locked holds ids of pieces that must stay. rejected
@@ -187,4 +178,25 @@ export function outfitTitle(pieces) {
   const main = pieces.filter((piece) => piece.part === "upperbody" || piece.part === "lowerbody");
   const names = (main.length ? main : pieces).slice(0, 2).map((piece) => piece.name).filter(Boolean);
   return names.join(" + ").slice(0, 80) || "My outfit";
+}
+
+// Same-slot alternatives for swapping one piece out of an outfit, ranked by
+// how well each candidate harmonizes with the remaining pieces and weather.
+export function swapCandidates(piece, pieces = [], items = [], { today = dayString(), weather = null, dress = "", rest = REST_DAYS } = {}) {
+  if (!piece) return [];
+  const otherIds = new Set(pieces.filter((entry) => entry && entry.id !== piece.id).map((entry) => entry.id));
+  const others = pieces.filter((entry) => entry && entry.id !== piece.id);
+  const wantOnePiece = piece.part === "upperbody" ? isOnePiece(piece) : null;
+  const target = weather && Number.isFinite(weather.temperature) ? targetWarmth(feelsLike(weather)) : 0;
+  const context = { today, target, weather, dress, rest, season: SEASON_BY_MONTH[Number(today.slice(5, 7)) - 1] };
+  return items
+    .filter((candidate) => {
+      if (!candidate || candidate.id === piece.id || otherIds.has(candidate.id)) return false;
+      if (candidate.part !== piece.part) return false;
+      if (wantOnePiece !== null && isOnePiece(candidate) !== wantOnePiece) return false;
+      return true;
+    })
+    .map((candidate) => ({ candidate, score: mixScore([...others, candidate], context).score }))
+    .sort((a, b) => b.score - a.score)
+    .map(({ candidate }) => candidate);
 }

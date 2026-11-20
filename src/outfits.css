@@ -80,9 +80,10 @@
 }
 
 .outfit-card > img,
-.outfit-card > .outfit-collage {
+.outfit-card > .outfit-collage,
+.outfit-card > .flat-lay {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 4 / 5;
   object-fit: cover;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -90,7 +91,8 @@
   transition: transform 260ms var(--ease), box-shadow 260ms var(--ease);
 }
 .outfit-card:hover > img,
-.outfit-card:hover > .outfit-collage { transform: translateY(-3px); box-shadow: var(--shadow); }
+.outfit-card:hover > .outfit-collage,
+.outfit-card:hover > .flat-lay { transform: translateY(-3px); box-shadow: var(--shadow); }
 .outfit-card:focus-visible { box-shadow: none; }
 .outfit-card:focus-visible > * { box-shadow: var(--focus); }
 
@@ -160,30 +162,128 @@ div.outfit-viewer__photo .outfit-collage { height: 100%; padding: 28px; }
 
 .outfit-viewer__pieces {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 10px;
+  gap: 8px;
   margin-top: 22px;
 }
-.outfit-viewer__pieces button {
-  appearance: none;
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 10px;
+.outfit-piece-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--bg);
-  color: var(--muted);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 160ms ease, transform 160ms var(--ease);
+  transition: border-color 160ms ease;
 }
-.outfit-viewer__pieces button:hover:not(:disabled) { border-color: var(--line-strong); transform: translateY(-2px); }
-.outfit-viewer__pieces button:disabled { cursor: default; }
-.outfit-viewer__pieces img { width: 100%; aspect-ratio: 0.85; object-fit: contain; }
-.outfit-viewer__pieces span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outfit-piece-row.is-swapping {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.outfit-piece-row__open {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.outfit-piece-row__open:disabled { cursor: default; }
+.outfit-piece-row__thumb {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  padding: 4px;
+}
+.outfit-piece-row__thumb img { width: 100%; height: 100%; object-fit: contain; }
+.outfit-piece-row__info {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.outfit-piece-row__info strong {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outfit-piece-row__info small {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outfit-piece-row__swap {
+  flex: none;
+  width: 36px;
+  height: 36px;
+}
+.outfit-piece-row__swap.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.outfit-swap-tray {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.outfit-swap-tray__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.outfit-swap-tray__head .icon-button { width: 28px; height: 28px; }
+.outfit-swap-tray__list { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.outfit-swap-tray__list::-webkit-scrollbar { display: none; }
+.outfit-swap-tray__list button {
+  flex: none;
+  width: 72px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.outfit-swap-tray__list button span {
+  display: grid;
+  place-items: center;
+  height: 72px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.outfit-swap-tray__list button img { width: 82%; height: 82%; object-fit: contain; }
+.outfit-swap-tray__list button small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outfit-swap-tray__empty { margin: 0; font-size: 12.5px; color: var(--muted); }
 
 .outfit-viewer__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
 .outfit-viewer__actions .outfit-delete { margin-top: 0; }

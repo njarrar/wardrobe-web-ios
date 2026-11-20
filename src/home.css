@@ -1,37 +1,53 @@
-/* Home tab: today's outfit laid flat, the reason line and the week strip. */
+/* Home tab: today's anatomical flat-lay, swap drawer, proof badge and week strip. */
 
 .home { padding: 14px var(--page-x) 0; max-width: 640px; margin: 0 auto; }
 .home__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .home__head h2 { margin: 2px 0 0; font-size: 24px; font-weight: 680; letter-spacing: -0.02em; }
+.home__head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .home__date, .home__weather { margin: 0; color: var(--muted); font-size: 13px; }
 .home__weather { text-align: end; }
+.home__fav-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius-pill);
+  background: var(--surface); color: #d6405f; font-size: 12px; font-weight: 620; cursor: pointer;
+}
+.home__fav-pill span { color: var(--ink); }
 
-.flat-lay {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
-  padding: 10px; border-radius: var(--radius-lg); background: var(--paper);
+.swap-drawer {
+  margin-top: 10px; padding: 10px 12px 12px; border-radius: var(--radius);
+  border: 1px solid var(--line);
 }
-.flat-lay__piece { position: relative; grid-column: span 2; aspect-ratio: 1; min-width: 0; }
-.flat-lay__piece--upperbody, .flat-lay__piece--lowerbody { grid-column: span 3; }
-.flat-lay--1 .flat-lay__piece { grid-column: 2 / span 4; }
-.flat-lay--2 .flat-lay__piece { grid-column: span 3; }
-/* One small piece sits in the middle; two share the row. */
-.flat-lay--3 .flat-lay__piece:nth-child(3) { grid-column: 3 / span 2; }
-.flat-lay--4 .flat-lay__piece:nth-child(3) { grid-column: 2 / span 2; }
-.flat-lay__open {
-  position: absolute; inset: 0; padding: 0; border: 0; border-radius: 14px; background: none; cursor: pointer;
-  display: grid; place-items: center; overflow: hidden;
+.swap-drawer__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--ink-soft);
 }
-.flat-lay__open img { width: 92%; height: 92%; object-fit: contain; min-height: 0; }
-.flat-lay__lock {
-  position: absolute; inset-block-start: 4px; inset-inline-end: 4px;
-  width: 44px; height: 44px; display: grid; place-items: center;
-  border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer;
+.swap-drawer__head > span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.swap-drawer__head .icon-button { width: 30px; height: 30px; flex: none; }
+.swap-drawer__list { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.swap-drawer__list::-webkit-scrollbar { display: none; }
+.swap-drawer__list button {
+  flex: none; width: 74px; padding: 0; border: 0; background: none; color: var(--ink);
+  font: inherit; text-align: start; cursor: pointer;
 }
-.flat-lay__lock svg { padding: 7px; box-sizing: content-box; border-radius: 50%; background: color-mix(in srgb, var(--bg) 82%, transparent); }
-.flat-lay__lock[aria-pressed="true"] svg { background: var(--ink); color: var(--on-ink, var(--bg)); }
-.flat-lay__piece.is-locked .flat-lay__open { box-shadow: inset 0 0 0 2px var(--ink); }
+.swap-drawer__list button span {
+  display: grid; place-items: center; height: 74px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--line);
+}
+.swap-drawer__list button img { width: 82%; height: 82%; object-fit: contain; }
+.swap-drawer__list button small {
+  display: block; margin-top: 4px; font-size: 11.5px; color: var(--ink-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.swap-drawer__empty { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
 
-.home__why { margin: 12px 2px 0; font-size: 15px; line-height: 1.45; color: var(--ink-soft, var(--ink)); }
+.home__meta { margin-top: 12px; display: grid; gap: 6px; }
+.home__badge {
+  display: inline-flex; align-items: center; gap: 5px; justify-self: start;
+  padding: 4px 10px; border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--success) 13%, transparent); color: var(--success);
+  font-size: 12px; font-weight: 620;
+}
+.home__why { margin: 0 2px; font-size: 15px; line-height: 1.45; color: var(--ink-soft, var(--ink)); }
 .home__hint { margin: 6px 2px 0; font-size: 13px; color: var(--muted); }
 .home__actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .home__actions .primary-button, .home__actions .secondary-button { justify-content: center; min-height: 46px; }
@@ -42,12 +58,23 @@
 .home__empty p { margin: 0 0 14px; color: var(--muted); }
 .home__empty button { margin: 0 auto; }
 
-.week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 22px 0 8px; }
+.week-strip-wrap { margin: 22px 0 8px; }
+.week-strip__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 2px 6px; font-size: 12.5px; font-weight: 600; color: var(--muted);
+}
+.week-strip__calendar {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: none; padding: 4px 2px; color: var(--accent);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .week-strip__day {
   display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0;
-  padding: 8px 0 6px; border: 0; border-radius: 14px; background: none; color: var(--ink); font: inherit; cursor: pointer;
+  padding: 8px 0 6px; border: 1px solid transparent; border-radius: 14px; background: none; color: var(--ink); font: inherit; cursor: pointer;
 }
 .week-strip__day.is-today { background: var(--accent-soft); }
+.week-strip__day.is-selected { border-color: var(--accent); background: var(--accent-soft); }
 .week-strip__name { font-size: 11px; color: var(--muted); }
 .week-strip__date { font-size: 16px; font-weight: 620; }
 .week-strip__temp { min-height: 14px; font-size: 11px; color: var(--muted); }
