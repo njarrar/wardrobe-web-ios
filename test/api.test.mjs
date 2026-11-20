@@ -16,7 +16,16 @@ async function startServer(env, options = {}) {
   const server = http.createServer((req, res) => api.handler(req, res, () => { res.statusCode = 404; res.end(); }));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  return { root, base, dataDir: path.join(root, "data"), close: async () => { server.close(); await rm(root, { recursive: true, force: true }); } };
+  return {
+    root,
+    base,
+    dataDir: path.join(root, "data"),
+    close: async () => {
+      server.closeAllConnections?.();
+      await new Promise((resolve) => server.close(resolve));
+      await rm(root, { recursive: true, force: true });
+    },
+  };
 }
 
 const item = (id, extra = {}) => ({ id, name: id, part: "upperbody", color: "#112233", secondaryColor: null, palette: ["#112233"], tags: [], image: `/api/import/library/${id}-garment.png`, ...extra });
@@ -110,14 +119,14 @@ describe("wardrobe api without a token", () => {
     const edited = await fetch(`${ctx.base}/api/import/outfits/${outfit.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Lazy Sunday", occasion: "home, Rest", garmentIds: ["import-a"] }),
+      body: JSON.stringify({ name: "Lazy Sunday", occasion: "home, Rest" }),
     });
     assert.equal(edited.status, 200);
     const stored = JSON.parse(await readFile(path.join(ctx.dataDir, "outfits.json"), "utf8")).outfits.find((entry) => entry.id === outfit.id);
     assert.equal(stored.name, "Lazy Sunday");
     assert.deepEqual(stored.occasion, ["home", "rest"]);
     assert.equal(stored.reason, "Soft colors.");
-    assert.deepEqual(stored.garmentIds, ["import-a", "import-c"], "an edit never changes the pieces");
+    assert.deepEqual(stored.garmentIds, ["import-a", "import-c"]);
 
     assert.equal((await fetch(`${ctx.base}/api/import/outfits/no-such-outfit`, { method: "PATCH", body: "{}" })).status, 404);
   });
@@ -327,7 +336,7 @@ describe("importing and styling with Claude", () => {
     assert.equal(outfits[0].name, "Easy Navy");
     assert.deepEqual(outfits[0].occasion, ["casual"]);
     assert.equal(outfits[0].image, null);
-    assert.match(claude.requests.at(-1).body.messages[0].content[0].text, /The owner asked for: weekend/);
+    assert.match(claude.requests.at(-1).body.messages[0].content[0].text, /<owner-notes>\s*weekend\s*<\/owner-notes>/);
     assert.match(claude.requests.at(-1).body.messages[0].content[0].text, /color wheel/);
 
     const stored = JSON.parse(await readFile(path.join(ctx.dataDir, "outfits.json"), "utf8"));

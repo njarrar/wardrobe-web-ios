@@ -1,17 +1,30 @@
 // Drawn garments on a 600 x 600 canvas, used by the sample closet and the
 // starter pieces you can add without a photo. Pure strings, no Node modules.
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+let clipSeq = 0;
+const nextClipId = (prefix) => `wardrobe-${prefix}-${++clipSeq}`;
+
 export const shade = (hex, amount) => {
-  const value = parseInt(hex.slice(1), 16);
-  const channel = (shift) => Math.max(0, Math.min(255, Math.round(((value >> shift) & 255) * amount)));
-  return `#${[16, 8, 0].map((shift) => channel(shift).toString(16).padStart(2, "0")).join("")}`;
+  const safe = typeof hex === "string" && HEX_COLOR.test(hex) ? hex : "#888888";
+  const value = parseInt(safe.slice(1), 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  // On near-black fabrics, darkening disappears into #000000; gently lift seams instead.
+  const nearBlack = r < 24 && g < 24 && b < 24 && amount < 1;
+  const adjust = (c) => Math.max(0, Math.min(255, Math.round(nearBlack ? c + (1 - amount) * 140 : c * amount)));
+  return `#${[r, g, b].map((c) => adjust(c).toString(16).padStart(2, "0")).join("")}`;
 };
 
 // Each shape is drawn on a 600 x 600 canvas with a soft fold shadow.
 export const SHAPES = {
   tee: (c) => `<path d="M210 120 L150 140 L80 230 L140 280 L180 240 L180 500 L420 500 L420 240 L460 280 L520 230 L450 140 L390 120 Q300 175 210 120 Z" fill="${c}"/>
     <path d="M250 125 Q300 160 350 125" fill="none" stroke="${shade(c, 0.8)}" stroke-width="10"/>`,
-  stripedTee: (c) => `<defs><clipPath id="t"><path d="M210 120 L150 140 L80 230 L140 280 L180 240 L180 500 L420 500 L420 240 L460 280 L520 230 L450 140 L390 120 Q300 175 210 120 Z"/></clipPath></defs>
-    <g clip-path="url(#t)"><rect width="600" height="600" fill="#f2efe8"/>${Array.from({ length: 14 }, (_, i) => `<rect y="${120 + i * 28}" width="600" height="12" fill="${c}"/>`).join("")}</g>`,
+  stripedTee: (c) => {
+    const id = nextClipId("tee");
+    return `<defs><clipPath id="${id}"><path d="M210 120 L150 140 L80 230 L140 280 L180 240 L180 500 L420 500 L420 240 L460 280 L520 230 L450 140 L390 120 Q300 175 210 120 Z"/></clipPath></defs>
+    <g clip-path="url(#${id})"><rect width="600" height="600" fill="#f2efe8"/>${Array.from({ length: 14 }, (_, i) => `<rect y="${120 + i * 28}" width="600" height="12" fill="${c}"/>`).join("")}</g>`;
+  },
   shirt: (c) => `<path d="M220 110 L150 140 L95 330 L150 345 L185 250 L185 510 L415 510 L415 250 L450 345 L505 330 L450 140 L380 110 L300 150 Z" fill="${c}" stroke="${shade(c, 0.86)}" stroke-width="3"/>
     <path d="M220 110 L300 150 L260 190 Z M380 110 L300 150 L340 190 Z" fill="${shade(c, 0.93)}"/>
     <line x1="300" y1="150" x2="300" y2="510" stroke="${shade(c, 0.85)}" stroke-width="4"/>
@@ -55,10 +68,13 @@ export const SHAPES = {
     <rect x="325" y="170" width="46" height="52" rx="5" fill="none" stroke="${shade(c, 0.86)}" stroke-width="3"/>`,
   hijab: (c) => `<path fill-rule="evenodd" d="M300 80 Q165 80 160 250 Q156 400 110 510 L490 510 Q444 400 440 250 Q435 80 300 80 Z M300 140 Q228 140 226 240 Q226 330 300 334 Q374 330 374 240 Q372 140 300 140 Z" fill="${c}"/>
     <path d="M226 280 Q260 420 190 510 M374 280 Q350 400 420 510" fill="none" stroke="${shade(c, 0.85)}" stroke-width="6"/>`,
-  shemagh: (c) => `<defs><clipPath id="g"><path d="M300 90 Q170 90 160 250 Q156 400 100 520 L500 520 Q444 400 440 250 Q430 90 300 90 Z"/></clipPath></defs>
-    <g clip-path="url(#g)"><rect width="600" height="600" fill="#f4f1ea"/>
+  shemagh: (c) => {
+    const id = nextClipId("shemagh");
+    return `<defs><clipPath id="${id}"><path d="M300 90 Q170 90 160 250 Q156 400 100 520 L500 520 Q444 400 440 250 Q430 90 300 90 Z"/></clipPath></defs>
+    <g clip-path="url(#${id})"><rect width="600" height="600" fill="#f4f1ea"/>
     ${Array.from({ length: 16 }, (_, i) => `<rect x="${90 + i * 28}" width="9" height="600" fill="${c}"/><rect y="${80 + i * 28}" width="600" height="9" fill="${c}"/>`).join("")}</g>
-    <path d="M178 170 Q300 120 422 170 M176 196 Q300 146 424 196" fill="none" stroke="#1c1c1c" stroke-width="14" stroke-linecap="round"/>`,
+    <path d="M178 170 Q300 120 422 170 M176 196 Q300 146 424 196" fill="none" stroke="#1c1c1c" stroke-width="14" stroke-linecap="round"/>`;
+  },
   bisht: (c) => `<path d="M215 70 L385 70 L530 520 L335 548 L300 170 L265 548 L70 520 Z" fill="${c}"/>
     <path d="M215 70 L300 170 L265 548 M385 70 L300 170 L335 548" fill="none" stroke="#c9a24a" stroke-width="10" stroke-linejoin="round"/>
     <path d="M250 300 L262 300 M338 300 L350 300" stroke="#c9a24a" stroke-width="8" stroke-linecap="round"/>`,
@@ -69,6 +85,6 @@ export const SHAPES = {
 
 export function shapeSvg(shape, color) {
   const draw = SHAPES[shape];
-  if (!draw) return null;
+  if (!draw || typeof color !== "string" || !HEX_COLOR.test(color)) return null;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">${draw(color)}</svg>`;
 }

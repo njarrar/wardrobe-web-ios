@@ -19,6 +19,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      # Advisory check for high/critical runtime dependency vulnerabilities.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
         env:

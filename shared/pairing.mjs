@@ -84,9 +84,10 @@ export function goesWith(item, items = [], { limit = 6, today } = {}) {
   if (!item) return [];
   const whole = isOnePiece(item);
   const scored = items
-    .filter((other) => other.id !== item.id && other.part !== item.part && !(whole && other.part === "lowerbody"))
+    .filter((other) => other.id !== item.id && other.part !== item.part && !(whole && other.part === "lowerbody") && !(item.part === "lowerbody" && isOnePiece(other)))
     .map((other) => {
-      let score = item.color && other.color ? colorHarmony([item.color, other.color]).score : 70;
+      const colors = [item.color, item.secondaryColor, other.color, other.secondaryColor].filter(Boolean);
+      let score = item.color && other.color ? colorHarmony(colors).score : 70;
       const levels = [DRESSY[item.formality], DRESSY[other.formality]];
       if (levels.every((level) => level !== undefined)) score -= Math.abs(levels[0] - levels[1]) * 12;
       if (other.part !== "wholebody_up" && item.part !== "wholebody_up") score -= Math.abs(itemWarmth(item) - itemWarmth(other)) * 3;
