@@ -8,13 +8,22 @@ import { t } from "./i18n.js";
 const SETTINGS_KEY = "wardrobe-weather";
 const CACHE_KEY = "wardrobe-weather-cache-2"; // 2: wind and rain amount added
 const CACHE_HOURS = 3;
+const LOCATION_REFRESH_MS = 6 * 60 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 10000;
 
 export function roundCoord(value) {
   return Math.round(Number(value) * 10) / 10;
 }
 
+function readNum(list, index) {
+  const raw = list?.[index];
+  if (raw === null || raw === undefined || raw === "") return NaN;
+  return Number(raw);
+}
+
 // WMO weather codes to a short label and whether it means wet weather.
 export function describeCode(code) {
+  if (!Number.isFinite(code) || code < 0) return { label: "", rain: false };
   if (code === 0) return { label: "Clear", rain: false };
   if (code <= 2) return { label: "Partly cloudy", rain: false };
   if (code === 3) return { label: "Cloudy", rain: false };
@@ -34,15 +43,15 @@ export function parseForecast(data) {
   if (!daily?.time?.length) return {};
   const forecast = {};
   daily.time.forEach((day, index) => {
-    const high = Number(daily.temperature_2m_max?.[index]);
-    const low = Number(daily.temperature_2m_min?.[index]);
+    const high = readNum(daily.temperature_2m_max, index);
+    const low = readNum(daily.temperature_2m_min, index);
     if (!Number.isFinite(high) || !Number.isFinite(low)) return;
-    const { label, rain } = describeCode(Number(daily.weather_code?.[index]));
-    const chance = Number(daily.precipitation_probability_max?.[index]);
-    const wind = Number(daily.wind_speed_10m_max?.[index]);
-    const rainMm = Number(daily.precipitation_sum?.[index]);
+    const { label, rain } = describeCode(readNum(daily.weather_code, index));
+    const chance = readNum(daily.precipitation_probability_max, index);
+    const wind = readNum(daily.wind_speed_10m_max, index);
+    const rainMm = readNum(daily.precipitation_sum, index);
     forecast[day] = {
-      temperature: Math.round(low + (high - low) * 0.6), high: Math.round(high), low: Math.round(low), rain: rain || chance >= 60, label,
+      temperature: Math.round(low + (high - low) * 0.6), high: Math.round(high), low: Math.round(low), rain: rain || (Number.isFinite(chance) && chance >= 60), label,
       ...(Number.isFinite(wind) ? { wind: Math.round(wind) } : {}),
       ...(Number.isFinite(rainMm) ? { rainMm: Math.round(rainMm * 10) / 10 } : {}),
       ...(Number.isFinite(chance) ? { rainChance: Math.round(chance) } : {}),
@@ -76,9 +85,32 @@ export function weatherSettings() {
   return saved?.mode === "location" || saved?.mode === "city" ? saved : { mode: "off" };
 }
 
+async function fetchWithTimeout(url, timeoutMs = FETCH_TIMEOUT_MS, outerSignal = null) {
+  const controller = new AbortController();
+  const onOuterAbort = () => controller.abort(outerSignal.reason);
+  if (outerSignal) {
+    if (outerSignal.aborted) controller.abort(outerSignal.reason);
+    else outerSignal.addEventListener("abort", onOuterAbort, { once: true });
+  }
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    outerSignal?.removeEventListener?.("abort", onOuterAbort);
+  }
+}
+
 export async function findCity(name) {
-  const params = new URLSearchParams({ name: name.trim(), count: "1", format: "json" });
-  const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
+  const trimmed = String(name || "").trim();
+  if (!trimmed) throw new Error(t("Could not find that city."));
+  const params = new URLSearchParams({ name: trimmed, count: "1", format: "json" });
+  let response;
+  try {
+    response = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
+  } catch {
+    throw new Error(t("Could not find that city."));
+  }
   if (!response.ok) throw new Error(t("Could not find that city."));
   const place = (await response.json())?.results?.[0];
   if (!place) throw new Error(t("Could not find that city."));
@@ -89,18 +121,25 @@ export function deviceLocation() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(new Error(t("Location is off for this app."))); return; }
     navigator.geolocation.getCurrentPosition(
-      (position) => resolve({ lat: roundCoord(position.coords.latitude), lon: roundCoord(position.coords.longitude) }),
+      (position) => resolve({ lat: roundCoord(position.coords.latitude), lon: roundCoord(position.coords.longitude), locatedAt: Date.now() }),
       () => reject(new Error(t("Location is off for this app."))),
-      { enableHighAccuracy: false, maximumAge: 6 * 60 * 60 * 1000, timeout: 15000 },
+      { enableHighAccuracy: false, maximumAge: LOCATION_REFRESH_MS, timeout: 15000 },
     );
   });
 }
 
-async function loadForecast(settings) {
+async function loadForecast(settings, signal) {
   const cached = readJson(CACHE_KEY);
-  const fresh = cached && cached.lat === settings.lat && cached.lon === settings.lon && Date.now() - cached.at < CACHE_HOURS * 3600 * 1000;
+  const age = cached ? Date.now() - Number(cached.at) : NaN;
+  const fresh = cached && cached.lat === settings.lat && cached.lon === settings.lon && Number.isFinite(age) && age >= 0 && age < CACHE_HOURS * 3600 * 1000;
   if (fresh) return cached.forecast;
-  const response = await fetch(forecastUrl(settings.lat, settings.lon));
+  let response;
+  try {
+    response = await fetchWithTimeout(forecastUrl(settings.lat, settings.lon), FETCH_TIMEOUT_MS, signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new Error(t("Could not get the forecast."));
+  }
   if (!response.ok) throw new Error(t("Could not get the forecast."));
   const forecast = parseForecast(await response.json());
   writeJson(CACHE_KEY, { lat: settings.lat, lon: settings.lon, at: Date.now(), forecast });
@@ -113,20 +152,47 @@ export function useWeather() {
   const [forecast, setForecast] = useState({});
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (settings.mode === "off" || !Number.isFinite(settings.lat)) { setForecast({}); return undefined; }
-    let cancelled = false;
-    loadForecast(settings)
-      .then((next) => { if (!cancelled) { setForecast(next); setError(""); } })
-      .catch((loadError) => { if (!cancelled) setError(loadError.message); });
-    return () => { cancelled = true; };
-  }, [settings]);
-
   const setSettings = useCallback((next) => {
-    writeJson(SETTINGS_KEY, next.mode === "off" ? null : next);
-    if (next.mode === "off") writeJson(CACHE_KEY, null);
-    setState(next);
+    const stored = next.mode === "location" && !next.locatedAt ? { ...next, locatedAt: Date.now() } : next;
+    writeJson(SETTINGS_KEY, stored.mode === "off" ? null : stored);
+    if (stored.mode === "off") {
+      writeJson(CACHE_KEY, null);
+      setError("");
+    }
+    setState(stored);
   }, []);
 
-  return { settings, setSettings, forecast, today: forecast[dayString()] || null, error };
+  useEffect(() => {
+    if (settings.mode === "off" || !Number.isFinite(settings.lat) || !Number.isFinite(settings.lon)) {
+      setForecast({});
+      setError("");
+      return undefined;
+    }
+    const controller = new AbortController();
+    let cancelled = false;
+    loadForecast(settings, controller.signal)
+      .then((next) => { if (!cancelled) { setForecast(next); setError(""); } })
+      .catch((loadError) => { if (!cancelled && !controller.signal.aborted) setError(loadError.message); });
+
+    // Quietly refresh device coordinates if they are stale (>6h) in location mode.
+    const locAge = settings.mode === "location" ? Date.now() - Number(settings.locatedAt || 0) : 0;
+    if (settings.mode === "location" && (!Number.isFinite(locAge) || locAge < 0 || locAge >= LOCATION_REFRESH_MS)) {
+      deviceLocation()
+        .then((coords) => {
+          if (cancelled) return;
+          if (coords.lat !== settings.lat || coords.lon !== settings.lon) {
+            setSettings({ ...settings, ...coords });
+          } else {
+            writeJson(SETTINGS_KEY, { ...settings, locatedAt: coords.locatedAt });
+          }
+        })
+        .catch(() => { /* keep existing coordinates when offline or denied */ });
+    }
+    return () => { cancelled = true; controller.abort(); };
+  }, [settings, setSettings]);
+
+  const todayRaw = forecast[dayString()] || null;
+  const today = todayRaw && Number.isFinite(settings.lat) ? { ...todayRaw, lat: settings.lat } : todayRaw;
+
+  return { settings, setSettings, forecast, today, error };
 }

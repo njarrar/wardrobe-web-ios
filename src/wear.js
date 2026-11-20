@@ -9,7 +9,7 @@ export async function sendJson(path, method, payload, failure) {
     body: JSON.stringify(payload),
   });
   const value = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(value.error || failure);
+  if (!response.ok) throw Object.assign(new Error(value.error || failure), { status: response.status });
   return value;
 }
 
@@ -22,12 +22,30 @@ export function patchOutfit(id, changes) {
 }
 
 // Logs (or with undo, takes back) a day an outfit was worn, on the outfit and
-// on every piece in it. Resolves with the saved outfit and pieces.
+// sequentially on every piece in it (avoiding concurrent library.json rewrites).
+// Retries transient failures once and reports any failed piece IDs cleanly.
 export async function wearOutfit(outfit, { day = dayString(), undo = false } = {}) {
   const change = undo ? { unwear: day } : { wear: day };
   const saved = await patchOutfit(outfit.id, change);
-  const pieces = await Promise.all((outfit.garmentIds || []).map((id) => patchItem(id, change).catch(() => null)));
-  return { outfit: saved, pieces: pieces.filter(Boolean) };
+  const pieces = [];
+  const failedIds = [];
+  for (const id of outfit.garmentIds || []) {
+    try {
+      pieces.push(await patchItem(id, change));
+    } catch (error) {
+      if (error?.status === 404) continue;
+      try {
+        pieces.push(await patchItem(id, change));
+      } catch {
+        failedIds.push(id);
+      }
+    }
+  }
+  return {
+    outfit: saved,
+    pieces,
+    ...(failedIds.length ? { failedIds, warning: t("Could not save your changes.") } : {}),
+  };
 }
 
 export function wearPiece(id, { day = dayString(), undo = false } = {}) {

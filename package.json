@@ -23,14 +23,18 @@
     "test:ui": "node --test test/ui/*.test.mjs",
     "version:sync": "node scripts/sync-version.mjs",
     "version": "node scripts/sync-version.mjs && git add ios android",
-    "store:screenshots": "vite build && node scripts/store-screenshots.mjs",
+    "store:screenshots": "vite build && node scripts/store-screenshots.mjs && node scripts/store-frames.mjs",
     "store:graphics": "node scripts/store-graphics.mjs",
     "store:listing": "node scripts/store-listing.mjs",
     "demo:server": "node scripts/demo-server.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
     "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
     "@fontsource-variable/instrument-sans": "^5.2.8",
@@ -39,14 +43,10 @@
     "@vitejs/plugin-react": "5.0.4",
     "fast-png": "^8.0.0",
     "ipx": "^3.1.1",
+    "playwright": "1.63.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "sharp": "^0.35.5",
-    "vite": "6.4.5"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^8.5.2",
-    "playwright": "1.63.0",
+    "vite": "6.4.5",
     "wrangler": "^4.142.0"
   },
   "optionalDependencies": {

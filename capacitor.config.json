@@ -3,11 +3,9 @@
   "appName": "Wardrobe",
   "webDir": "dist",
   "ios": {
-    "contentInset": "never",
-    "backgroundColor": "#f5f3ee"
+    "contentInset": "never"
   },
   "android": {
-    "backgroundColor": "#f5f3ee",
     "allowMixedContent": true
   },
   "plugins": {

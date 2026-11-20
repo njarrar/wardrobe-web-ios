@@ -12,6 +12,9 @@ All
 - **Server access.** A protected server now answers browser calls only from the phone apps, from this computer, and from sites named in `WARDROBE_CORS_ORIGINS`. Before, any site could call it (it still needed the token).
 - The big App file is split: the piece page, the closet tile, colors and closet types each have their own file.
 
+Store
+- **Framed App Store images.** `npm run store:screenshots` now also puts each shot in an iPhone or iPad frame with a short headline above it (`scripts/store-frames.mjs`, saved to `store/framed/`). Six images per device: Today, Outfits, Plan, Closet, Pieces and dark mode. The Store listing workflow sends these to the App Store. Google Play still gets the plain shots.
+
 ## 3.4.0 (review fixes, swap one piece, closet numbers)
 
 Fixes

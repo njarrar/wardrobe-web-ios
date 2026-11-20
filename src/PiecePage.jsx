@@ -3,7 +3,8 @@ import { Sparkle } from "@phosphor-icons/react";
 import { assetUrl } from "./api.js";
 import { goesWith, humanColorName, pairingNote, PATTERN_LABELS } from "../shared/pairing.mjs";
 import { formatMoney } from "../shared/style.mjs";
-import { t } from "./i18n.js";
+import { isRtl, t } from "./i18n.js";
+import { pieceLabel } from "./color-utils.js";
 
 // The read side of a piece's page: bento attribute tiles (with visual warmth
 // dots and human color names), pairing guidance, compatible closet pieces, and
@@ -44,7 +45,7 @@ export function PieceRead({ item, items, category, onOpen, onStyleWith = null })
         </span>
       ),
     },
-    item.kind && { key: "kind", label: t("Kind"), value: item.kind },
+    item.kind && { key: "kind", label: t("Kind"), value: t(item.kind) },
     item.pattern && { key: "pattern", label: t("Pattern"), value: t(PATTERN_LABELS[item.pattern] || "") },
     item.warmth && {
       key: "warmth",
@@ -60,15 +61,20 @@ export function PieceRead({ item, items, category, onOpen, onStyleWith = null })
     item.seasons?.length > 0 && {
       key: "seasons",
       label: t("Seasons"),
-      value: item.seasons.length === 4 ? t("All year") : item.seasons.map((season) => t(SEASONS[season] || season)).join(", "),
+      value: item.seasons.length === 4 ? t("All year") : item.seasons.map((season) => t(SEASONS[season] || season)).join(isRtl() ? "، " : ", "),
     },
     item.price > 0 && { key: "price", label: t("Price paid"), value: formatMoney(Number(item.price)) },
+  ].filter(Boolean);
+
+  const swatches = [
+    item.color ? { slot: "primary", color: item.color } : null,
+    item.secondaryColor ? { slot: "secondary", color: item.secondaryColor } : null,
   ].filter(Boolean);
 
   return (
     <div className="piece-read">
       <div className="piece-read__colors" aria-label={t("Colors")}>
-        {[item.color, item.secondaryColor].filter(Boolean).map((color) => <span key={color} style={{ backgroundColor: color }} title={color} />)}
+        {swatches.map(({ slot, color }) => <span key={slot} style={{ backgroundColor: color }} title={color} />)}
         {(item.tags || []).map((tag) => <em key={tag}>{tag}</em>)}
       </div>
 
@@ -98,12 +104,15 @@ export function PieceRead({ item, items, category, onOpen, onStyleWith = null })
         <section className="piece-read__with" aria-label={t("Goes well with")}>
           <h3>{t("Goes well with")}</h3>
           <div className="piece-read__row">
-            {partners.map((partner) => (
-              <button type="button" key={partner.id} onClick={() => onOpen(partner.id)} aria-label={partner.name || t("Piece")}>
-                <span><img src={assetUrl(partner.thumbnail || partner.image)} alt="" loading="lazy" /></span>
-                <small>{partner.name}</small>
-              </button>
-            ))}
+            {partners.map((partner) => {
+              const label = pieceLabel(partner, t);
+              return (
+                <button type="button" key={partner.id} onClick={() => onOpen(partner.id)} aria-label={label}>
+                  <span><img src={assetUrl(partner.thumbnail || partner.image)} alt="" loading="lazy" /></span>
+                  <small>{label}</small>
+                </button>
+              );
+            })}
           </div>
         </section>
       )}

@@ -4,14 +4,14 @@
 const KEY = "wardrobe-accent";
 const THEME_KEY = "wardrobe-theme";
 
-// [light mode, dark mode]
+// [light mode (WCAG AA >= 4.5:1 on --bg), dark mode]
 export const ACCENTS = [
-  { id: "rust", label: "Rust", colors: ["#c2562b", "#ef8354"] },
-  { id: "blue", label: "Blue", colors: ["#2f62c4", "#7da6f5"] },
-  { id: "green", label: "Green", colors: ["#2f7d55", "#6cc596"] },
-  { id: "plum", label: "Plum", colors: ["#8a3f8f", "#d08bd6"] },
-  { id: "rose", label: "Rose", colors: ["#c23b62", "#f2849f"] },
-  { id: "gold", label: "Gold", colors: ["#9a6b12", "#e0b85a"] },
+  { id: "rust", label: "Rust", colors: ["#a8441d", "#ef8354"] },
+  { id: "blue", label: "Blue", colors: ["#2553ad", "#7da6f5"] },
+  { id: "green", label: "Green", colors: ["#226b46", "#6cc596"] },
+  { id: "plum", label: "Plum", colors: ["#7b3380", "#d08bd6"] },
+  { id: "rose", label: "Rose", colors: ["#ad2b51", "#f2849f"] },
+  { id: "gold", label: "Gold", colors: ["#855908", "#e0b85a"] },
   { id: "ink", label: "Ink", colors: ["#3a3a3a", "#d4d2cc"] },
 ];
 
@@ -57,10 +57,12 @@ export function setTheme(mode) {
 
 // Sets the CSS colors for the chosen accent, in light and dark mode.
 export function applyAccent(id = accent(), mode = theme()) {
+  if (typeof document === "undefined") return;
   const entry = ACCENTS.find((option) => option.id === id) || ACCENTS[0];
   const darkQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
   const dark = isDarkNow(mode);
   const style = document.documentElement.style;
+  style.setProperty("--on-accent", dark ? "#111111" : "#ffffff");
   if (entry.id === "rust") {
     for (const name of ["--accent", "--accent-soft", "--focus"]) style.removeProperty(name);
   } else {
@@ -73,6 +75,8 @@ export function applyAccent(id = accent(), mode = theme()) {
 }
 
 export function setAccent(id) {
-  try { if (id === "rust") localStorage.removeItem(KEY); else localStorage.setItem(KEY, id); } catch { /* storage unavailable */ }
-  applyAccent(id);
+  const entry = ACCENTS.find((option) => option.id === id);
+  if (!entry) return;
+  try { if (entry.id === "rust") localStorage.removeItem(KEY); else localStorage.setItem(KEY, entry.id); } catch { /* storage unavailable */ }
+  applyAccent(entry.id);
 }

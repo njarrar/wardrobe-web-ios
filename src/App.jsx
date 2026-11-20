@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsDownUp, CalendarBlank, Camera, ChartBar, CoatHanger, GearSix, House, MagicWand, MagnifyingGlass, Plus, SlidersHorizontal, Sparkle, SpinnerGap, TShirt, X } from "@phosphor-icons/react";
 import { WardrobeImportFlow } from "./import-flow.jsx";
 import { OutfitGallery } from "./Outfits.jsx";
@@ -12,13 +12,17 @@ import { ForgottenRow } from "./Today.jsx";
 import { ADD_CLOTHES_EVENT, HomeView } from "./Home.jsx";
 import { canMakeOutfit } from "../shared/make-outfit.mjs";
 import { PlanView, usePlan } from "./Plan.jsx";
+import { PATTERN_LABELS, tileNote } from "../shared/pairing.mjs";
 import { useWeather } from "./weather.js";
 import { askAiConsent, useAiSetup } from "./ai-setup.js";
 import { sendJson, wearPiece } from "./wear.js";
-import { dayString } from "../shared/style.mjs";
-import { t, tn } from "./i18n.js";
-import { COLOR_FAMILIES, colorSortKey, itemFamilies } from "./colors.js";
-import { GROUPS, GROUP_MAP, SORTS, TYPES, TYPE_MAP, TYPE_ORDER, needsSorting } from "./closet-types.js";
+import { dayString, wearCount } from "../shared/style.mjs";
+import { isRtl, t, tn, useLanguage } from "./i18n.js";
+import { handleRovingKeys } from "./dialog.js";
+import {
+  COLOR_FAMILIES, COLOR_FAMILY_MAP, DRESS_LABELS, GROUP_MAP, GROUPS, SEASON_LABELS, SORTS,
+  TYPE_MAP, TYPE_ORDER, TYPES, colorSortKey, itemFamilies, needsSorting, normalizeSearchText, pieceLabel,
+} from "./color-utils.js";
 
 // Screens most visits never open are fetched when first needed, so the
 // app's first load is smaller.
@@ -29,19 +33,35 @@ const StarterPicker = lazy(() => import("./StarterPicker.jsx").then((module) => 
 const LEGACY_EDITS_KEY = "open-wardrobe-edits-v1";
 const LEGACY_DELETED_KEY = "open-wardrobe-deleted-v1";
 
+const MAIN_TABS = [
+  { id: "home", label: "Home", Icon: House },
+  { id: "closet", label: "Closet", Icon: CoatHanger },
+  { id: "outfits", label: "Outfits", Icon: Sparkle },
+  { id: "plan", label: "Plan", Icon: CalendarBlank },
+];
 
-
-// Older versions kept edits in this browser only. Read them once so they can
-// be moved into library.json, then drop them.
-function takeLegacyEdits() {
+// Older versions kept edits in this browser only. Read them without deleting
+// upfront so failed PATCHes are not lost (#109).
+function readLegacyEdits() {
   try {
     const edits = JSON.parse(localStorage.getItem(LEGACY_EDITS_KEY) || "{}");
-    localStorage.removeItem(LEGACY_EDITS_KEY);
-    localStorage.removeItem(LEGACY_DELETED_KEY);
     return edits && typeof edits === "object" ? edits : {};
   } catch {
     return {};
   }
+}
+
+function removeLegacyEditId(id) {
+  try {
+    const edits = readLegacyEdits();
+    if (!(id in edits)) return;
+    delete edits[id];
+    if (Object.keys(edits).length) localStorage.setItem(LEGACY_EDITS_KEY, JSON.stringify(edits));
+    else {
+      localStorage.removeItem(LEGACY_EDITS_KEY);
+      localStorage.removeItem(LEGACY_DELETED_KEY);
+    }
+  } catch { /* storage unavailable */ }
 }
 
 async function saveItemToServer(id, changes) {
@@ -51,13 +71,14 @@ async function saveItemToServer(id, changes) {
     body: JSON.stringify(changes),
   });
   const value = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(value.error || "Could not save your changes.");
+  if (!response.ok) throw new Error(value.error || t("Could not save your changes."));
   return value;
 }
 
 
 export function App() {
-  const [connectReason, setConnectReason] = useState(() => needsServerUrl() ? "setup" : null);
+  useLanguage();
+  const [connectReason, setConnectReason] = useState(() => (needsServerUrl() ? "setup" : null));
 
   useEffect(() => {
     const onAuthRequired = () => setConnectReason("token");
@@ -72,6 +93,7 @@ export function App() {
 }
 
 function Wardrobe({ onConnectionFailed }) {
+  const lang = useLanguage();
   const [items, setItems] = useState([]);
   const [activeType, setActiveType] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
@@ -81,23 +103,26 @@ function Wardrobe({ onConnectionFailed }) {
   const [chosenView, setView] = useState(null);
   const [query, setQuery] = useState("");
   const [colorFilter, setColorFilter] = useState(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState(() => {
     try { return localStorage.getItem("wardrobe-sort") || "category"; } catch { return "category"; }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [homeLockId, setHomeLockId] = useState(null);
   const [outfitsFilter, setOutfitsFilter] = useState(null);
   const [outfits, setOutfits] = useState(null);
   const [outfitsError, setOutfitsError] = useState("");
   const [openOutfitId, setOpenOutfitId] = useState(null);
+  const [returnToOutfitId, setReturnToOutfitId] = useState(null);
+  const [planDay, setPlanDay] = useState(null);
   const [group, setGroup] = useState(null);
   const [sorting, setSorting] = useState(false);
   const { plan, save: savePlan, error: planError } = usePlan();
   const setup = useAiSetup();
   const weather = useWeather();
   const [starterOpen, setStarterOpen] = useState(false);
+  const reloadRef = useRef(0);
 
   useEffect(() => {
     try { localStorage.setItem("wardrobe-sort", sort); } catch { /* storage unavailable */ }
@@ -117,40 +142,85 @@ function Wardrobe({ onConnectionFailed }) {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const isReload = reload > 0;
+    reloadRef.current = reload;
+
     ensureImageKey()
-      .then(() => apiFetch("/api/import/wardrobe", { cache: "no-store" }))
+      .then(() => {
+        if (controller.signal.aborted) return null;
+        return apiFetch("/api/import/wardrobe", { cache: "no-store", signal: controller.signal });
+      })
       .then((response) => {
+        if (!response) return null;
         if (!response.ok) throw new Error(t("Could not load the wardrobe."));
         return response.json();
       })
       .then(async (loadedItems) => {
-        const legacyEdits = takeLegacyEdits();
+        if (!loadedItems || controller.signal.aborted) return;
+        const legacyEdits = readLegacyEdits();
+        const legacyIds = Object.keys(legacyEdits);
+        if (!legacyIds.length) {
+          setItems(loadedItems);
+          return;
+        }
+        const loadedSet = new Set(loadedItems.map((entry) => entry.id));
+        // Clean up any legacy keys for items that no longer exist.
+        for (const id of legacyIds) {
+          if (!loadedSet.has(id)) removeLegacyEditId(id);
+        }
         const migrated = await Promise.all(loadedItems.map(async (item) => {
           const edit = legacyEdits[item.id];
           if (!edit) return item;
-          try { return await saveItemToServer(item.id, edit); }
-          catch { return { ...item, ...edit }; }
+          try {
+            const saved = await saveItemToServer(item.id, edit);
+            removeLegacyEditId(item.id);
+            return saved;
+          } catch {
+            return { ...item, ...edit };
+          }
         }));
-        setItems(migrated);
+        if (!controller.signal.aborted) setItems(migrated);
       })
       .catch((requestError) => {
+        if (controller.signal.aborted || requestError?.name === "AbortError") return;
         // A reload that fails keeps what is on screen.
-        if (reload) return;
+        if (isReload) return;
         if (isNativeApp() && requestError instanceof TypeError) onConnectionFailed();
         else setError(requestError.message);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
   }, [onConnectionFailed, reload]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const isReload = reload > 0;
+
     ensureImageKey()
-      .then(() => apiFetch("/api/import/outfits", { cache: "no-store" }))
+      .then(() => {
+        if (controller.signal.aborted) return null;
+        return apiFetch("/api/import/outfits", { cache: "no-store", signal: controller.signal });
+      })
       .then((response) => {
+        if (!response) return null;
         if (!response.ok) throw new Error(t("Could not load outfits."));
         return response.json();
       })
-      .then(setOutfits)
-      .catch((requestError) => { if (!reload) setOutfitsError(requestError.message); });
+      .then((loadedOutfits) => {
+        if (loadedOutfits && !controller.signal.aborted) setOutfits(loadedOutfits);
+      })
+      .catch((requestError) => {
+        if (controller.signal.aborted || requestError?.name === "AbortError") return;
+        if (!isReload) setOutfitsError(requestError.message);
+        // Home waits for outfits; give it an empty list so it does not wait forever.
+        setOutfits((current) => current ?? []);
+      });
+
+    return () => controller.abort();
   }, [reload]);
 
   const mergeItems = useCallback((saved) => {
@@ -164,28 +234,53 @@ function Wardrobe({ onConnectionFailed }) {
   }, [mergeItems]);
 
   const wearItem = async (id, undo) => {
-    try { mergeItems([await wearPiece(id, { day: dayString(), undo })]); }
-    catch (requestError) { setError(requestError.message); }
+    const updated = await wearPiece(id, { day: dayString(), undo });
+    mergeItems([updated]);
+    return updated;
   };
 
+  // Avoid flashing Closet skeletons before jumping to Home on cold launch (#070).
+  const resolvingInitialView = loading && !chosenView;
   const view = chosenView || (!loading && canMakeOutfit(items) ? "home" : "closet");
-  const showingHome = view === "home";
-  const openOutfit = (id) => { setOpenOutfitId(id); setView("outfits"); setSelectedId(null); };
+  const showingHome = !resolvingInitialView && view === "home";
+  const showingOutfits = !resolvingInitialView && view === "outfits";
+  const showingPlan = !resolvingInitialView && view === "plan";
+  const showingCloset = !resolvingInitialView && view === "closet";
   const browsingAll = activeType === "all" && !query && !colorFilter && !group;
-  const showingPlan = view === "plan";
-  const groupsInCloset = useMemo(() => GROUPS.filter((entry) => items.some(entry.test)), [items]);
+
+  const groupStats = useMemo(() => {
+    const list = [];
+    const countsByGroup = {};
+    for (const entry of GROUPS) {
+      let matched = 0;
+      for (const item of items) {
+        if (entry.test(item)) matched += 1;
+      }
+      if (matched > 0) {
+        list.push(entry);
+        countsByGroup[entry.id] = matched;
+      }
+    }
+    return { list, countsByGroup };
+  }, [items]);
+
+  const groupsInCloset = groupStats.list;
   const unsorted = useMemo(() => items.filter(needsSorting).length, [items]);
 
   const sortCloset = async () => {
     if (!(await askAiConsent(setup))) return;
-    setSorting(true); setError("");
-    try { mergeItems((await sendJson("/api/import/wardrobe/sort", "POST", {}, t("Could not sort your closet."))).items || []); }
-    catch (requestError) { setError(requestError.message); }
-    finally { setSorting(false); }
+    setSorting(true);
+    setError("");
+    try {
+      mergeItems((await sendJson("/api/import/wardrobe/sort", "POST", {}, t("Could not sort your closet."))).items || []);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSorting(false);
+    }
   };
 
   const selectedItem = items.find((item) => item.id === selectedId) || null;
-  const showingOutfits = view === "outfits";
 
   const counts = useMemo(() => {
     const result = { all: items.length };
@@ -194,38 +289,61 @@ function Wardrobe({ onConnectionFailed }) {
   }, [items]);
 
   const visibleItems = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = normalizeSearchText(query.trim());
+    const words = needle ? needle.split(/\s+/).filter(Boolean) : [];
     const filtered = items.filter((item) => {
       if (activeType !== "all" && item.part !== activeType) return false;
       if (colorFilter && !itemFamilies(item).includes(colorFilter)) return false;
       if (group && !GROUP_MAP[group]?.test(item)) return false;
-      if (!needle) return true;
-      const haystack = [item.name, item.kind, item.formality, ...(item.seasons || []), TYPE_MAP[item.part]?.label, TYPE_MAP[item.part]?.singular, ...itemFamilies(item), ...(item.tags || [])]
-        .filter(Boolean).join(" ").toLowerCase();
-      return needle.split(/\s+/).every((word) => haystack.includes(word));
+      if (!words.length) return true;
+      const typeInfo = TYPE_MAP[item.part];
+      const families = itemFamilies(item);
+      const haystack = normalizeSearchText([
+        item.name,
+        item.kind,
+        item.kind && t(item.kind),
+        item.formality,
+        item.formality && t(DRESS_LABELS[item.formality] || item.formality),
+        item.pattern,
+        item.pattern && t(PATTERN_LABELS[item.pattern] || item.pattern),
+        ...(item.seasons || []),
+        ...(item.seasons || []).map((season) => t(SEASON_LABELS[season] || season)),
+        typeInfo?.label,
+        typeInfo?.singular,
+        typeInfo?.label && t(typeInfo.label),
+        typeInfo?.singular && t(typeInfo.singular),
+        ...families,
+        ...families.map((family) => t(COLOR_FAMILY_MAP[family]?.label || family)),
+        ...(item.tags || []),
+      ].filter(Boolean).join(" "));
+      return words.every((word) => haystack.includes(word));
     });
-    const order = items.map((item) => item.id);
+    const orderIndex = new Map(items.map((item, idx) => [item.id, idx]));
     return [...filtered].sort((a, b) => {
       if (sort === "recent") {
         const byDate = (b.addedAt || "").localeCompare(a.addedAt || "");
-        return byDate || order.indexOf(b.id) - order.indexOf(a.id);
+        return byDate || (orderIndex.get(b.id) ?? 0) - (orderIndex.get(a.id) ?? 0);
       }
       if (sort === "name") return (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
       if (sort === "color") return colorSortKey(a) - colorSortKey(b);
       const typeDifference = (TYPE_ORDER[a.part] ?? 99) - (TYPE_ORDER[b.part] ?? 99);
       return typeDifference || a.id.localeCompare(b.id);
     });
-  }, [activeType, colorFilter, group, items, query, sort]);
+  }, [activeType, colorFilter, group, items, query, sort, lang]);
 
   const familiesInCloset = useMemo(() => {
     const present = new Set(items.flatMap(itemFamilies));
     return COLOR_FAMILIES.filter((family) => present.has(family.id));
   }, [items]);
 
-  // Clear a color filter that no longer matches anything, e.g. after a delete.
+  // Clear a color or smart group filter that no longer matches anything (#110).
   useEffect(() => {
     if (colorFilter && !familiesInCloset.some((family) => family.id === colorFilter)) setColorFilter(null);
   }, [colorFilter, familiesInCloset]);
+
+  useEffect(() => {
+    if (group && !groupsInCloset.some((entry) => entry.id === group)) setGroup(null);
+  }, [group, groupsInCloset]);
 
   const chooseType = (typeId) => {
     setActiveType(typeId);
@@ -246,25 +364,57 @@ function Wardrobe({ onConnectionFailed }) {
       pattern: updatedItem.pattern ?? null,
       seasons: Array.isArray(updatedItem.seasons) && updatedItem.seasons.length ? updatedItem.seasons : null,
     });
-    setItems((current) => current.map((item) => item.id === saved.id ? saved : item));
+    setItems((current) => current.map((item) => (item.id === saved.id ? saved : item)));
   };
 
   const deleteItem = async (id) => {
-    try {
-      const response = await apiFetch(`/api/import/wardrobe/${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!response.ok && response.status !== 404) throw new Error(t("Could not delete the item."));
-    } catch (requestError) {
-      setError(requestError.message);
-      return;
-    }
+    const response = await apiFetch(`/api/import/wardrobe/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!response.ok && response.status !== 404) throw new Error(t("Could not delete the item."));
     setItems((current) => current.filter((item) => item.id !== id));
     setSelectedId(null);
+    setReturnToOutfitId(null);
+    // The server drops the piece from outfits (and outfits left too small),
+    // so load outfits and the plan again.
+    setReload((count) => count + 1);
   };
 
   const addImportedItem = useCallback((newItem) => {
     if (!newItem) return;
-    setItems((current) => current.some((item) => item.id === newItem.id) ? current : [...current, newItem]);
+    setItems((current) => (current.some((item) => item.id === newItem.id) ? current : [...current, newItem]));
   }, []);
+
+
+  const affectedOutfits = useMemo(() => {
+    if (!selectedItem || !outfits) return 0;
+    return outfits.filter((outfit) => (outfit.garmentIds || []).includes(selectedItem.id)).length;
+  }, [selectedItem, outfits]);
+
+  const returnOutfitName = useMemo(() => {
+    if (!returnToOutfitId || !outfits) return "";
+    return outfits.find((outfit) => outfit.id === returnToOutfitId)?.name || "";
+  }, [returnToOutfitId, outfits]);
+
+  const openPieceFromOutfit = useCallback((pieceId, outfitId) => {
+    setReturnToOutfitId(outfitId || null);
+    setSelectedId(pieceId);
+  }, []);
+
+  const closeItemViewer = useCallback(() => {
+    setSelectedId(null);
+    if (returnToOutfitId) {
+      setOpenOutfitId(returnToOutfitId);
+      setReturnToOutfitId(null);
+    }
+  }, [returnToOutfitId]);
+
+  const goToPlanDay = useCallback((day) => {
+    if (typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)) setPlanDay(day);
+    else setPlanDay(null);
+    setView("plan");
+    setSelectedId(null);
+  }, []);
+
+  const activeTabId = resolvingInitialView ? "home" : view;
 
   return (
     <div className={`app-shell${selectedItem ? " has-selection" : ""}`}>
@@ -275,24 +425,42 @@ function Wardrobe({ onConnectionFailed }) {
               <span className="brand-mark" aria-hidden="true"><CoatHanger size={20} weight="bold" /></span>
               <div className="brand__text">
                 <h1>{t("Wardrobe")}</h1>
-                <p className="piece-count">{tn(items.length, "{n} piece", "{n} pieces")}</p>
+                {loading
+                  ? <span className="piece-count-skeleton" aria-hidden="true" />
+                  : <p className="piece-count">{tn(items.length, "{n} piece", "{n} pieces")}</p>}
               </div>
             </div>
 
             <div className="view-switch" role="tablist" aria-label={t("Choose a view")}>
-              {[{ id: "home", label: "Home", Icon: House }, { id: "closet", label: "Closet", Icon: CoatHanger }, { id: "outfits", label: "Outfits", Icon: Sparkle }, { id: "plan", label: "Plan", Icon: CalendarBlank }].map(({ id, label, Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={view === id}
-                  className={view === id ? "active" : ""}
-                  onClick={() => { setView(id); setSelectedId(null); }}
-                >
-                  <Icon size={16} weight={view === id ? "fill" : "regular"} aria-hidden="true" />
-                  <span>{t(label)}</span>
-                </button>
-              ))}
+              {MAIN_TABS.map(({ id, label, Icon }, index) => {
+                const selected = !resolvingInitialView && view === id;
+                return (
+                  <button
+                    key={id}
+                    id={`tab-${id}`}
+                    type="button"
+                    role="tab"
+                    tabIndex={activeTabId === id ? 0 : -1}
+                    aria-selected={selected}
+                    aria-controls={`panel-${id}`}
+                    className={selected ? "active" : ""}
+                    onClick={() => { setView(id); setSelectedId(null); setReturnToOutfitId(null); }}
+                    onKeyDown={(event) => handleRovingKeys(event, {
+                      index,
+                      count: MAIN_TABS.length,
+                      rtl: isRtl(),
+                      onSelect: (nextIdx) => {
+                        setView(MAIN_TABS[nextIdx].id);
+                        setSelectedId(null);
+                        setReturnToOutfitId(null);
+                      },
+                    })}
+                  >
+                    <Icon size={16} weight={selected ? "fill" : "regular"} aria-hidden="true" />
+                    <span>{t(label)}</span>
+                  </button>
+                );
+              })}
             </div>
 
             <button className="icon-button topbar__add" type="button" onClick={() => window.dispatchEvent(new Event(ADD_CLOTHES_EVENT))} aria-label={t("Add clothes from a photo")}>
@@ -308,7 +476,7 @@ function Wardrobe({ onConnectionFailed }) {
             </button>
           </div>
 
-          {!showingHome && !showingOutfits && !showingPlan && (
+          {showingCloset && (
             <>
               <div className="toolbar">
                 <label className="search">
@@ -380,7 +548,8 @@ function Wardrobe({ onConnectionFailed }) {
                   ))}
                   {colorFilter && (
                     <button type="button" className="color-filter__clear" onClick={() => setColorFilter(null)}>
-                      {t(COLOR_FAMILIES.find((family) => family.id === colorFilter)?.label || "")} <X size={12} aria-hidden="true" />
+                      <span className="active-filter-dot" style={{ backgroundColor: COLOR_FAMILY_MAP[colorFilter]?.swatch }} aria-hidden="true" />
+                      {t(COLOR_FAMILY_MAP[colorFilter]?.label || "")} <X size={12} aria-hidden="true" />
                     </button>
                   )}
                 </div>
@@ -390,7 +559,7 @@ function Wardrobe({ onConnectionFailed }) {
                 <div className="group-filter" role="group" aria-label={t("Smart groups")}>
                   {(filtersOpen || group) && groupsInCloset.map((entry) => (
                     <button key={entry.id} type="button" className={group === entry.id ? "active" : ""} aria-pressed={group === entry.id} onClick={() => setGroup((current) => (current === entry.id ? null : entry.id))}>
-                      {t(entry.label)} <span className="chip-count">{items.filter(entry.test).length}</span>
+                      {t(entry.label, null, "group")} <span className="chip-count">{groupStats.countsByGroup[entry.id] || 0}</span>
                     </button>
                   ))}
                   {unsorted > 0 && setup?.ready && (
@@ -405,85 +574,142 @@ function Wardrobe({ onConnectionFailed }) {
           )}
         </header>
 
-        {error && <p className="status error">{error}</p>}
+        {error && <p className="status error" role="alert">{error}</p>}
+
+        {resolvingInitialView && !error && (
+          <section className="gallery-grid" aria-label={t("Loading…")} aria-busy="true">
+            {Array.from({ length: 6 }, (_, index) => <span className="gallery-skeleton" key={index} />)}
+          </section>
+        )}
+
         {showingHome && (
-          <HomeView
-            items={items}
-            outfits={outfits}
-            setOutfits={setOutfits}
-            plan={plan}
-            weather={weather}
-            onWorn={onWorn}
-            onOpenPiece={setSelectedId}
-            onGoToPlan={() => setView("plan")}
-            onGoToFavorites={() => { setOutfitsFilter("favorites"); setView("outfits"); }}
-            initialLockId={homeLockId}
-            onConsumeInitialLock={() => setHomeLockId(null)}
-          />
+          <div role="tabpanel" id="panel-home" aria-labelledby="tab-home">
+            <HomeView
+              items={items}
+              outfits={outfits}
+              setOutfits={setOutfits}
+              plan={plan}
+              weather={weather}
+              onWorn={onWorn}
+              onOpenPiece={(id) => { setReturnToOutfitId(null); setSelectedId(id); }}
+              onGoToPlan={goToPlanDay}
+              onGoToFavorites={() => { setOutfitsFilter("favorites"); setView("outfits"); }}
+              initialLockId={homeLockId}
+              onConsumeInitialLock={() => setHomeLockId(null)}
+            />
+          </div>
         )}
 
         {showingOutfits && (
-          <OutfitGallery
-            items={items}
-            outfits={outfits}
-            setOutfits={setOutfits}
-            loadError={outfitsError}
-            weather={weather.today}
-            onWorn={onWorn}
-            openId={openOutfitId}
-            setOpenId={setOpenOutfitId}
-            onSelectGarment={setSelectedId}
-            initialFilter={outfitsFilter}
-            onConsumeFilter={() => setOutfitsFilter(null)}
-          />
+          <div role="tabpanel" id="panel-outfits" aria-labelledby="tab-outfits">
+            <OutfitGallery
+              items={items}
+              outfits={outfits}
+              setOutfits={setOutfits}
+              loadError={outfitsError}
+              weather={weather.today}
+              onWorn={onWorn}
+              openId={openOutfitId}
+              setOpenId={setOpenOutfitId}
+              onSelectGarment={openPieceFromOutfit}
+              initialFilter={outfitsFilter}
+              onConsumeFilter={() => setOutfitsFilter(null)}
+            />
+          </div>
         )}
 
         {showingPlan && (
-          <PlanView items={items} outfits={outfits} plan={plan} savePlan={savePlan} forecast={weather.forecast} planError={planError || outfitsError} onGoToOutfits={() => setView("outfits")} onWorn={onWorn} />
-        )}
-
-        {!showingHome && !showingOutfits && !showingPlan && !loading && !error && browsingAll && !!items.length && (
-          <div className="closet-highlights">
-            <ForgottenRow items={items} onOpen={setSelectedId} />
+          <div role="tabpanel" id="panel-plan" aria-labelledby="tab-plan">
+            <PlanView
+              items={items}
+              outfits={outfits}
+              plan={plan}
+              savePlan={savePlan}
+              forecast={weather.forecast}
+              planError={planError || outfitsError}
+              onGoToOutfits={() => setView("outfits")}
+              onWorn={onWorn}
+              initialDay={planDay}
+              onInitialDayHandled={() => setPlanDay(null)}
+            />
           </div>
         )}
 
-        {!showingHome && !showingOutfits && !showingPlan && !error && loading && (
-          <section className="gallery-grid" aria-hidden="true">
-            {Array.from({ length: 10 }, (_, index) => <span className="gallery-skeleton" key={index} />)}
-          </section>
-        )}
+        {showingCloset && (
+          <div role="tabpanel" id="panel-closet" aria-labelledby="tab-closet">
+            {!loading && !error && browsingAll && !!items.length && (
+              <div className="closet-highlights">
+                <ForgottenRow items={items} onOpen={(id) => { setReturnToOutfitId(null); setSelectedId(id); }} />
+              </div>
+            )}
 
-        {!showingHome && !showingOutfits && !showingPlan && !error && !loading && !items.length && (
-          <div className="empty-state">
-            <span className="empty-state__icon" aria-hidden="true"><CoatHanger size={34} weight="light" /></span>
-            <h2>{t("Your closet is empty")}</h2>
-            <p>{t("Add a photo of one piece or a whole outfit. Each piece is cut out and added here.")}</p>
-            <p className="empty-state__hint"><Plus size={14} aria-hidden="true" /> {t("Tap Add clothes to start.")}</p>
-            <button className="secondary-button" type="button" onClick={() => setStarterOpen(true)}><TShirt size={16} aria-hidden="true" /> {t("Add basics without a photo")}</button>
+            {!error && loading && (
+              <section className="gallery-grid" aria-hidden="true">
+                {Array.from({ length: 10 }, (_, index) => <span className="gallery-skeleton" key={index} />)}
+              </section>
+            )}
+
+            {!error && !loading && !items.length && (
+              <div className="empty-state">
+                <span className="empty-state__icon" aria-hidden="true"><CoatHanger size={34} weight="light" /></span>
+                <h2>{t("Your closet is empty")}</h2>
+                <p>{t("Add a photo of one piece or a whole outfit. Each piece is cut out and added here.")}</p>
+                <div className="empty-state__actions">
+                  <button className="primary-button" type="button" onClick={() => window.dispatchEvent(new Event(ADD_CLOTHES_EVENT))}>
+                    <Camera size={16} aria-hidden="true" /> {t("Add clothes from a photo")}
+                  </button>
+                  <button className="secondary-button" type="button" onClick={() => setStarterOpen(true)}>
+                    <TShirt size={16} aria-hidden="true" /> {t("Add basics without a photo")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!!items.length && !visibleItems.length && (
+              <div className="empty-state compact">
+                <h2>
+                  {query || colorFilter || group
+                    ? t("No matches")
+                    : t("No {type} yet", { type: activeType === "all" ? t("pieces") : t(TYPE_MAP[activeType]?.label || "All").toLowerCase() })}
+                </h2>
+                <p>
+                  {query || colorFilter || group
+                    ? t("Nothing in {where} matches these filters.", { where: activeType === "all" ? t("your closet") : t(TYPE_MAP[activeType]?.label || "All").toLowerCase() })
+                    : t("Add a photo and it will show up here.")}
+                </p>
+                <div className="empty-state__actions">
+                  {!query && !colorFilter && !group && activeType !== "all" ? (
+                    <>
+                      <button className="primary-button" type="button" onClick={() => window.dispatchEvent(new Event(ADD_CLOTHES_EVENT))}>
+                        <Camera size={15} aria-hidden="true" /> {t("Add clothes")}
+                      </button>
+                      <button className="secondary-button" type="button" onClick={() => chooseType("all")}>
+                        {t("Show all")}
+                      </button>
+                    </>
+                  ) : (
+                    <button className="secondary-button" type="button" onClick={() => { setQuery(""); setColorFilter(null); setGroup(null); chooseType("all"); }}>
+                      {t("Clear filters")}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!!visibleItems.length && (
+              <section className="gallery-grid" aria-label={t(TYPE_MAP[activeType]?.label || "All")}>
+                {visibleItems.map((item, index) => (
+                  <GalleryItem
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    selected={selectedId === item.id}
+                    onOpen={(id) => { setReturnToOutfitId(null); setSelectedId(id); }}
+                  />
+                ))}
+              </section>
+            )}
           </div>
-        )}
-
-        {!showingHome && !showingOutfits && !showingPlan && !!items.length && !visibleItems.length && (
-          <div className="empty-state compact">
-            <h2>{query || colorFilter || group ? t("No matches") : t("No {type} yet", { type: activeType === "all" ? t("pieces") : t(TYPE_MAP[activeType]?.label || t("All")).toLowerCase() })}</h2>
-            <p>{query || colorFilter || group ? t("Nothing in {where} matches these filters.", { where: activeType === "all" ? t("your closet") : t(TYPE_MAP[activeType]?.label || t("All")).toLowerCase() }) : t("Add a photo and it will show up here.")}</p>
-            <button className="secondary-button" type="button" onClick={() => { setQuery(""); setColorFilter(null); setGroup(null); chooseType("all"); }}>{t("Clear filters")}</button>
-          </div>
-        )}
-
-        {!showingHome && !showingOutfits && !showingPlan && !!visibleItems.length && (
-          <section className="gallery-grid" aria-label={t(TYPE_MAP[activeType]?.label || t("All"))}>
-            {visibleItems.map((item, index) => (
-              <GalleryItem
-                key={item.id}
-                item={item}
-                index={index}
-                selected={selectedId === item.id}
-                onOpen={setSelectedId}
-              />
-            ))}
-          </section>
         )}
       </main>
 
@@ -491,16 +717,18 @@ function Wardrobe({ onConnectionFailed }) {
         <ItemViewer
           item={selectedItem}
           items={items}
-          onOpen={setSelectedId}
-          onClose={() => setSelectedId(null)}
+          affectedOutfits={affectedOutfits}
+          returnOutfitName={returnOutfitName}
+          onOpen={(id) => setSelectedId(id)}
+          onClose={closeItemViewer}
           onSave={saveItem}
           onDelete={deleteItem}
           onWear={wearItem}
-          onPicture={(saved) => setItems((current) => current.map((entry) => entry.id === saved.id ? saved : entry))}
-          onStyleWith={canMakeOutfit(items) ? (id) => { setSelectedId(null); setHomeLockId(id); setView("home"); } : null}
+          onPicture={(saved) => setItems((current) => current.map((entry) => (entry.id === saved.id ? saved : entry)))}
+          onStyleWith={canMakeOutfit(items) ? (id) => { setReturnToOutfitId(null); setSelectedId(null); setHomeLockId(id); setView("home"); } : null}
         />
       )}
-      {insightsOpen && <Suspense fallback={null}><InsightsSheet items={items} outfits={outfits} onOpenPiece={setSelectedId} onClose={() => setInsightsOpen(false)} /></Suspense>}
+      {insightsOpen && <Suspense fallback={null}><InsightsSheet items={items} outfits={outfits} onOpenPiece={(id) => { setReturnToOutfitId(null); setSelectedId(id); }} onClose={() => setInsightsOpen(false)} /></Suspense>}
       {settingsOpen && <Suspense fallback={null}><SettingsSheet onClose={() => setSettingsOpen(false)} pieces={items.length} weather={weather} /></Suspense>}
       <WardrobeImportFlow onGarmentApproved={addImportedItem} onStarter={() => setStarterOpen(true)} away={view !== "closet"} />
       {starterOpen && <Suspense fallback={null}><StarterPicker onClose={() => setStarterOpen(false)} onAdded={addImportedItem} /></Suspense>}

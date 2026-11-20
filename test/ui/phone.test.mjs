@@ -275,20 +275,23 @@ describe("phone screens", () => {
       await page.getByRole("heading", { name: "You wore this today" }).waitFor();
       await page.getByRole("tab", { name: /Plan/ }).click();
       await page.locator(".plan-day.is-today.is-worn").waitFor();
-      // Tomorrow is for work: the choice shows on the day and is saved.
+      // Pick a future day in Week view (or jump to next week on Saturday so it never silently skips).
       await page.getByRole("tab", { name: "Week" }).click();
-      const tomorrow = page.locator(".plan-day.is-today + .plan-day");
-      if (await tomorrow.count()) {
-        await tomorrow.click();
-        const sheet = page.getByRole("dialog", { name: /Outfit for/ });
-        await sheet.getByRole("button", { name: "Work" }).click();
-        await sheet.getByRole("button", { name: "Work", pressed: true }).waitFor();
-        await sheet.getByRole("button", { name: "Close day" }).click();
-        await page.locator(".plan-day__occasion").getByText("Work").waitFor();
-        const saved = await (await fetch(`${local.base}/api/import/plan`)).json();
-        assert.deepEqual(Object.values(saved.occasions), ["work"]);
-        await snap(page, "light-7-plan-occasion");
+      let tomorrow = page.locator(".plan-day.is-today + .plan-day");
+      if (!(await tomorrow.count())) {
+        await page.getByRole("button", { name: "Later" }).click();
+        tomorrow = page.locator(".plan-day").first();
       }
+      assert.ok(await tomorrow.count() > 0, "expected a plannable day cell");
+      await tomorrow.click();
+      const sheet = page.getByRole("dialog", { name: /Outfit for/ });
+      await sheet.getByRole("button", { name: "Work" }).click();
+      await sheet.getByRole("button", { name: "Work", pressed: true }).waitFor();
+      await sheet.getByRole("button", { name: "Close day" }).click();
+      await page.locator(".plan-day__occasion").getByText("Work").waitFor();
+      const saved = await (await fetch(`${local.base}/api/import/plan`)).json();
+      assert.deepEqual(Object.values(saved.occasions), ["work"]);
+      await snap(page, "light-7-plan-occasion");
 
       // Closet tiles show how often a piece was worn and how it pairs.
       await page.getByRole("tab", { name: /Closet/ }).click();
@@ -298,16 +301,16 @@ describe("phone screens", () => {
       assert.ok(await page.locator(".gallery-item__type", { hasText: /Best with neutrals|Goes with any color|Keep the rest plain/ }).count() >= 6);
       await snap(page, "light-1-closet-tiles");
 
-      // The accent color changes at once and stays after a restart.
+      // The accent color changes at once and stays after a restart (AA-compliant light palette).
       const accentNow = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
-      assert.equal(await accentNow(), "#c2562b");
+      assert.equal(await accentNow(), "#a8441d");
       await page.getByRole("button", { name: "Settings and connection" }).click();
       await page.getByRole("group", { name: "Accent color" }).getByRole("button", { name: "Blue" }).click();
-      assert.equal(await accentNow(), "#2f62c4");
+      assert.equal(await accentNow(), "#2553ad");
       await snap(page, "light-3-settings-accent");
       await page.reload();
       await page.getByRole("heading", { name: "You wore this today" }).waitFor();
-      assert.equal(await accentNow(), "#2f62c4");
+      assert.equal(await accentNow(), "#2553ad");
 
       // Modest wear is among the basics.
       await page.getByRole("tab", { name: /Closet/ }).click();

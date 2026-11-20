@@ -2,11 +2,11 @@
 # Docker host:  docker compose up -d --build
 #
 # 1. Create the folder /volume1/docker/wardrobe (File Station) and put this
-#    project there, or point "build" at a published image instead.
+#    project there, or point "image" at a published GHCR image instead.
 # 2. Copy .env.example to .env and set WARDROBE_TOKEN. Add your AI key there
 #    or later in the app (gear icon, AI).
 # 3. Open http://<NAS-IP>:4173 in a browser, or enter that address in the
-#    iPhone app. See docs/synology.md for HTTPS and remote access.
+#    iPhone or Android app. See docs/synology.md for HTTPS and remote access.
 
 services:
   wardrobe:
@@ -14,10 +14,13 @@ services:
       context: .
       args:
         WITH_CUTOUT: "true"   # "false" = smaller image, no on-device background removal
-    # Or use a prebuilt image (see .github/workflows/docker.yml):
+    # Or use a prebuilt multi-arch image (see .github/workflows/docker.yml):
     # image: ghcr.io/njarrar/wardrobe-web-ios:latest
     container_name: wardrobe
     restart: unless-stopped
+    # Optional: if ./data is already owned by your host user, uncomment `user:`
+    # to run strictly non-root instead of relying on PUID/PGID privilege drop.
+    # user: "${PUID:-1026}:${PGID:-100}"
     ports:
       - "4173:4173"
     env_file:
@@ -26,17 +29,20 @@ services:
       WARDROBE_HOST: 0.0.0.0
       WARDROBE_DATA_DIR: /data
       WARDROBE_MODEL_CACHE: /data/models
+      # Optional: restrict cross-origin browser access to specific origins
+      # (comma-separated). Leave unset for native mobile apps.
+      # WARDROBE_CORS_ORIGINS: https://wardrobe.example.com
       # Owner of the files in ./data on the NAS. Run `id` over SSH to find
       # yours; the first DSM admin account is usually 1026:100.
       PUID: ${PUID:-1026}
       PGID: ${PGID:-100}
       TZ: ${TZ:-Europe/London}
     volumes:
-      # Everything lives here: library.json, outfits.json, photos, cutouts
-      # and the downloaded model. Back up this folder (Hyper Backup/Snapshot).
+      # Everything lives here: library.json, outfits.json, plan.json, photos,
+      # cutouts and the downloaded model. Back up this folder (Hyper Backup).
       - ./data:/data
-    # Background removal runs a small AI model on the NAS CPU. Cap its memory
-    # on small units; 2 GB is comfortable, 1 GB works with WITH_CUTOUT=false.
+    # Background removal runs one BiRefNet job at a time on the NAS CPU.
+    # 2 GB is comfortable; 1 GB works with WITH_CUTOUT=false.
     mem_limit: 2g
     logging:
       driver: json-file
