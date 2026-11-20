@@ -64,24 +64,36 @@ try {
         await page.screenshot({ path: path.join(outDir, `${name}-${colorScheme}-${label}.png`) });
       };
       await page.goto(server.base);
+      // Home opens first once the closet can make an outfit.
+      await page.getByRole("heading", { name: "Wear this today" }).waitFor();
+      await page.waitForLoadState("networkidle");
+      await shot("1-home");
+      if (colorScheme === "dark") { await context.close(); continue; }
+
+      await page.getByRole("tab", { name: /Closet/ }).click();
       await page.locator('[aria-label^="View "]').first().waitFor();
       await page.waitForLoadState("networkidle");
-      await shot("1-closet");
-      if (colorScheme === "dark") { await context.close(); continue; }
+      await shot("2-closet");
 
       await page.locator('[aria-label^="View "]').first().click();
       await page.getByRole("dialog").waitFor();
-      await shot("2-piece");
+      await shot("3-piece");
       await page.getByRole("button", { name: "Close viewer" }).click();
 
       await page.getByRole("tab", { name: /Outfits/ }).click();
       await page.locator(".outfit-card").first().waitFor();
       await page.locator(".outfit-grid").scrollIntoViewIfNeeded();
-      await shot("3-outfits");
+      await shot("4-outfits");
 
       await page.locator(".outfit-card").first().click();
       await page.getByRole("dialog").waitFor();
-      await shot("4-outfit");
+      await shot("5-outfit");
+      await page.keyboard.press("Escape");
+
+      await page.goto(server.base);
+      await page.getByRole("tab", { name: /Plan/ }).click();
+      await page.waitForLoadState("networkidle");
+      await shot("6-plan");
       await context.close();
     }
   }

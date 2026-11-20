@@ -10,7 +10,6 @@
 //
 // The listing is kept out of this repo. Its shape:
 // {
-//   "version": "2.3.0",            // optional, defaults to package.json
 //   "ios": {
 //     "name", "subtitle", "promotional_text", "description", "keywords",
 //     "release_notes", "privacy_url", "support_url", "marketing_url",
@@ -26,6 +25,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const shots = path.join(root, "store/screenshots");
+const framed = path.join(root, "store/framed");
 const graphics = path.join(root, "store/graphics");
 const out = path.join(root, "fastlane");
 
@@ -36,7 +36,11 @@ if (!raw) {
 }
 const listing = JSON.parse(raw);
 const pkg = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-const version = listing.version || pkg.version;
+// The store version always follows package.json, so a new build never reuses
+// an old version number. STORE_RELEASE_NOTES (the workflow's "What's new" box)
+// replaces the listing's release_notes for this run.
+const version = pkg.version;
+if (listing.ios && process.env.STORE_RELEASE_NOTES?.trim()) listing.ios.release_notes = process.env.STORE_RELEASE_NOTES;
 
 const IOS_LIMITS = { name: 30, subtitle: 30, promotional_text: 170, description: 4000, keywords: 100, release_notes: 4000 };
 const ANDROID_LIMITS = { title: 30, short_description: 80, full_description: 4000 };
@@ -60,7 +64,11 @@ if (!listing.ios && !listing.android) problems.push("the listing has neither ios
 
 const files = await readdir(shots).catch(() => []);
 const pick = (prefix) => files.filter((name) => name.startsWith(`${prefix}-light-`) && name.endsWith(".png")).sort();
-if (listing.ios && (!pick("iphone").length || !pick("ipad").length)) problems.push("no iPhone or iPad screenshots; run npm run store:screenshots");
+// The App Store gets the framed images from scripts/store-frames.mjs.
+const framedFiles = await readdir(framed).catch(() => []);
+const pickFramed = (prefix) => framedFiles.filter((name) => name.startsWith(`${prefix}-`) && name.endsWith(".png"))
+  .sort((a, b) => parseInt(a.split("-")[1], 10) - parseInt(b.split("-")[1], 10));
+if (listing.ios && (!pickFramed("iphone").length || !pickFramed("ipad").length)) problems.push("no framed iPhone or iPad images; run npm run store:screenshots");
 if (listing.android && pick("android").length < 2) problems.push("Play needs at least 2 phone screenshots; run npm run store:screenshots");
 
 if (problems.length) {
@@ -87,8 +95,13 @@ if (listing.ios) {
   for (const [key, value] of Object.entries(ios.review)) await write(path.join(meta, "review_information", `${key}.txt`), value);
   const shotDir = path.join(dir, "screenshots", "en-US");
   await mkdir(shotDir, { recursive: true });
-  for (const name of [...pick("iphone"), ...pick("ipad")]) await copyFile(path.join(shots, name), path.join(shotDir, name));
-  console.log(`App Store ${version}: text and ${pick("iphone").length + pick("ipad").length} screenshots in fastlane/ios/`);
+  // fastlane uploads in name order, so number each file to keep the set's order.
+  for (const prefix of ["iphone", "ipad"]) {
+    for (const [index, name] of pickFramed(prefix).entries()) {
+      await copyFile(path.join(framed, name), path.join(shotDir, `${prefix}-${String(index + 1).padStart(2, "0")}${name.slice(name.indexOf("-", prefix.length + 1))}`));
+    }
+  }
+  console.log(`App Store ${version}: text and ${pickFramed("iphone").length + pickFramed("ipad").length} framed images in fastlane/ios/`);
 }
 
 if (listing.android) {

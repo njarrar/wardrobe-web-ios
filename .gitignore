@@ -11,6 +11,7 @@ data/
 
 # Store screenshots are made on demand (npm run store:screenshots)
 store/screenshots/
+store/framed/
 # Store setup notes are kept private, outside the repo
 store/*.md
 # Store listing files made by scripts/store-listing.mjs

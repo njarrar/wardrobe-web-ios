@@ -573,4 +573,7 @@ export const AR = {
   "Could not save your changes.": "تعذر حفظ تغييراتك.",
   "Could not save the outfit.": "تعذر حفظ الإطلالة.",
   "Could not style outfits.": "تعذر تنسيق الإطلالات.",
+  "Open Wardrobe to see today's outfit": "افتح خزانتي لترى إطلالة اليوم",
+  "{n} photo could not be opened.": "تعذر فتح صورة واحدة ({n}).",
+  "{n} photos could not be opened.": "تعذر فتح {n} صور.",
 };

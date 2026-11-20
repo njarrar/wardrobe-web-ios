@@ -26,6 +26,18 @@ export default defineConfig(({ command, mode }) => {
       port: 4173,
       allowedHosts: hasToken ? true : undefined,
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // React changes rarely, so it sits in its own file that browsers
+          // keep across app updates.
+          manualChunks(id) {
+            if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return "react";
+            return undefined;
+          },
+        },
+      },
+    },
     plugins: [react(), responsiveImageApi(), wardrobeImportApi({ env })],
   };
 });

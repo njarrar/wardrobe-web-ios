@@ -14,5 +14,9 @@
 	<array>
 		<string>iCloud.com.njarrar.wardrobe</string>
 	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.njarrar.wardrobe</string>
+	</array>
 </dict>
 </plist>

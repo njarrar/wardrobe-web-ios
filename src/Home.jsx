@@ -6,6 +6,7 @@ import { canMakeOutfit, isOnePiece, makeOutfit, outfitKey, outfitTitle, REST_DAY
 import { FlatLay } from "./FlatLay.jsx";
 import { patchOutfit, sendJson, wearOutfit, wornOn } from "./wear.js";
 import { formatDay, t } from "./i18n.js";
+import { tap, updateWidget } from "./native.js";
 import "./home.css";
 
 // The Home tab: one outfit for today (or any day tapped in the week strip),
@@ -162,6 +163,30 @@ export function HomeView({
     [swapPiece, pieces, items, activeDay, dayWeather, occasion, restWindow],
   );
 
+  // The Home Screen widget shows this week: what is on screen for today,
+  // and the planned or made outfit for each of the next six days.
+  useEffect(() => {
+    if (!isToday) return;
+    const describe = (day, list) => {
+      const forecast = day === today ? weather?.today : weather?.forecast?.[day];
+      const dayOccasion = plan?.occasions?.[day];
+      const line = [dayOccasion && t(OCCASIONS[dayOccasion].label), forecast && Number.isFinite(forecast.temperature) && `${Math.round(forecast.temperature)}°C`].filter(Boolean).join(" · ");
+      return { day, title: outfitTitle(list), line, pieces: list.slice(0, 4).map((piece) => ({ id: piece.id, url: assetUrl(piece.thumbnail || piece.image) })) };
+    };
+    const days = [];
+    if (pieces.length) days.push(describe(today, pieces));
+    for (let index = 1; index < 7; index += 1) {
+      const day = addDays(today, index);
+      const set = saved.find((outfit) => outfit.id === plan?.days?.[day] && usablePlanned(outfit, itemsById));
+      const list = set
+        ? set.garmentIds.map((id) => itemsById.get(id)).filter(Boolean)
+        : makeOutfit({ items, today: day, weather: weather?.forecast?.[day] || null, rejected, dress: OCCASIONS[plan?.occasions?.[day]]?.dress || "", rest: plan?.settings?.pieceRest })?.pieces || [];
+      if (list.length) days.push(describe(day, list.slice().sort((a, b) => PART_ORDER.indexOf(a.part) - PART_ORDER.indexOf(b.part))));
+    }
+    updateWidget(days, t("Open Wardrobe to see today's outfit"));
+    // key stands for the pieces on screen.
+  }, [isToday, key, items, outfits, plan, weather, rejected]);
+
   const run = async (work) => {
     setBusy(true); setError("");
     try { await work(); } catch (requestError) { setError(requestError.message); } finally { setBusy(false); }
@@ -175,15 +200,18 @@ export function HomeView({
   const wear = () => run(async () => {
     const outfit = await save();
     onWorn(await wearOutfit(outfit, { day: today, undo: Boolean(wornOutfit) }));
+    tap(wornOutfit ? "light" : "success");
     setCustomIds(null);
     setSwappingId(null);
   });
   const heart = () => run(async () => {
-    if (!record) { await save({ favorite: true }); return; }
+    if (!record) { await save({ favorite: true }); tap(); return; }
+    tap();
     const updated = await patchOutfit(record.id, { favorite: !record.favorite });
     setOutfits((current) => (current || []).map((outfit) => (outfit.id === updated.id ? updated : outfit)));
   });
   const shuffle = () => {
+    tap();
     setCustomIds(null);
     setSwappingId(null);
     setState((current) => ({ ...current, seed: current.seed + 1 }));
@@ -195,11 +223,13 @@ export function HomeView({
     shuffle();
   };
   const toggleLock = (id) => {
+    tap("select");
     setCustomIds(null);
     setState((current) => ({ ...current, locked: current.locked.includes(id) ? current.locked.filter((entry) => entry !== id) : [...current.locked, id] }));
   };
   const applySwap = (replacementId) => {
     if (!swapPiece) return;
+    tap("select");
     const nextIds = pieces.map((piece) => (piece.id === swapPiece.id ? replacementId : piece.id));
     setCustomIds(nextIds);
     setSwappingId(null);

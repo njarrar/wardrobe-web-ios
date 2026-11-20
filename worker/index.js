@@ -4,6 +4,7 @@
 // background from a Queue so requests return right away.
 import {
   MAX_STYLE_COUNT,
+  allowedOrigin,
   canMakeOutfit,
   styleOptions,
   checkPng,
@@ -38,10 +39,20 @@ class HttpError extends Error {
 }
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
 };
+
+// Names the caller's origin on the answer when it is one we allow (see
+// allowedOrigin). The open health check stays open to all.
+function withCors(response, request, env) {
+  const headers = new Headers(response.headers);
+  const origin = new URL(request.url).pathname === "/api/health" ? "*" : allowedOrigin(request.headers.get("origin"), env.WARDROBE_CORS_ORIGINS);
+  headers.append("Vary", "Origin");
+  if (origin) headers.set("Access-Control-Allow-Origin", origin);
+  else for (const name of Object.keys(CORS_HEADERS)) headers.delete(name);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
 
 function json(status, value) {
   return new Response(JSON.stringify(value), {
@@ -534,11 +545,11 @@ export default {
     const url = new URL(request.url);
     if (url.pathname !== "/api/health" && !url.pathname.startsWith("/api/import/")) return env.ASSETS.fetch(request);
     try {
-      return await handleApi(request, env);
+      return withCors(await handleApi(request, env), request, env);
     } catch (error) {
       const status = error instanceof HttpError || error instanceof AiError || (error.status >= 400 && error.status < 500) ? error.status : 500;
       if (status === 500) console.error(error);
-      return json(status, { error: status === 500 ? "Internal server error" : error.message });
+      return withCors(json(status, { error: status === 500 ? "Internal server error" : error.message }), request, env);
     }
   },
 

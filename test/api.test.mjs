@@ -226,10 +226,14 @@ describe("wardrobe api with a token", () => {
     assert.equal((await response.json()).protected, true);
   });
 
-  test("answers CORS preflight for the iOS app", async () => {
-    const response = await fetch(`${ctx.base}/api/import/wardrobe`, { method: "OPTIONS" });
-    assert.equal(response.status, 204);
-    assert.equal(response.headers.get("access-control-allow-origin"), "*");
+  test("answers CORS preflight for the phone apps, and for no other site", async () => {
+    for (const origin of ["capacitor://localhost", "https://localhost", "http://localhost:5173"]) {
+      const response = await fetch(`${ctx.base}/api/import/wardrobe`, { method: "OPTIONS", headers: { Origin: origin } });
+      assert.equal(response.status, 204);
+      assert.equal(response.headers.get("access-control-allow-origin"), origin);
+    }
+    const other = await fetch(`${ctx.base}/api/import/wardrobe`, { method: "OPTIONS", headers: { Origin: "https://evil.example" } });
+    assert.equal(other.headers.get("access-control-allow-origin"), null);
   });
 });
 
@@ -478,4 +482,16 @@ describe("picking the AI in Settings", () => {
     assert.equal(settings.providers[0].keySource, "server");
     assert.equal(settings.providers[0].keyHint, "…1234");
   });
+});
+
+test("allowedOrigin lets in the phone apps, this computer and listed sites", async () => {
+  const { allowedOrigin } = await import("../shared/core.mjs");
+  assert.equal(allowedOrigin("capacitor://localhost"), "capacitor://localhost");
+  assert.equal(allowedOrigin("https://localhost"), "https://localhost");
+  assert.equal(allowedOrigin("http://127.0.0.1:4173"), "http://127.0.0.1:4173");
+  assert.equal(allowedOrigin("https://evil.example"), "");
+  assert.equal(allowedOrigin("capacitor://evil.example"), "");
+  assert.equal(allowedOrigin("https://closet.example", "https://closet.example/, https://b.example"), "https://closet.example");
+  assert.equal(allowedOrigin("https://evil.example", "*"), "*");
+  assert.equal(allowedOrigin(undefined), "");
 });

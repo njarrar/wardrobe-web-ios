@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.5.0 (widget, taps you can feel, photo picker, smaller download)
+
+iPhone
+- **Home Screen widget.** "Today's outfit" in small and medium sizes. It shows the outfit from Home, and moves to each next day's outfit on its own for a week. Open the app now and then so it stays fresh.
+- **Taps you can feel** on Wear this, Shuffle, Lock, Swap, the heart and Pin day.
+- **System photo picker.** "Choose images" opens Apple's picker. The phone makes each photo smaller before the app holds it, so picking many large photos no longer strains memory.
+
+All
+- **Smaller first load.** Settings, closet numbers, basics and picture tools load when first opened. The main file went from 616 kB to 337 kB.
+- **Server access.** A protected server now answers browser calls only from the phone apps, from this computer, and from sites named in `WARDROBE_CORS_ORIGINS`. Before, any site could call it (it still needed the token).
+- The big App file is split: the piece page, the closet tile, colors and closet types each have their own file.
+
+Store
+- **Framed App Store images.** `npm run store:screenshots` now also puts each shot in an iPhone or iPad frame with a short headline above it (`scripts/store-frames.mjs`, saved to `store/framed/`). Six images per device: Today, Outfits, Plan, Closet, Pieces and dark mode. The Store listing workflow sends these to the App Store. Google Play still gets the plain shots.
+
 ## 3.4.0 (review fixes, swap one piece, closet numbers)
 
 Fixes
