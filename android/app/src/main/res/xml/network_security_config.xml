@@ -1,12 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Most people reach their wardrobe server on home Wi-Fi by its IP address
      (for example http://192.168.1.20:4173), which has no HTTPS. Android can
-     only allow plain http by domain, not by IP range, so it is allowed here.
-     Every request still needs the server's access token. -->
+     only allow plain http by domain, not by IP range, so it stays allowed by
+     default. The AI, weather and cloud services below must use HTTPS.
+     Every request to the wardrobe server still needs its access token. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">anthropic.com</domain>
+        <domain includeSubdomains="true">openai.com</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">open-meteo.com</domain>
+        <domain includeSubdomains="true">workers.dev</domain>
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
+    </domain-config>
 </network-security-config>
