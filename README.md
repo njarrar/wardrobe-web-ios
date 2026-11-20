@@ -46,6 +46,14 @@ Everything since 3.0, in short. See the [changelog](CHANGELOG.md) for every chan
 - **Feel and look.** Taps you can feel on iPhone, Light, Dark or Auto, seven accent colors, wind and rain in the forecast.
 - **Safer and faster.** A smaller first load, and a protected server that only answers the apps and the sites you name.
 
+**A full check of the app.** A review of the whole app fixed more than 200 small things:
+
+- **Screens.** Dialogs close with Escape and keep the keyboard inside them. Home shows a loading state, can undo "Not me", and can go back to the planned look. The outfit builder has search, and deleting an outfit asks first.
+- **Look.** Higher contrast, larger tap targets, Dark mode that follows your Light or Dark choice, and right to left fixes for Arabic, with the right plural forms.
+- **Server and Worker.** Safer file paths, security headers, AI calls that time out and try again, and a plan that keeps what you removed when two copies meet. The plan now goes along when you copy a closet to Cloudflare.
+- **Phone apps.** On iPhone the app waits for iCloud files before it reads them. On Android, backups leave out your token and private files.
+- **Web app.** Add it to your Home Screen from the browser, and it opens even when the connection drops.
+
 ## What was new in 3.0
 
 - **No server needed on iPhone and iPad.** Pick **Use iCloud** on the first screen and your closet lives in your own iCloud, synced across your Apple devices. Nothing goes to us.
@@ -150,6 +158,8 @@ docker compose up -d --build
 On DSM 7.2+, use **Container Manager → Project → Create**, point it at this folder and it picks up `docker-compose.yml`. Set `PUID`/`PGID` to your DSM user (`id` over SSH) so files in `./data` belong to you. The GitHub workflow in `.github/workflows/docker.yml` also publishes a multi-arch image (amd64 + arm64) to GHCR if you prefer pulling an image.
 
 For the iPhone app away from home, put the NAS behind HTTPS with the DSM reverse proxy (plus DDNS and Let's Encrypt) or use Tailscale. QuickConnect can't relay the app's port.
+
+The container starts as root only long enough to give `/data` to `PUID`/`PGID`, then runs as that user. If `./data` already belongs to your user, set `user:` in `docker-compose.yml` to run as that user from the start.
 
 Step-by-step guide, reverse proxy, backups and troubleshooting: **[docs/synology.md](docs/synology.md)**.
 
